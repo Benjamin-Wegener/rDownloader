@@ -1,9 +1,9 @@
 # rdownloader status
 
-Generated 2026-10-21 at commit f18ccb4 - regenerate with `scripts/status-md.sh`
+Generated 2026-10-22 at commit cbb779e - regenerate with `scripts/status-md.sh`
 
-`[#########-----------]` **15/31** steps done (48%), 4 in progress, 12 open
-Roadmap items: 18 checked, 25 open
+`[##########----------]` **16/31** steps done (52%), 4 in progress, 11 open
+Roadmap items: 19 checked, 24 open
 
 ## i18n (1/2)
 
@@ -25,7 +25,7 @@ Roadmap items: 18 checked, 25 open
 - [x] `net-2` TorTransport implementiert Vertrag A
 - [x] `net-3` M1.1 Redirects, Chunked, Content-Disposition
 - [x] `net-4` M1.5 Stream-Isolation (Single-Client + isolated_client() prüfen)
-- [ ] `net-5` M1.6 Health-Check / Auto-Reconnect
+- [~] `net-5` M1.6 Health-Check / Auto-Reconnect - **in progress**
 - [ ] `net-6` M5 DNS-Leak-Check, Bridges
 
 ## plugins (3/5)
@@ -45,10 +45,10 @@ Roadmap items: 18 checked, 25 open
 - [ ] `infra-5` Threat-Modell-Doku, README, Manpage
 - [ ] `infra-6` Release-Binaries (GitHub Releases)
 
-## ui (1/6)
+## ui (2/6)
 
 - [x] `ui-1` Queue-Rendering gegen FakeJob (Live-Updates über Vertrag B)
-- [~] `ui-2` Steuerung pro Eintrag: Pause/Resume/Cancel/Remove - **in progress**
+- [x] `ui-2` Steuerung pro Eintrag: Pause/Resume/Cancel/Remove
 - [ ] `ui-3` Session-Restore im Tracker
 - [ ] `ui-4` Detail-Ansicht (Parts, Speed, ETA, Circuit)
 - [ ] `ui-5` Batch-Import (Datei, Clipboard)
