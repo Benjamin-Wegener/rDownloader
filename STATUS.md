@@ -1,14 +1,14 @@
 # rdownloader status
 
-Generated 2026-10-22 at commit f3432ac - regenerate with `scripts/status-md.sh`
+Generated 2026-10-22 at commit 4b45784 - regenerate with `scripts/status-md.sh`
 
-`[#################---]` **27/31** steps done (87%), 1 in progress, 3 open
-Roadmap items: 28 checked, 19 open
+`[##################--]` **28/31** steps done (90%), 2 in progress, 1 open
+Roadmap items: 29 checked, 18 open
 
-## i18n (1/2)
+## i18n (2/2)
 
 - [x] `i18n-1` src/i18n.rs: String-Katalog (en), Schlüssel + benannte Platzhalter, Tests; Clap-Help darüber
-- [~] `i18n-2` Bestehende deutsche Strings/Kommentare/Docs im Code auf Englisch, UI-Texte in den Katalog - **in progress**
+- [x] `i18n-2` Bestehende deutsche Strings/Kommentare/Docs im Code auf Englisch, UI-Texte in den Katalog
 
 ## core (6/6)
 
@@ -42,7 +42,7 @@ Roadmap items: 28 checked, 19 open
 - [x] `infra-2` Test-Harness: lokaler HTTP-Server mit Range-Support + Abbruch-Simulation
 - [x] `infra-3` Integrationstest: Kill + Resume + Hash (Definition of Done M1)
 - [x] `infra-4` Cargo.toml-Aufräumen (ungenutzte Dependencies)
-- [ ] `infra-5` Threat-Modell-Doku, README, Manpage
+- [~] `infra-5` Threat-Modell-Doku, README, Manpage - **in progress**
 - [ ] `infra-6` Release-Binaries (GitHub Releases)
 
 ## ui (5/6)
@@ -52,4 +52,4 @@ Roadmap items: 28 checked, 19 open
 - [x] `ui-3` Session-Restore im Tracker
 - [x] `ui-4` Detail-Ansicht (Parts, Speed, ETA, Circuit)
 - [x] `ui-5` Batch-Import (Datei, Clipboard)
-- [ ] `ui-6` History + Export (CSV/JSON)
+- [~] `ui-6` History + Export (CSV/JSON) - **in progress**
