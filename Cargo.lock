@@ -3235,6 +3235,7 @@ dependencies = [
  "hyper-util",
  "libc",
  "md-5",
+ "percent-encoding",
  "ratatui",
  "serde",
  "serde_json",

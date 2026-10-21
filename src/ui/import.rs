@@ -1,4 +1,4 @@
-//! Batch import: turns pasted text, a link-list file or the clipboard into download URLs.
+//! Batch import (http, https and ftp links): turns pasted text, a link-list file or the clipboard into download URLs.
 
 use anyhow::{bail, Context, Result};
 use std::path::Path;
@@ -30,7 +30,7 @@ pub fn parse_urls(text: &str) -> Import {
         for token in line.split(|c: char| c.is_whitespace() || c == ',') {
             let token =
                 token.trim_matches(|c: char| matches!(c, '<' | '>' | '"' | '\'' | '(' | ')' | ';'));
-            if !(token.starts_with("http://") || token.starts_with("https://")) {
+            if !["http://", "https://", "ftp://"].iter().any(|p| token.starts_with(p)) {
                 continue;
             }
             match Url::parse(token) {
@@ -125,7 +125,7 @@ mod tests {
 
     #[test]
     fn duplicates_dropped_other_schemes_ignored_bad_urls_counted() {
-        let i = parse_urls("http://a.test/x\nhttp://a.test/x\nftp://a.test/f\nmailto:a@b.c\nhttp://\nhttps://[bad\n");
+        let i = parse_urls("http://a.test/x\nhttp://a.test/x\nsftp://a.test/f\nmailto:a@b.c\nhttp://\nhttps://[bad\n");
         assert_eq!(urls(&i), ["http://a.test/x"]);
         assert_eq!(i.skipped, 2);
     }

@@ -389,6 +389,10 @@ const EN: &[(&str, &str)] = &[
     ),
     ("download.error.header_too_large", "HTTP header too large"),
     (
+        "download.error.body_truncated",
+        "Connection ended early: received {received} of {expected} bytes",
+    ),
+    (
         "download.error.unexpected_status",
         "Unexpected status: {status}",
     ),

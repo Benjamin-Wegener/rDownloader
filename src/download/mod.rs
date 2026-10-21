@@ -16,9 +16,9 @@ use tracing::{error, info};
 use uuid::Uuid;
 
 use crate::contract::{ByteRange, Transport};
-use crate::net::TorTransport;
 use crate::t;
 use crate::tor::TorManager;
+use futures::StreamExt;
 
 pub mod checksum;
 pub mod extract;
@@ -105,8 +105,7 @@ impl DownloadJob {
 ///
 /// Nothing is resolved locally: the host name is handed to Arti and resolved
 /// by the exit node, so this path cannot leak DNS.
-async fn resolve_size(tor: Arc<TorManager>, url: &url::Url) -> Result<ServerInfo> {
-    let transport = TorTransport::new(tor);
+async fn resolve_size(transport: &dyn Transport, url: &url::Url) -> Result<ServerInfo> {
     let head = transport.head(url, 0).await?;
     let total = head
         .total_size
@@ -215,11 +214,11 @@ fn part_isolation(job: Uuid, part_idx: usize) -> u64 {
     hasher.finish()
 }
 
-/// Downloads a part (byte range) over Tor and writes it to `dest`.
+/// Downloads a part (byte range) through `transport` and writes it to `dest`.
 /// Supports resuming: if `dest` already contains data and ranges are supported,
 /// it continues at the existing end of the file.
 async fn download_part(
-    tor: Arc<TorManager>,
+    transport: Arc<dyn Transport>,
     isolation: u64,
     url: url::Url,
     dest: PathBuf,
@@ -227,12 +226,6 @@ async fn download_part(
     bytes_done: Arc<AtomicU64>,
     part_bytes_done: &mut u64,
 ) -> Result<()> {
-    let host = url
-        .host_str()
-        .context(t!("download.error.no_host"))?
-        .to_string();
-    let port = url.port_or_known_default().unwrap_or(80);
-
     // Check whether data for this part already exists on disk (resume)
     let existing_len = if dest.exists() {
         tokio::fs::metadata(&dest)
@@ -263,55 +256,34 @@ async fn download_part(
         }
     };
 
-    // Open the part's own circuit: streams with different isolation ids never
-    // share one.
-    let mut stream = tor.connect_isolated(&host, port, isolation).await?;
+    // Every part has its own isolation id: streams with different ids never
+    // share a circuit. The transport follows redirects, speaks TLS and decodes
+    // chunked bodies.
+    let response = transport
+        .get(
+            &url,
+            effective_range.map(|(start, end)| ByteRange {
+                start,
+                end: Some(end),
+            }),
+            isolation,
+        )
+        .await?;
 
-    // Simple HTTP/1.1 GET with a Range header over the Tor stream
-    let path = if url.path().is_empty() {
-        "/"
-    } else {
-        url.path()
-    };
-    let range_header = effective_range
-        .map(|(start, end)| format!("Range: bytes={start}-{end}\r\n"))
-        .unwrap_or_default();
-    let req = format!(
-        "GET {path} HTTP/1.1\r\nHost: {host}\r\n{range_header}Connection: close\r\nUser-Agent: rdownloader/0.1\r\n\r\n"
-    );
-    use tokio::io::{AsyncReadExt as _, AsyncWriteExt as _};
-    stream.write_all(req.as_bytes()).await?;
-
-    // Read the response up to \r\n\r\n (end of headers), then the body
-    let mut buf = Vec::with_capacity(8192);
-    let mut tmp = [0u8; 4096];
-    let header_end;
-    loop {
-        let n = stream.read(&mut tmp).await?;
-        if n == 0 {
-            anyhow::bail!(t!("download.error.header_closed"));
-        }
-        buf.extend_from_slice(&tmp[..n]);
-        if let Some(pos) = find_subsequence(&buf, b"\r\n\r\n") {
-            header_end = pos + 4;
-            break;
-        }
-        if buf.len() > 64 * 1024 {
-            anyhow::bail!(t!("download.error.header_too_large"));
-        }
-    }
-
-    let header = String::from_utf8_lossy(&buf[..header_end]).to_string();
-    let status_line = header.lines().next().unwrap_or("");
+    let status = response.head.status;
+    // A 200 in response to a range request would mean the server ignores Range → the part would be the whole file.
     let ok_status = if effective_range.is_some() {
-        // A 200 in response to a range request would mean the server ignores Range → the part would be the whole file.
-        status_line.contains(" 206 ")
+        status == 206
     } else {
-        status_line.contains(" 200 ")
+        status == 200
     };
     if !ok_status {
-        anyhow::bail!(t!("download.error.unexpected_status", status = status_line));
+        anyhow::bail!(t!(
+            "download.error.unexpected_status",
+            status = status.to_string()
+        ));
     }
+    let expected_len = response.head.content_length;
 
     let mut file = OpenOptions::new()
         .create(true)
@@ -333,28 +305,29 @@ async fn download_part(
         *part_bytes_done = 0;
     }
 
-    // Write the rest of the response (possibly already part of the body in buf)
-    if buf.len() > header_end {
-        let body_start = &buf[header_end..];
-        file.write_all(body_start).await?;
-        let len = body_start.len() as u64;
+    let mut received = 0u64;
+    let mut body = response.body;
+    while let Some(chunk) = body.next().await {
+        let chunk = chunk?;
+        file.write_all(&chunk).await?;
+        let len = chunk.len() as u64;
         limiter::global().acquire(len).await;
         bytes_done.fetch_add(len, Ordering::Relaxed);
         *part_bytes_done += len;
-    }
-
-    loop {
-        let n = stream.read(&mut tmp).await?;
-        if n == 0 {
-            break;
-        }
-        file.write_all(&tmp[..n]).await?;
-        let len = n as u64;
-        limiter::global().acquire(len).await;
-        bytes_done.fetch_add(len, Ordering::Relaxed);
-        *part_bytes_done += len;
+        received += len;
     }
     file.flush().await?;
+
+    // A connection that ends early must fail, so the retry loop continues the part.
+    if let Some(expected) = expected_len {
+        if received != expected {
+            anyhow::bail!(t!(
+                "download.error.body_truncated",
+                received = received.to_string(),
+                expected = expected.to_string()
+            ));
+        }
+    }
     Ok(())
 }
 
@@ -408,12 +381,29 @@ pub async fn run_job(
     progress: Arc<Mutex<JobProgress>>,
     cancel: Arc<tokio::sync::Notify>,
 ) -> Result<()> {
+    let transport = Arc::new(crate::net::SchemeTransport::new(tor.clone()));
+    // After a failed attempt the part's circuit may be dead: force a fresh one.
+    let invalidate: Arc<dyn Fn(u64) + Send + Sync> = Arc::new(move |isolation| {
+        tor.invalidate_isolation(isolation);
+    });
+    run_job_with(job, transport, invalidate, progress, cancel).await
+}
+
+/// The download engine, independent of the network: `transport` fetches the
+/// bytes and `invalidate` is called with a part's isolation id after a failure.
+pub async fn run_job_with(
+    job: &DownloadJob,
+    transport: Arc<dyn Transport>,
+    invalidate: Arc<dyn Fn(u64) + Send + Sync>,
+    progress: Arc<Mutex<JobProgress>>,
+    cancel: Arc<tokio::sync::Notify>,
+) -> Result<()> {
     {
         let mut p = progress.lock().await;
         p.status = JobStatus::Resolving;
     }
 
-    let info = resolve_size(tor.clone(), &job.url).await?;
+    let info = resolve_size(&*transport, &job.url).await?;
     let total = info.total;
 
     // Check available disk space before starting
@@ -509,7 +499,8 @@ pub async fn run_job(
         let range = (info.accepts_ranges && parts_count > 1).then_some((start, end));
         let dest = temp_dir.join(format!("part-{i:03}"));
         part_paths.push(dest.clone());
-        let tor_c = tor.clone();
+        let transport_c = transport.clone();
+        let invalidate_c = invalidate.clone();
         let url = job.url.clone();
         let bd = bytes_done.clone();
         let cancel_c = cancel.clone();
@@ -521,7 +512,8 @@ pub async fn run_job(
                 .retry_with_cancel(
                     &*cancel_c,
                     |_attempt| {
-                        let tor_c = tor_c.clone();
+                        let transport_c = transport_c.clone();
+                        let invalidate_c = invalidate_c.clone();
                         let url = url.clone();
                         let dest = dest.clone();
                         let bd = bd.clone();
@@ -529,7 +521,7 @@ pub async fn run_job(
                         async move {
                             let mut pb = pb_arc.load(Ordering::Relaxed);
                             let res = download_part(
-                                tor_c.clone(),
+                                transport_c.clone(),
                                 isolation,
                                 url,
                                 dest,
@@ -541,7 +533,7 @@ pub async fn run_job(
                             if res.is_err() {
                                 // The circuit may have died mid-stream. Force a
                                 // fresh one for the retry that follows.
-                                tor_c.invalidate_isolation(isolation);
+                                invalidate_c(isolation);
                             }
                             pb_arc.store(pb, Ordering::Relaxed);
                             res
@@ -764,5 +756,166 @@ mod tests {
         let t = MockTransport::new().with_resource("http://x.test/n", res);
         let url = url::Url::parse("http://x.test/n").unwrap();
         assert!(!probe_range_support(&t, &url, 0).await.unwrap());
+    }
+
+    // ── Engine end to end, without a network ──
+
+    fn payload(len: usize) -> Vec<u8> {
+        (0..len).map(|i| (i * 7 % 251) as u8).collect()
+    }
+
+    async fn run(
+        transport: MockTransport,
+        url: &str,
+        parts: usize,
+    ) -> (Result<()>, Vec<u8>, JobProgress) {
+        let dir = std::env::temp_dir().join(format!("rdl-engine-{}", Uuid::new_v4()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let output = dir.join("out.bin");
+        let job = DownloadJob::new(url::Url::parse(url).unwrap(), output.clone(), parts);
+        let progress = Arc::new(Mutex::new(JobProgress {
+            id: job.id,
+            url: url.into(),
+            filename: "out.bin".into(),
+            total_bytes: 0,
+            bytes_done: 0,
+            parts: vec![],
+            status: JobStatus::Queued,
+        }));
+        let invalidate: Arc<dyn Fn(u64) + Send + Sync> = Arc::new(|_| {});
+        let res = run_job_with(
+            &job,
+            Arc::new(transport),
+            invalidate,
+            progress.clone(),
+            Arc::new(tokio::sync::Notify::new()),
+        )
+        .await;
+        let data = std::fs::read(&output).unwrap_or_default();
+        let _ = std::fs::remove_dir_all(&dir);
+        let p = progress.lock().await.clone();
+        (res, data, p)
+    }
+
+    #[tokio::test]
+    async fn multipart_download_reassembles_the_file() {
+        let data = payload(10_000);
+        let t = MockTransport::new()
+            .with_resource("http://x.test/f", MockResource::new(data.clone()))
+            .with_chunk_size(700);
+        let (res, got, p) = run(t.clone(), "http://x.test/f", 4).await;
+        res.unwrap();
+        assert_eq!(got, data);
+        assert_eq!(p.status, JobStatus::Done);
+        // Four parts, each with its own isolation id.
+        let isolations: std::collections::HashSet<u64> = t
+            .requests()
+            .iter()
+            .filter_map(|r| match r {
+                crate::contract::RecordedRequest::Get {
+                    isolation,
+                    range: Some(_),
+                    ..
+                } => Some(*isolation),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(isolations.len(), 4);
+    }
+
+    #[tokio::test]
+    async fn server_without_ranges_is_downloaded_over_one_connection() {
+        let data = payload(3_000);
+        let mut res = MockResource::new(data.clone());
+        res.accepts_ranges = false;
+        let t = MockTransport::new().with_resource("http://x.test/f", res);
+        let (r, got, _) = run(t.clone(), "http://x.test/f", 4).await;
+        r.unwrap();
+        assert_eq!(got, data);
+        let ranged = t
+            .requests()
+            .iter()
+            .filter(|r| {
+                matches!(
+                    r,
+                    crate::contract::RecordedRequest::Get { range: Some(_), .. }
+                )
+            })
+            .count();
+        assert_eq!(ranged, 0, "no Range header without server support");
+    }
+
+    #[tokio::test]
+    async fn a_dropped_connection_is_retried() {
+        let data = payload(4_000);
+        let t =
+            MockTransport::new().with_resource("http://x.test/f", MockResource::new(data.clone()));
+        t.truncate_next_body_after(500);
+        let (r, got, _) = run(t, "http://x.test/f", 1).await;
+        r.unwrap();
+        assert_eq!(got, data, "the retry must produce the complete file");
+    }
+
+    #[tokio::test]
+    async fn a_short_body_without_error_is_detected() {
+        // A transport that ends the body early without reporting an error must still fail.
+        struct ShortTransport;
+        #[async_trait::async_trait]
+        impl Transport for ShortTransport {
+            async fn head(&self, url: &url::Url, _: u64) -> Result<crate::contract::ResponseHead> {
+                Ok(crate::contract::ResponseHead {
+                    status: 200,
+                    final_url: url.clone(),
+                    content_length: Some(100),
+                    total_size: Some(100),
+                    accepts_ranges: false,
+                    filename: None,
+                    etag: None,
+                    last_modified: None,
+                })
+            }
+            async fn get(
+                &self,
+                url: &url::Url,
+                _: Option<ByteRange>,
+                i: u64,
+            ) -> Result<crate::contract::Response> {
+                let head = self.head(url, i).await?;
+                let body = futures::stream::iter(vec![Ok(bytes::Bytes::from_static(b"short"))]);
+                Ok(crate::contract::Response {
+                    head,
+                    body: Box::pin(body),
+                })
+            }
+        }
+        let dir = std::env::temp_dir().join(format!("rdl-engine-{}", Uuid::new_v4()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let job = DownloadJob::new(
+            url::Url::parse("http://x.test/f").unwrap(),
+            dir.join("o.bin"),
+            1,
+        );
+        let progress = Arc::new(Mutex::new(JobProgress {
+            id: job.id,
+            url: String::new(),
+            filename: String::new(),
+            total_bytes: 0,
+            bytes_done: 0,
+            parts: vec![],
+            status: JobStatus::Queued,
+        }));
+        let res = run_job_with(
+            &job,
+            Arc::new(ShortTransport),
+            Arc::new(|_| {}),
+            progress,
+            Arc::new(tokio::sync::Notify::new()),
+        )
+        .await;
+        let _ = std::fs::remove_dir_all(&dir);
+        assert!(
+            res.is_err(),
+            "a truncated body must not count as a finished download"
+        );
     }
 }

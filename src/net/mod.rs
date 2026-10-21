@@ -33,11 +33,14 @@ use url::Url;
 use crate::t;
 use crate::tor::{AsyncReadWrite, TorManager};
 
+pub mod ftp;
+pub mod router;
 pub mod rpc;
 pub mod transport;
 
 mod disposition;
 
+pub use router::SchemeTransport;
 pub use transport::TorTransport;
 
 /// Future that yields a raw byte stream to `host:port`.

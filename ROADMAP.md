@@ -126,7 +126,8 @@ Abgleich mit aria2, JDownloader, yt-dlp und der Arti-Dokumentation. Reihenfolge 
 - [ ] 🟢 `~/.netrc`-Zugangsdaten und Cookie-Import aus Browsern (plugins-8)
 
 **Protokolle & Inhalte**
-- [ ] 🟢 FTP/SFTP über Tor (net-9)
+- [x] 🟢 FTP über Tor (unverschlüsselt; Passiv-Modus, Resume, pro Part eigene Isolation) (net-9)
+- [ ] 🟢 SFTP über Tor (SSH-Client, Host-Key-Prüfung) und FTPS (net-11)
 - [ ] 🟢 HLS/DASH-Segment-Downloads, evtl. über die Rust-Crate `vsd` oder einen yt-dlp-Wrapper (net-10)
 - [ ] ⛔ BitTorrent/Magnet: bewusst nicht im Umfang (über Tor unüblich, anderes Bedrohungsmodell)
 

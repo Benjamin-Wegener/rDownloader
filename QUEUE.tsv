@@ -47,3 +47,4 @@ net-8	net	Onion-Dienste: .onion-URLs (Arti-Feature onion-service-client) + Vangu
 net-9	net	FTP/SFTP ueber Tor	net-8
 net-10	net	HLS/DASH: Segment-Downloads (parallele Fragmente, Zusammenfuegen)	net-9
 plugins-8	plugins	netrc-Zugangsdaten + Cookie-Import (Firefox/Chromium/Netscape-Format)	plugins-7
+net-11	net	SFTP (SSH-Client mit Host-Key-Pruefung) und FTPS ueber Tor	net-10
