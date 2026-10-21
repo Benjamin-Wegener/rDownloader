@@ -3151,6 +3151,7 @@ dependencies = [
  "serde_json",
  "sha1",
  "sha2",
+ "thiserror 1.0.69",
  "tokio",
  "tokio-rustls",
  "toml 0.8.23",

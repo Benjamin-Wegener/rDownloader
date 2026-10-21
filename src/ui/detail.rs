@@ -100,7 +100,7 @@ pub fn fmt_speed(bytes_per_sec: u64) -> String {
     format!("{}/s", fmt_bytes(bytes_per_sec))
 }
 
-fn job_status_label(status: &JobStatus) -> String {
+pub(crate) fn job_status_label(status: &JobStatus) -> String {
     match status {
         JobStatus::Queued => t!("ui.job.queued"),
         JobStatus::Resolving => t!("ui.job.resolving"),

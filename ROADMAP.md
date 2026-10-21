@@ -67,7 +67,7 @@ Abhängig von M1 (Engine liefert echten Fortschritt).
 - [x] 🟠 Steuerung pro Eintrag: Pause · Resume · Cancel · Remove · Ordner öffnen
 - [x] 🟠 Detail-Ansicht: Parts, Speed, ETA, Circuit-Infos
 - [x] 🟠 Batch-Import (mehrere URLs, Datei, Clipboard) → bildet die Basis des LinkGrabbers
-- [ ] 🟠 History/Abgeschlossen-Liste mit Statistiken + Export (CSV/JSON)
+- [x] 🟠 History/Abgeschlossen-Liste mit Statistiken + Export (CSV/JSON) – Tab „History" mit den beendeten Downloads (Dauer, Ø-Geschwindigkeit, Status), Export per Taste als CSV/JSON in das Data-Verzeichnis
 - [ ] 🟠 **LinkGrabber-Workflow**: Entkoppeltes Sammeln $\to$ Paketieren/Filtern (Hoster, Dateityp) $\to$ Bestätigen & Übertrag in Download-Queue
 - [ ] 🟠 **Container- & Listen-Import**: `.dlc`, `.ccf`, Text-Linklisten und `.metalink`
 - [ ] 🟢 Themes, globaler Clipboard-Hotkey

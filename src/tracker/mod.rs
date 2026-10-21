@@ -14,6 +14,11 @@ use uuid::Uuid;
 
 use crate::download::{DownloadJob, JobProgress, JobStatus};
 
+pub mod export;
+pub mod history;
+
+use history::HistoryItem;
+
 /// What the app does with a tracked download when it starts again.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum RestoreAction {
@@ -158,12 +163,16 @@ pub struct Tracker {
 }
 
 impl Tracker {
-    /// Default location of the tracker file.
-    pub fn default_path() -> PathBuf {
+    /// Directory of the app's data files (tracker and exports).
+    pub fn data_dir() -> PathBuf {
         dirs::data_dir()
             .unwrap_or_else(|| PathBuf::from("."))
             .join("rdownloader")
-            .join("downloads.json")
+    }
+
+    /// Default location of the tracker file.
+    pub fn default_path() -> PathBuf {
+        Self::data_dir().join("downloads.json")
     }
 
     /// Opens the tracker stored at `path` (tests use a temporary file).
@@ -254,6 +263,20 @@ impl Tracker {
             .filter(|e| e.is_open())
             .cloned()
             .collect()
+    }
+
+    /// The finished downloads with their statistics, newest first.
+    pub fn history(&self) -> Vec<HistoryItem> {
+        let mut items: Vec<HistoryItem> = self
+            .entries
+            .lock()
+            .unwrap()
+            .iter()
+            .filter(|e| !e.is_open())
+            .map(|e| e.to_history_item())
+            .collect();
+        items.sort_by_key(|item| std::cmp::Reverse(item.finished_at));
+        items
     }
 
     pub fn remove(&self, id: Uuid) -> Result<()> {
@@ -488,6 +511,26 @@ mod tests {
         assert_eq!(list.len(), 1);
         assert_eq!(list[0].bytes_done, 42);
         assert!(matches!(list[0].status, JobStatus::Downloading));
+
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn history_contains_only_finished_downloads() {
+        let (tracker, dir) = temp_tracker();
+        let mut done = entry(JobStatus::Done);
+        done.filename = "done.bin".into();
+        tracker.add(done).unwrap();
+        let mut failed = entry(JobStatus::Failed("boom".into()));
+        failed.filename = "failed.bin".into();
+        tracker.add(failed).unwrap();
+        tracker.add(entry(JobStatus::Downloading)).unwrap();
+
+        let history = tracker.history();
+        assert_eq!(history.len(), 2);
+        assert!(history.iter().all(|h| h.status_name() != "downloading"));
+        // The newest entry comes first.
+        assert!(history[0].finished_at >= history[1].finished_at);
 
         let _ = std::fs::remove_dir_all(dir);
     }

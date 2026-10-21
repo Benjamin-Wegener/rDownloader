@@ -18,6 +18,7 @@ use ratatui::{
     Frame, Terminal,
 };
 use std::io::{self, Stdout};
+use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 use std::time::Instant;
@@ -32,10 +33,13 @@ use crate::download::{JobProgress, JobStatus};
 use crate::plugin::captcha::{CaptchaChallenge, ChallengePayload};
 use crate::t;
 use crate::tor::TorHealth;
+use crate::tracker::export::{self, ExportFormat};
+use crate::tracker::history::HistoryItem;
 
-#[derive(Clone, Copy, PartialEq)]
+#[derive(Clone, Copy, PartialEq, Debug)]
 pub enum AppTab {
     Downloads,
+    History,
     LinkGrabber,
     Plugins,
     Settings,
@@ -49,6 +53,8 @@ pub enum UiCommand {
     ResumeJob(uuid::Uuid),
     CancelJob(uuid::Uuid),
     RemoveJob(uuid::Uuid),
+    /// Removes a finished download from the history.
+    RemoveHistory(uuid::Uuid),
 }
 
 /// Active interactive prompt state in the UI.
@@ -64,8 +70,14 @@ pub enum InputPrompt {
 pub struct App {
     pub tab: AppTab,
     pub jobs: Vec<JobProgress>,
+    /// The finished downloads with their statistics.
+    pub history: Vec<HistoryItem>,
+    /// Directory the history exports are written to.
+    pub export_dir: PathBuf,
     pub should_quit: bool,
     pub list_state: ListState,
+    /// Selection of the history list.
+    pub history_state: ListState,
     pub input_mode: bool,
     pub input_buffer: String,
     pub input_prompt: InputPrompt,
@@ -87,8 +99,11 @@ impl App {
         Self {
             tab: AppTab::Downloads,
             jobs: Vec::new(),
+            history: Vec::new(),
+            export_dir: crate::tracker::Tracker::data_dir(),
             should_quit: false,
             list_state: ListState::default(),
+            history_state: ListState::default(),
             input_mode: false,
             input_buffer: String::new(),
             input_prompt: InputPrompt::AddUrl,
@@ -124,14 +139,19 @@ impl App {
                 for url in &imp.urls {
                     let _ = self.cmd_tx.send(UiCommand::AddUrl(url.to_string()));
                 }
-                t!("ui.status.import_done", count = imp.urls.len(), skipped = imp.skipped)
+                t!(
+                    "ui.status.import_done",
+                    count = imp.urls.len(),
+                    skipped = imp.skipped
+                )
             }
         };
     }
 
     fn next_tab(&mut self) {
         self.tab = match self.tab {
-            AppTab::Downloads => AppTab::LinkGrabber,
+            AppTab::Downloads => AppTab::History,
+            AppTab::History => AppTab::LinkGrabber,
             AppTab::LinkGrabber => AppTab::Plugins,
             AppTab::Plugins => AppTab::Settings,
             AppTab::Settings => AppTab::Downloads,
@@ -141,10 +161,76 @@ impl App {
     fn prev_tab(&mut self) {
         self.tab = match self.tab {
             AppTab::Downloads => AppTab::Settings,
-            AppTab::LinkGrabber => AppTab::Downloads,
+            AppTab::History => AppTab::Downloads,
+            AppTab::LinkGrabber => AppTab::History,
             AppTab::Plugins => AppTab::LinkGrabber,
             AppTab::Settings => AppTab::Plugins,
         };
+    }
+
+    /// Moves the selection of the visible list one entry up.
+    fn select_previous(&mut self) {
+        if self.tab == AppTab::History {
+            let i = self.history_state.selected().unwrap_or(0);
+            if i > 0 {
+                self.history_state.select(Some(i - 1));
+            }
+        } else {
+            let i = self.list_state.selected().unwrap_or(0);
+            if i > 0 {
+                self.list_state.select(Some(i - 1));
+            }
+        }
+    }
+
+    /// Moves the selection of the visible list one entry down.
+    fn select_next(&mut self) {
+        if self.tab == AppTab::History {
+            let i = self.history_state.selected().unwrap_or(0);
+            if i + 1 < self.history.len() {
+                self.history_state.select(Some(i + 1));
+            }
+        } else {
+            let i = self.list_state.selected().unwrap_or(0);
+            if i + 1 < self.jobs.len() {
+                self.list_state.select(Some(i + 1));
+            }
+        }
+    }
+
+    /// Writes the history to the export file of `format`.
+    fn export_history(&mut self, format: ExportFormat) {
+        let path = export::path_in(&self.export_dir, format);
+        match export::write(&path, &self.history, format) {
+            Ok(()) => {
+                self.status_msg = t!(
+                    "ui.status.export_ok",
+                    count = self.history.len(),
+                    path = path.display().to_string()
+                );
+            }
+            Err(e) => {
+                self.status_msg = t!("ui.status.export_failed", error = format!("{e:#}"));
+            }
+        }
+    }
+
+    /// Removes the selected entry from the history.
+    fn remove_history_entry(&mut self) {
+        let Some(i) = self.history_state.selected() else {
+            return;
+        };
+        if i >= self.history.len() {
+            return;
+        }
+        let item = self.history.remove(i);
+        let _ = self.cmd_tx.send(UiCommand::RemoveHistory(item.id));
+        self.status_msg = t!("ui.status.history_removed", file = item.filename);
+        if self.history.is_empty() {
+            self.history_state.select(None);
+        } else if i >= self.history.len() {
+            self.history_state.select(Some(self.history.len() - 1));
+        }
     }
 
     fn handle_key(&mut self, code: KeyCode) {
@@ -212,17 +298,16 @@ impl App {
             KeyCode::Enter => self.detail_open = !self.detail_open,
             KeyCode::Tab => self.next_tab(),
             KeyCode::BackTab => self.prev_tab(),
-            KeyCode::Up => {
-                let i = self.list_state.selected().unwrap_or(0);
-                if i > 0 {
-                    self.list_state.select(Some(i - 1));
-                }
+            KeyCode::Up => self.select_previous(),
+            KeyCode::Down => self.select_next(),
+            KeyCode::Char('e') if self.tab == AppTab::History => {
+                self.export_history(ExportFormat::Csv);
             }
-            KeyCode::Down => {
-                let i = self.list_state.selected().unwrap_or(0);
-                if i + 1 < self.jobs.len() {
-                    self.list_state.select(Some(i + 1));
-                }
+            KeyCode::Char('E') if self.tab == AppTab::History => {
+                self.export_history(ExportFormat::Json);
+            }
+            KeyCode::Char('x') if self.tab == AppTab::History => {
+                self.remove_history_entry();
             }
             KeyCode::Char('p') => {
                 if let Some(i) = self.list_state.selected() {
@@ -402,17 +487,19 @@ fn draw(f: &mut Frame, app: &App) {
         ])
         .split(f.area());
 
-    let titles = [
+    let titles = vec![
         format!(" {} ", t!("ui.tab.downloads")),
+        format!(" {} ", t!("ui.tab.history")),
         format!(" {} ", t!("ui.tab.linkgrabber")),
         format!(" {} ", t!("ui.tab.plugins")),
         format!(" {} ", t!("ui.tab.settings")),
     ];
     let tab_idx = match app.tab {
         AppTab::Downloads => 0,
-        AppTab::LinkGrabber => 1,
-        AppTab::Plugins => 2,
-        AppTab::Settings => 3,
+        AppTab::History => 1,
+        AppTab::LinkGrabber => 2,
+        AppTab::Plugins => 3,
+        AppTab::Settings => 4,
     };
     let tabs = Tabs::new(titles)
         .block(Block::default().borders(Borders::ALL).title("rdownloader"))
@@ -427,6 +514,7 @@ fn draw(f: &mut Frame, app: &App) {
 
     match app.tab {
         AppTab::Downloads => draw_downloads(f, chunks[1], app),
+        AppTab::History => draw_history(f, chunks[1], app),
         AppTab::LinkGrabber => draw_linkgrabber(f, chunks[1]),
         AppTab::Plugins => draw_plugins(f, chunks[1]),
         AppTab::Settings => draw_settings(f, chunks[1]),
@@ -445,7 +533,11 @@ fn draw(f: &mut Frame, app: &App) {
             }
             InputPrompt::ImportFile => {
                 Paragraph::new(t!("ui.status.input_import", buffer = app.input_buffer))
-                    .block(Block::default().borders(Borders::ALL).title(t!("ui.import.title")))
+                    .block(
+                        Block::default()
+                            .borders(Borders::ALL)
+                            .title(t!("ui.import.title")),
+                    )
                     .style(Style::default().fg(Color::Green))
             }
             InputPrompt::Captcha { challenge, .. } => {
@@ -581,6 +673,72 @@ fn draw_downloads(f: &mut Frame, area: Rect, app: &App) {
             f.render_widget(gauge, inner[1]);
         }
     }
+}
+
+/// History view: the finished downloads with their statistics and the export
+/// keys of the history.
+fn draw_history(f: &mut Frame, area: Rect, app: &App) {
+    let inner = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints([Constraint::Min(3), Constraint::Length(3)])
+        .split(area);
+
+    if app.history.is_empty() {
+        let p = Paragraph::new(t!("ui.history.empty"))
+            .block(
+                Block::default()
+                    .borders(Borders::ALL)
+                    .title(t!("ui.history.title")),
+            )
+            .wrap(Wrap { trim: true });
+        f.render_widget(p, inner[0]);
+    } else {
+        let items: Vec<ListItem> = app
+            .history
+            .iter()
+            .map(|it| {
+                let color = match it.status {
+                    JobStatus::Done => Color::Green,
+                    JobStatus::Failed(_) => Color::Red,
+                    JobStatus::Cancelled => Color::DarkGray,
+                    _ => Color::Gray,
+                };
+                let stats = t!(
+                    "ui.history.stats",
+                    size = fmt_bytes(it.total_bytes),
+                    duration = detail::fmt_eta(it.duration_secs),
+                    speed = detail::fmt_speed(it.avg_bytes_per_sec)
+                );
+                ListItem::new(Line::from(vec![
+                    Span::raw(format!("{} ", it.filename)),
+                    Span::styled(
+                        detail::job_status_label(&it.status),
+                        Style::default().fg(color),
+                    ),
+                    Span::styled(format!("  {stats}"), Style::default().fg(Color::DarkGray)),
+                ]))
+            })
+            .collect();
+
+        let list = List::new(items)
+            .block(
+                Block::default()
+                    .borders(Borders::ALL)
+                    .title(t!("ui.history.title")),
+            )
+            .highlight_style(Style::default().bg(Color::DarkGray))
+            .highlight_symbol(">> ");
+        f.render_stateful_widget(list, inner[0], &mut app.history_state.clone());
+    }
+
+    let hint = Paragraph::new(t!("ui.history.hint"))
+        .block(
+            Block::default()
+                .borders(Borders::ALL)
+                .title(t!("ui.history.title")),
+        )
+        .wrap(Wrap { trim: true });
+    f.render_widget(hint, inner[1]);
 }
 
 fn draw_linkgrabber(f: &mut Frame, area: Rect) {
@@ -827,9 +985,17 @@ mod tests {
         let (_evt_tx, evt_rx) = mpsc::unbounded_channel::<JobEvent>();
         let mut app = App::new(cmd_tx, evt_rx);
 
-        app.enqueue_import(Ok(import::parse_urls("http://a.test/1\nhttp://a.test/2\nftp://x/y\n")));
-        assert_eq!(cmd_rx.try_recv().unwrap(), UiCommand::AddUrl("http://a.test/1".into()));
-        assert_eq!(cmd_rx.try_recv().unwrap(), UiCommand::AddUrl("http://a.test/2".into()));
+        app.enqueue_import(Ok(import::parse_urls(
+            "http://a.test/1\nhttp://a.test/2\nftp://x/y\n",
+        )));
+        assert_eq!(
+            cmd_rx.try_recv().unwrap(),
+            UiCommand::AddUrl("http://a.test/1".into())
+        );
+        assert_eq!(
+            cmd_rx.try_recv().unwrap(),
+            UiCommand::AddUrl("http://a.test/2".into())
+        );
         assert!(cmd_rx.try_recv().is_err());
         assert!(app.status_msg.contains('2'));
 
@@ -848,5 +1014,82 @@ mod tests {
         app.handle_key(KeyCode::Char('i'));
         assert!(app.input_mode);
         assert!(matches!(app.input_prompt, InputPrompt::ImportFile));
+    }
+
+    fn history_item(filename: &str) -> HistoryItem {
+        let now = chrono::Utc::now();
+        HistoryItem {
+            id: Uuid::new_v4(),
+            filename: filename.into(),
+            url: "http://example.com/a.bin".into(),
+            output: "/tmp/a.bin".into(),
+            status: JobStatus::Done,
+            total_bytes: 1000,
+            bytes_done: 1000,
+            parts: 2,
+            started_at: now,
+            finished_at: now,
+            duration_secs: 5,
+            avg_bytes_per_sec: 200,
+        }
+    }
+
+    #[test]
+    fn history_tab_exports_and_removes_entries() {
+        let (cmd_tx, mut cmd_rx) = mpsc::unbounded_channel::<UiCommand>();
+        let (_evt_tx, evt_rx) = mpsc::unbounded_channel::<JobEvent>();
+        let mut app = App::new(cmd_tx, evt_rx);
+        let dir = std::env::temp_dir().join(format!("rdl-ui-history-{}", Uuid::new_v4()));
+        app.export_dir = dir.clone();
+        let item = history_item("a.bin");
+        let id = item.id;
+        app.history = vec![item];
+        app.history_state.select(Some(0));
+        app.tab = AppTab::History;
+
+        // Export as CSV and as JSON.
+        app.handle_key(KeyCode::Char('e'));
+        assert!(dir.join("history.csv").exists(), "CSV export missing");
+        assert!(app.status_msg.contains("history.csv"), "{}", app.status_msg);
+        app.handle_key(KeyCode::Char('E'));
+        assert!(dir.join("history.json").exists(), "JSON export missing");
+
+        // Remove the entry from the history.
+        app.handle_key(KeyCode::Char('x'));
+        assert!(app.history.is_empty());
+        assert_eq!(cmd_rx.try_recv().unwrap(), UiCommand::RemoveHistory(id));
+
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn export_keys_only_work_in_the_history_tab() {
+        let (cmd_tx, _cmd_rx) = mpsc::unbounded_channel::<UiCommand>();
+        let (_evt_tx, evt_rx) = mpsc::unbounded_channel::<JobEvent>();
+        let mut app = App::new(cmd_tx, evt_rx);
+        let dir = std::env::temp_dir().join(format!("rdl-ui-history-{}", Uuid::new_v4()));
+        app.export_dir = dir.clone();
+        app.history = vec![history_item("a.bin")];
+        app.tab = AppTab::Downloads;
+
+        app.handle_key(KeyCode::Char('e'));
+        assert!(!dir.join("history.csv").exists(), "export in the wrong tab");
+        assert!(app.history.len() == 1);
+
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn tab_order_includes_the_history() {
+        let (cmd_tx, _cmd_rx) = mpsc::unbounded_channel::<UiCommand>();
+        let (_evt_tx, evt_rx) = mpsc::unbounded_channel::<JobEvent>();
+        let mut app = App::new(cmd_tx, evt_rx);
+        assert_eq!(app.tab, AppTab::Downloads);
+        app.handle_key(KeyCode::Tab);
+        assert_eq!(app.tab, AppTab::History);
+        app.handle_key(KeyCode::Tab);
+        assert_eq!(app.tab, AppTab::LinkGrabber);
+        app.handle_key(KeyCode::BackTab);
+        assert_eq!(app.tab, AppTab::History);
     }
 }

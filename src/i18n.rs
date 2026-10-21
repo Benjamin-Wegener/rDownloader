@@ -43,6 +43,10 @@ const EN: &[(&str, &str)] = &[
         "Downloads",
     ),
     (
+        "ui.tab.history",
+        "History",
+    ),
+    (
         "ui.tab.linkgrabber",
         "LinkGrabber",
     ),
@@ -130,6 +134,34 @@ const EN: &[(&str, &str)] = &[
     (
         "ui.queue.cancelled",
         " CANCELLED",
+    ),
+    (
+        "ui.history.title",
+        "History",
+    ),
+    (
+        "ui.history.empty",
+        "No finished downloads yet.",
+    ),
+    (
+        "ui.history.hint",
+        "e=Export CSV · E=Export JSON · x=Remove from history",
+    ),
+    (
+        "ui.history.stats",
+        "{size} · {duration} · {speed}",
+    ),
+    (
+        "ui.status.export_ok",
+        "Exported {count} entries to {path}",
+    ),
+    (
+        "ui.status.export_failed",
+        "Export failed: {error}",
+    ),
+    (
+        "ui.status.history_removed",
+        "Removed from history: {file}",
     ),
     (
         "ui.progress.title",

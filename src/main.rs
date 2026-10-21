@@ -333,6 +333,10 @@ async fn run_tui(
                     // Removed downloads must not come back on the next start.
                     let _ = tracker_c.remove(id);
                 }
+                UiCommand::RemoveHistory(id) => {
+                    // The entry leaves the history and the tracker file.
+                    let _ = tracker_c.remove(id);
+                }
             }
         }
     });
@@ -342,12 +346,15 @@ async fn run_tui(
         let app = app.clone();
         let jobs_progress = jobs_progress.clone();
         let tor_for_health = tor.clone();
+        let tracker = tracker.clone();
         tokio::spawn(async move {
             loop {
                 tokio::time::sleep(std::time::Duration::from_millis(300)).await;
                 let snapshot = jobs_progress.lock().unwrap().clone();
+                let history = tracker.history();
                 let mut a = app.lock().unwrap();
                 a.jobs = snapshot;
+                a.history = history;
                 a.tor_health = tor_for_health.as_ref().map(|t| t.health());
             }
         });
