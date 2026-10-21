@@ -5,9 +5,10 @@
 
 use anyhow::{Context, Result};
 use arti_client::config::TorClientConfigBuilder;
-use arti_client::TorClient;
+use arti_client::{IsolationToken, StreamPrefs, TorClient};
+use std::collections::HashMap;
 use std::path::PathBuf;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 use tokio::io::{AsyncRead, AsyncWrite};
 use tor_rtcompat::PreferredRuntime;
 use tracing::info;
@@ -20,6 +21,9 @@ impl<T> AsyncReadWrite for T where T: AsyncRead + AsyncWrite + Send + Unpin {}
 /// Hält mehrere unabhängige Tor-Clients (je mit eigenem Data-Directory = eigener Circuit-Pool).
 pub struct TorManager {
     clients: Vec<Arc<TorClient<PreferredRuntime>>>,
+    /// Stable isolation token per `isolation` id. The same id may share
+    /// circuits, different ids never do.
+    isolations: Mutex<HashMap<u64, IsolationToken>>,
 }
 
 impl TorManager {
@@ -47,7 +51,10 @@ impl TorManager {
             info!("Tor-Client {i}: bootstrapped OK");
             clients.push(client);
         }
-        Ok(Self { clients })
+        Ok(Self {
+            clients,
+            isolations: Mutex::new(HashMap::new()),
+        })
     }
 
     pub fn client(&self, index: usize) -> Result<Arc<TorClient<PreferredRuntime>>> {
@@ -79,5 +86,58 @@ impl TorManager {
             .await
             .map_err(|e| anyhow::anyhow!("Tor-Stream {index} → {host}:{port}: {e}"))?;
         Ok(Box::new(stream))
+    }
+
+    /// Like [`TorManager::connect`], but streams with the same `isolation`
+    /// may share a circuit while different ids never do.
+    pub async fn connect_isolated(
+        &self,
+        index: usize,
+        host: &str,
+        port: u16,
+        isolation: u64,
+    ) -> Result<Box<dyn AsyncReadWrite>> {
+        let client = self.client(index)?;
+        let token = self.isolation_token(isolation);
+        let mut prefs = StreamPrefs::new();
+        prefs.set_isolation(token);
+        let stream = client
+            .connect_with_prefs((host, port), &prefs)
+            .await
+            .map_err(|e| {
+                anyhow::anyhow!("Tor stream {index} -> {host}:{port} (isolation {isolation}): {e}")
+            })?;
+        Ok(Box::new(stream))
+    }
+
+    fn isolation_token(&self, isolation: u64) -> IsolationToken {
+        *self
+            .isolations
+            .lock()
+            .expect("isolation map poisoned")
+            .entry(isolation)
+            .or_insert_with(IsolationToken::new)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn manager() -> TorManager {
+        TorManager {
+            clients: Vec::new(),
+            isolations: Mutex::new(HashMap::new()),
+        }
+    }
+
+    #[test]
+    fn isolation_ids_map_to_stable_distinct_tokens() {
+        let tor = manager();
+        let a = tor.isolation_token(1);
+        let b = tor.isolation_token(1);
+        let c = tor.isolation_token(2);
+        assert_eq!(a, b);
+        assert_ne!(a, c);
     }
 }

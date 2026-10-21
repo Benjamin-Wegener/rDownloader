@@ -11,7 +11,6 @@
 
 use std::error::Error;
 use std::future::Future;
-use std::ops::RangeInclusive;
 use std::pin::Pin;
 use std::sync::Arc;
 
@@ -33,18 +32,27 @@ use url::Url;
 
 use crate::tor::{AsyncReadWrite, TorManager};
 
+pub mod transport;
+
+pub use transport::TorTransport;
+
 /// Future, die einen rohen Bytestrom zu `host:port` liefert.
 pub type ConnectFuture<'a> =
     Pin<Box<dyn Future<Output = Result<Box<dyn AsyncReadWrite>>> + Send + 'a>>;
 
-/// Quelle für rohe Bytestreams – im Betrieb Arti, in Tests z. B. TCP.
+/// Source of raw byte streams: Arti in production, e.g. TCP in tests.
+///
+/// `isolation` groups streams: the same id may share a circuit, different
+/// ids never do.
 pub trait StreamProvider: Send + Sync {
-    fn connect<'a>(&'a self, index: usize, host: &'a str, port: u16) -> ConnectFuture<'a>;
+    fn connect<'a>(&'a self, isolation: u64, host: &'a str, port: u16) -> ConnectFuture<'a>;
 }
 
 impl StreamProvider for TorManager {
-    fn connect<'a>(&'a self, index: usize, host: &'a str, port: u16) -> ConnectFuture<'a> {
-        Box::pin(async move { TorManager::connect(self, index, host, port).await })
+    fn connect<'a>(&'a self, isolation: u64, host: &'a str, port: u16) -> ConnectFuture<'a> {
+        Box::pin(async move {
+            TorManager::connect_isolated(self, isolation as usize, host, port, isolation).await
+        })
     }
 }
 
@@ -162,16 +170,17 @@ impl TorConnector {
         Self { provider, tls }
     }
 
-    /// Öffnet einen Bytestrom zu `url` (HTTP unverändert, HTTPS mit TLS).
-    pub async fn connect(&self, index: usize, url: &Url) -> Result<Box<dyn AsyncReadWrite>> {
+    /// Opens a byte stream to `url` (plain HTTP, TLS for HTTPS).
+    pub async fn connect(&self, isolation: u64, url: &Url) -> Result<Box<dyn AsyncReadWrite>> {
         let host = url.host_str().context("URL ohne Host")?;
         let plan = connect_plan(url)?;
-        self.connect_addr(index, host, plan.port, plan.tls).await
+        self.connect_addr(isolation, host, plan.port, plan.tls)
+            .await
     }
 
     pub async fn connect_addr(
         &self,
-        index: usize,
+        isolation: u64,
         host: &str,
         port: u16,
         tls: bool,
@@ -179,7 +188,7 @@ impl TorConnector {
         let host = bare_host(host);
         let stream = self
             .provider
-            .connect(index, host, port)
+            .connect(isolation, host, port)
             .await
             .with_context(|| format!("Stream → {host}:{port}"))?;
         if tls {
@@ -215,36 +224,41 @@ impl TorHttpClient {
         &self.connector
     }
 
-    pub async fn head(&self, index: usize, url: &Url) -> Result<Response<Incoming>> {
+    pub async fn head(&self, isolation: u64, url: &Url) -> Result<Response<Incoming>> {
         let request = Request::builder()
             .method(Method::HEAD)
             .uri(url.as_str())
             .header(USER_AGENT, default_user_agent())
             .body(Full::new(Bytes::new()))?;
-        self.request(index, request).await
+        self.request(isolation, request).await
     }
 
+    /// `range` is inclusive; an end of `None` means "until end of file".
     pub async fn get(
         &self,
-        index: usize,
+        isolation: u64,
         url: &Url,
-        range: Option<RangeInclusive<u64>>,
+        range: Option<(u64, Option<u64>)>,
     ) -> Result<Response<Incoming>> {
         let mut builder = Request::builder()
             .method(Method::GET)
             .uri(url.as_str())
             .header(USER_AGENT, default_user_agent());
-        if let Some(range) = range {
-            builder = builder.header(RANGE, format!("bytes={}-{}", range.start(), range.end()));
+        if let Some((start, end)) = range {
+            let value = match end {
+                Some(end) => format!("bytes={start}-{end}"),
+                None => format!("bytes={start}-"),
+            };
+            builder = builder.header(RANGE, value);
         }
-        self.request(index, builder.body(Full::new(Bytes::new()))?)
+        self.request(isolation, builder.body(Full::new(Bytes::new()))?)
             .await
     }
 
-    /// Schickt einen beliebigen Request über eine frische Tor-Verbindung.
+    /// Sends an arbitrary request over a fresh Tor connection.
     pub async fn request<B>(
         &self,
-        index: usize,
+        isolation: u64,
         mut request: Request<B>,
     ) -> Result<Response<Incoming>>
     where
@@ -265,7 +279,7 @@ impl TorHttpClient {
 
         let stream = self
             .connector
-            .connect_addr(index, host, plan.port, plan.tls)
+            .connect_addr(isolation, host, plan.port, plan.tls)
             .await?;
         let (mut sender, connection) = http1::handshake(TokioIo::new(stream))
             .await
@@ -339,7 +353,7 @@ mod tests {
     struct TcpProvider;
 
     impl StreamProvider for TcpProvider {
-        fn connect<'a>(&'a self, _index: usize, host: &'a str, port: u16) -> ConnectFuture<'a> {
+        fn connect<'a>(&'a self, _isolation: u64, host: &'a str, port: u16) -> ConnectFuture<'a> {
             Box::pin(async move {
                 let stream = tokio::net::TcpStream::connect((host, port))
                     .await
@@ -440,7 +454,7 @@ mod tests {
         let client = TorHttpClient::with_connector(connector);
         let url = Url::parse(&format!("https://localhost:{port}/file")).unwrap();
 
-        let response = client.get(0, &url, Some(0..=3)).await.expect("GET");
+        let response = client.get(0, &url, Some((0, Some(3)))).await.expect("GET");
         assert_eq!(response.status(), 200);
         let body = response
             .into_body()
