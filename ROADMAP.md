@@ -75,7 +75,7 @@ Statisch zuerst, dynamisch erst bei echtem Bedarf.
 - [x] 🟠 Beispiel-Hoster-Plugin (Redirect-Auflösung einer konkreten Site) – validiert, ob der Trait taugt
 - [x] 🟠 Crawler-Plugin-Typ (weitere Links auf einer Seite) → speist LinkGrabber
 - [x] 🟠 Account-Plugin-Typ (Login-Cookies, Session-Management)
-- [ ] 🟠 Captcha-Plugin-Typ (interaktive Lösung in der TUI)
+- [x] 🟠 Captcha-Plugin-Typ (interaktive Lösung in der TUI)
 - [ ] 🟠 Berechtigungsmodell definieren (Netzwerk / Dateisystem), **bevor** dynamisches Laden gebaut wird
 - [ ] 🟢 Dynamisches Laden (`cdylib`, stabile C-ABI oder WASM – siehe Design-Entscheidung 2)
 - [ ] 🟢 Plugin-Marktplatz / signierte Auto-Updates

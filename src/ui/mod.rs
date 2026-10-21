@@ -21,12 +21,14 @@ use std::io::{self, Stdout};
 use std::sync::{Arc, Mutex};
 use std::time::Instant;
 use std::time::Duration;
+use tokio::sync::oneshot;
 
 mod detail;
 
 use crate::config;
 use crate::contract::{JobEvent, JobId};
 use crate::download::{JobProgress, JobStatus};
+use crate::plugin::captcha::{CaptchaChallenge, ChallengePayload};
 use crate::t;
 use crate::tor::TorHealth;
 
@@ -48,6 +50,15 @@ pub enum UiCommand {
     RemoveJob(uuid::Uuid),
 }
 
+/// Active interactive prompt state in the UI.
+pub enum InputPrompt {
+    AddUrl,
+    Captcha {
+        challenge: CaptchaChallenge,
+        reply_tx: oneshot::Sender<String>,
+    },
+}
+
 pub struct App {
     pub tab: AppTab,
     pub jobs: Vec<JobProgress>,
@@ -55,6 +66,7 @@ pub struct App {
     pub list_state: ListState,
     pub input_mode: bool,
     pub input_buffer: String,
+    pub input_prompt: InputPrompt,
     pub status_msg: String,
     pub cmd_tx: tokio::sync::mpsc::UnboundedSender<UiCommand>,
     pub job_event_rx: tokio::sync::mpsc::UnboundedReceiver<JobEvent>,
@@ -77,6 +89,7 @@ impl App {
             list_state: ListState::default(),
             input_mode: false,
             input_buffer: String::new(),
+            input_prompt: InputPrompt::AddUrl,
             status_msg: t!("ui.status.help"),
             cmd_tx,
             job_event_rx,
@@ -84,6 +97,20 @@ impl App {
             tor_health: None,
             speeds: detail::SpeedTracker::default(),
         }
+    }
+
+    /// Triggers an interactive Captcha challenge dialog.
+    pub fn prompt_captcha(
+        &mut self,
+        challenge: CaptchaChallenge,
+        reply_tx: oneshot::Sender<String>,
+    ) {
+        self.input_mode = true;
+        self.input_buffer.clear();
+        self.input_prompt = InputPrompt::Captcha {
+            challenge,
+            reply_tx,
+        };
     }
 
     fn next_tab(&mut self) {
@@ -110,14 +137,28 @@ impl App {
                 KeyCode::Esc => {
                     self.input_mode = false;
                     self.input_buffer.clear();
+                    self.input_prompt = InputPrompt::AddUrl;
                 }
                 KeyCode::Enter => {
-                    let url = self.input_buffer.trim().to_string();
+                    let text = self.input_buffer.trim().to_string();
+                    let prompt = std::mem::replace(&mut self.input_prompt, InputPrompt::AddUrl);
                     self.input_mode = false;
                     self.input_buffer.clear();
-                    if !url.is_empty() {
-                        let _ = self.cmd_tx.send(UiCommand::AddUrl(url.clone()));
-                        self.status_msg = t!("ui.status.queued_url", url = url);
+
+                    match prompt {
+                        InputPrompt::AddUrl => {
+                            if !text.is_empty() {
+                                let _ = self.cmd_tx.send(UiCommand::AddUrl(text.clone()));
+                                self.status_msg = t!("ui.status.queued_url", url = text);
+                            }
+                        }
+                        InputPrompt::Captcha {
+                            challenge,
+                            reply_tx,
+                        } => {
+                            let _ = reply_tx.send(text);
+                            self.status_msg = format!("Submitted captcha for {}", challenge.host);
+                        }
                     }
                 }
                 KeyCode::Backspace => {
@@ -135,6 +176,7 @@ impl App {
             KeyCode::Char('a') => {
                 self.input_mode = true;
                 self.input_buffer.clear();
+                self.input_prompt = InputPrompt::AddUrl;
             }
             KeyCode::Enter => self.detail_open = !self.detail_open,
             KeyCode::Tab => self.next_tab(),
@@ -355,9 +397,34 @@ fn draw(f: &mut Frame, app: &App) {
     }
 
     let status = if app.input_mode {
-        Paragraph::new(t!("ui.status.input_url", buffer = app.input_buffer))
-            .block(Block::default().borders(Borders::ALL).title("Add URL"))
-            .style(Style::default().fg(Color::Green))
+        match &app.input_prompt {
+            InputPrompt::AddUrl => {
+                Paragraph::new(t!("ui.status.input_url", buffer = app.input_buffer))
+                    .block(Block::default().borders(Borders::ALL).title("Add URL"))
+                    .style(Style::default().fg(Color::Green))
+            }
+            InputPrompt::Captcha { challenge, .. } => {
+                let prompt_text = match &challenge.payload {
+                    ChallengePayload::Text { prompt } => prompt.as_str(),
+                    ChallengePayload::Image { instructions, .. } => {
+                        instructions.as_deref().unwrap_or("Solve image captcha")
+                    }
+                    ChallengePayload::Token { service, .. } => service.as_str(),
+                };
+                Paragraph::new(t!(
+                    "ui.status.captcha_prompt",
+                    host = challenge.host,
+                    prompt = prompt_text,
+                    buffer = app.input_buffer
+                ))
+                .block(
+                    Block::default()
+                        .borders(Borders::ALL)
+                        .title("Captcha Challenge"),
+                )
+                .style(Style::default().fg(Color::Yellow))
+            }
+        }
     } else {
         Paragraph::new(app.status_msg.clone())
             .block(Block::default().borders(Borders::ALL).title("Status"))
@@ -674,5 +741,29 @@ mod tests {
         assert_eq!(cmd_rx.try_recv().unwrap(), UiCommand::RemoveJob(id1));
         assert_eq!(app.jobs.len(), 1);
         assert_eq!(app.jobs[0].id, id2);
+    }
+
+    #[tokio::test]
+    async fn interactive_captcha_prompt_in_tui() {
+        let (cmd_tx, _cmd_rx) = mpsc::unbounded_channel::<UiCommand>();
+        let (_evt_tx, evt_rx) = mpsc::unbounded_channel::<JobEvent>();
+        let mut app = App::new(cmd_tx, evt_rx);
+
+        let challenge = CaptchaChallenge::new_text("dl.example.com", "Calculate 5 * 5");
+        let (reply_tx, reply_rx) = oneshot::channel();
+
+        app.prompt_captcha(challenge, reply_tx);
+        assert!(app.input_mode);
+
+        // User enters '25' and presses Enter
+        for c in "25".chars() {
+            app.handle_key(KeyCode::Char(c));
+        }
+        app.handle_key(KeyCode::Enter);
+
+        assert!(!app.input_mode);
+        let answer = reply_rx.await.expect("received captcha answer");
+        assert_eq!(answer, "25");
+        assert!(app.status_msg.contains("dl.example.com"));
     }
 }

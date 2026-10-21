@@ -95,6 +95,10 @@ const EN: &[(&str, &str)] = &[
         "Enter URL: {buffer}_",
     ),
     (
+        "ui.status.captcha_prompt",
+        "Captcha [{host}]: {prompt} -> {buffer}_",
+    ),
+    (
         "ui.status.session_restored",
         "Restored {count} download(s) from the previous session",
     ),

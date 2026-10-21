@@ -12,11 +12,20 @@ use std::sync::Arc;
 use url::Url;
 
 pub mod account;
+pub mod captcha;
 pub mod crawler;
 pub mod example_redirect;
 
 #[allow(unused_imports)] // public plugin API; wired into the link grabber later
-pub use account::{AccountManager, AccountPlugin, AccountSession, Cookie, Credentials, CookieImportAccountPlugin, Secret};
+pub use account::{
+    AccountManager, AccountPlugin, AccountSession, Cookie, CookieImportAccountPlugin, Credentials,
+    Secret,
+};
+#[allow(unused_imports)]
+pub use captcha::{
+    CaptchaChallenge, CaptchaManager, CaptchaPlugin, CaptchaSolution, CaptchaSolver,
+    ChallengePayload, InteractiveCaptchaSolver, MathCaptchaPlugin,
+};
 #[allow(unused_imports)]
 pub use crawler::{CrawledLink, CrawlerPlugin, HtmlLinkCrawlerPlugin};
 pub use example_redirect::ExampleRedirectHosterPlugin;
@@ -56,14 +65,6 @@ pub struct ResolvedLink {
     pub additional_headers: HashMap<String, String>,
 }
 
-/// Captcha-Herausforderung, die ein Plugin zurückgeben kann.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct CaptchaChallenge {
-    pub challenge_type: String, // "image", "text", "recaptcha", "hcaptcha", ...
-    pub image_base64: Option<String>,
-    pub text_prompt: Option<String>,
-}
-
 /// Plugin-Definition: Metadaten + Verhaltens-Callback.
 #[async_trait]
 pub trait DownloadPlugin: Send + Sync {
@@ -71,7 +72,10 @@ pub trait DownloadPlugin: Send + Sync {
 
     fn can_handle(&self, url: &Url) -> bool {
         let host = url.host_str().unwrap_or("");
-        self.meta().domains.iter().any(|d| host == d || host.ends_with(&format!(".{d}")))
+        self.meta()
+            .domains
+            .iter()
+            .any(|d| host == d || host.ends_with(&format!(".{d}")))
     }
 
     async fn resolve(&self, url: Url) -> Result<ResolvedLink>;
@@ -90,11 +94,16 @@ pub trait DownloadPlugin: Send + Sync {
 pub struct PluginRegistry {
     plugins: HashMap<String, Arc<dyn DownloadPlugin>>,
     crawlers: Vec<Arc<dyn CrawlerPlugin>>,
+    captchas: Vec<Arc<dyn CaptchaPlugin>>,
 }
 
 impl PluginRegistry {
     pub fn new() -> Self {
-        Self { plugins: HashMap::new(), crawlers: Vec::new() }
+        Self {
+            plugins: HashMap::new(),
+            crawlers: Vec::new(),
+            captchas: Vec::new(),
+        }
     }
 
     pub fn register(&mut self, plugin: Arc<dyn DownloadPlugin>) {
@@ -106,13 +115,27 @@ impl PluginRegistry {
         self.crawlers.push(crawler);
     }
 
+    pub fn register_captcha(&mut self, captcha: Arc<dyn CaptchaPlugin>) {
+        self.captchas.push(captcha);
+    }
+
     /// First registered crawler that accepts `url` (registration order = priority).
     pub fn find_crawler_for_url(&self, url: &Url) -> Option<Arc<dyn CrawlerPlugin>> {
         self.crawlers.iter().find(|c| c.can_handle(url)).cloned()
     }
 
+    /// First registered captcha plugin that accepts `url`.
+    pub fn find_captcha_for_url(&self, url: &Url) -> Option<Arc<dyn CaptchaPlugin>> {
+        self.captchas.iter().find(|c| c.can_handle(url)).cloned()
+    }
+
     pub fn list(&self) -> Vec<PluginMeta> {
-        self.plugins.values().map(|p| p.meta()).chain(self.crawlers.iter().map(|c| c.meta())).collect()
+        self.plugins
+            .values()
+            .map(|p| p.meta())
+            .chain(self.crawlers.iter().map(|c| c.meta()))
+            .chain(self.captchas.iter().map(|c| c.meta()))
+            .collect()
     }
 
     pub fn find_for_url(&self, url: &Url) -> Option<Arc<dyn DownloadPlugin>> {
@@ -188,5 +211,17 @@ mod registry_tests {
         reg.register_crawler(Arc::new(HtmlLinkCrawlerPlugin));
         assert!(reg.find_crawler_for_url(&url).is_some());
         assert!(reg.list().iter().any(|m| m.kind == PluginKind::Crawler));
+    }
+
+    #[test]
+    fn captcha_registry_lookup() {
+        let mut reg = PluginRegistry::new();
+        let url = Url::parse("https://captcha.test/").unwrap();
+        assert!(reg.find_captcha_for_url(&url).is_none());
+        reg.register_captcha(Arc::new(MathCaptchaPlugin::new(
+            vec!["captcha.test".into()],
+        )));
+        assert!(reg.find_captcha_for_url(&url).is_some());
+        assert!(reg.list().iter().any(|m| m.kind == PluginKind::Captcha));
     }
 }
