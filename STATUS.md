@@ -1,9 +1,9 @@
 # rdownloader status
 
-Generated 2026-10-22 at commit ed5c9e7 - regenerate with `scripts/status-md.sh`
+Generated 2026-10-22 at commit 4ed769c - regenerate with `scripts/status-md.sh`
 
-`[################----]` **39/47** steps done (83%), 3 in progress, 5 open
-Roadmap items: 46 checked, 23 open
+`[################----]` **40/48** steps done (83%), 2 in progress, 6 open
+Roadmap items: 47 checked, 23 open
 
 ## core (10/14)
 
@@ -27,7 +27,7 @@ Roadmap items: 46 checked, 23 open
 - [x] `i18n-1` src/i18n.rs: String-Katalog (en), Schlüssel + benannte Platzhalter, Tests; Clap-Help darüber
 - [x] `i18n-2` Bestehende deutsche Strings/Kommentare/Docs im Code auf Englisch, UI-Texte in den Katalog
 
-## net (8/10)
+## net (9/11)
 
 - [x] `net-1` TLS über Arti-Stream (https-Connector, vertragsfrei)
 - [x] `net-2` TorTransport implementiert Vertrag A
@@ -37,8 +37,9 @@ Roadmap items: 46 checked, 23 open
 - [x] `net-6` M5 DNS-Leak-Check, Bridges
 - [x] `net-7` Headless-Daemon & RPC-API (JSON-RPC/REST-Steuerung)
 - [x] `net-8` Onion-Dienste: .onion-URLs (Arti-Feature onion-service-client) + Vanguards
-- [~] `net-9` FTP/SFTP ueber Tor - **in progress**
+- [x] `net-9` FTP/SFTP ueber Tor
 - [ ] `net-10` HLS/DASH: Segment-Downloads (parallele Fragmente, Zusammenfuegen)
+- [ ] `net-11` SFTP (SSH-Client mit Host-Key-Pruefung) und FTPS ueber Tor
 
 ## plugins (7/8)
 
