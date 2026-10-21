@@ -1,9 +1,9 @@
 # rdownloader status
 
-Generated 2026-10-22 at commit a6c2bfc - regenerate with `scripts/status-md.sh`
+Generated 2026-10-22 at commit ae69e04 - regenerate with `scripts/status-md.sh`
 
-`[################----]` **25/31** steps done (81%), 3 in progress, 3 open
-Roadmap items: 26 checked, 21 open
+`[################----]` **26/31** steps done (84%), 2 in progress, 3 open
+Roadmap items: 27 checked, 20 open
 
 ## i18n (1/2)
 
@@ -45,11 +45,11 @@ Roadmap items: 26 checked, 21 open
 - [ ] `infra-5` Threat-Modell-Doku, README, Manpage
 - [ ] `infra-6` Release-Binaries (GitHub Releases)
 
-## ui (4/6)
+## ui (5/6)
 
 - [x] `ui-1` Queue-Rendering gegen FakeJob (Live-Updates über Vertrag B)
 - [x] `ui-2` Steuerung pro Eintrag: Pause/Resume/Cancel/Remove
 - [x] `ui-3` Session-Restore im Tracker
 - [x] `ui-4` Detail-Ansicht (Parts, Speed, ETA, Circuit)
-- [~] `ui-5` Batch-Import (Datei, Clipboard) - **in progress**
+- [x] `ui-5` Batch-Import (Datei, Clipboard)
 - [ ] `ui-6` History + Export (CSV/JSON)
