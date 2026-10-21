@@ -1,8 +1,8 @@
 # rdownloader status
 
-Generated 2026-10-22 at commit cbb779e - regenerate with `scripts/status-md.sh`
+Generated 2026-10-22 at commit 04ee215 - regenerate with `scripts/status-md.sh`
 
-`[##########----------]` **16/31** steps done (52%), 4 in progress, 11 open
+`[###########---------]` **17/31** steps done (55%), 4 in progress, 10 open
 Roadmap items: 19 checked, 24 open
 
 ## i18n (1/2)
@@ -10,14 +10,14 @@ Roadmap items: 19 checked, 24 open
 - [x] `i18n-1` src/i18n.rs: String-Katalog (en), Schlüssel + benannte Platzhalter, Tests; Clap-Help darüber
 - [ ] `i18n-2` Bestehende deutsche Strings/Kommentare/Docs im Code auf Englisch, UI-Texte in den Katalog
 
-## core (5/6)
+## core (6/6)
 
 - [x] `core-1` src/contract.rs: Verträge A (Transport) + B (JobEvent/JobCommand), MockTransport, FakeJob
 - [x] `core-2` M1.2 Range-Prüfung (Accept-Ranges) + Single-Connection-Fallback
 - [x] `core-3` M1.3 Retries mit Backoff pro Part
 - [x] `core-4` M1.4 Resume (Part-Offsets persistieren, ETag/Last-Modified)
 - [x] `core-5` M1.7 Checksummen-Verifikation
-- [~] `core-6` M1.8 Bandbreiten-Limit - **in progress**
+- [x] `core-6` M1.8 Bandbreiten-Limit
 
 ## net (4/6)
 
@@ -49,7 +49,7 @@ Roadmap items: 19 checked, 24 open
 
 - [x] `ui-1` Queue-Rendering gegen FakeJob (Live-Updates über Vertrag B)
 - [x] `ui-2` Steuerung pro Eintrag: Pause/Resume/Cancel/Remove
-- [ ] `ui-3` Session-Restore im Tracker
+- [~] `ui-3` Session-Restore im Tracker - **in progress**
 - [ ] `ui-4` Detail-Ansicht (Parts, Speed, ETA, Circuit)
 - [ ] `ui-5` Batch-Import (Datei, Clipboard)
 - [ ] `ui-6` History + Export (CSV/JSON)
