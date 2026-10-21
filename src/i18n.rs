@@ -56,7 +56,7 @@ const EN: &[(&str, &str)] = &[
     ),
     (
         "ui.status.help",
-        "rdownloader | q=Quit · a=Add · p=Pause · r=Resume · c=Cancel · d=Remove · Tab=Switch · ↑↓=Select",
+        "rdownloader | q=Quit · a=Add · Enter=Details · p=Pause · r=Resume · c=Cancel · d=Remove · Tab=Switch · ↑↓=Select",
     ),
     (
         "ui.status.queued_url",
@@ -145,6 +145,110 @@ const EN: &[(&str, &str)] = &[
     (
         "ui.plugins.item",
         "[direct] Direct Download v0.1.0 – fallback, accepts any URL",
+    ),
+    (
+        "ui.job.queued",
+        "Queued",
+    ),
+    (
+        "ui.job.resolving",
+        "Resolving",
+    ),
+    (
+        "ui.job.downloading",
+        "Downloading",
+    ),
+    (
+        "ui.job.merging",
+        "Merging parts",
+    ),
+    (
+        "ui.job.done",
+        "Done",
+    ),
+    (
+        "ui.job.paused",
+        "Paused",
+    ),
+    (
+        "ui.job.cancelled",
+        "Cancelled",
+    ),
+    (
+        "ui.job.failed",
+        "Failed: {error}",
+    ),
+    (
+        "ui.part.pending",
+        "pending",
+    ),
+    (
+        "ui.part.downloading",
+        "downloading",
+    ),
+    (
+        "ui.part.retrying",
+        "retry {attempt}/{max}",
+    ),
+    (
+        "ui.part.done",
+        "done",
+    ),
+    (
+        "ui.part.failed",
+        "failed: {error}",
+    ),
+    (
+        "ui.detail.title",
+        "Details",
+    ),
+    (
+        "ui.detail.url",
+        "URL: {url}",
+    ),
+    (
+        "ui.detail.status",
+        "Status: {status}",
+    ),
+    (
+        "ui.detail.speed_eta",
+        "Speed: {speed}   ETA: {eta}",
+    ),
+    (
+        "ui.detail.circuit",
+        "Tor: {circuit}",
+    ),
+    (
+        "ui.detail.parts_header",
+        "Parts ({count}):",
+    ),
+    (
+        "ui.detail.part_line",
+        "  Part {index}: {done} / {total} ({pct}%) {status}",
+    ),
+    (
+        "ui.detail.unknown",
+        "-",
+    ),
+    (
+        "ui.detail.circuit_unknown",
+        "not in use",
+    ),
+    (
+        "ui.detail.circuit_ready",
+        "connected, circuits ready",
+    ),
+    (
+        "ui.detail.circuit_bootstrapping",
+        "bootstrapping ({percent}%)",
+    ),
+    (
+        "ui.detail.circuit_blocked",
+        "blocked: {reason}",
+    ),
+    (
+        "ui.detail.hint",
+        "Enter = toggle details",
     ),
     (
         "ui.settings.title",

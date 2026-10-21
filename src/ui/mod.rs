@@ -19,12 +19,16 @@ use ratatui::{
 };
 use std::io::{self, Stdout};
 use std::sync::{Arc, Mutex};
+use std::time::Instant;
 use std::time::Duration;
+
+mod detail;
 
 use crate::config;
 use crate::contract::{JobEvent, JobId};
 use crate::download::{JobProgress, JobStatus};
 use crate::t;
+use crate::tor::TorHealth;
 
 #[derive(Clone, Copy, PartialEq)]
 pub enum AppTab {
@@ -54,6 +58,11 @@ pub struct App {
     pub status_msg: String,
     pub cmd_tx: tokio::sync::mpsc::UnboundedSender<UiCommand>,
     pub job_event_rx: tokio::sync::mpsc::UnboundedReceiver<JobEvent>,
+    /// Whether the detail panel of the selected job is shown.
+    pub detail_open: bool,
+    /// Latest Tor readiness snapshot (`None` without Tor).
+    pub tor_health: Option<TorHealth>,
+    pub speeds: detail::SpeedTracker,
 }
 
 impl App {
@@ -71,6 +80,9 @@ impl App {
             status_msg: t!("ui.status.help"),
             cmd_tx,
             job_event_rx,
+            detail_open: false,
+            tor_health: None,
+            speeds: detail::SpeedTracker::default(),
         }
     }
 
@@ -124,6 +136,7 @@ impl App {
                 self.input_mode = true;
                 self.input_buffer.clear();
             }
+            KeyCode::Enter => self.detail_open = !self.detail_open,
             KeyCode::Tab => self.next_tab(),
             KeyCode::BackTab => self.prev_tab(),
             KeyCode::Up => {
@@ -177,6 +190,7 @@ impl App {
                 if let Some(i) = self.list_state.selected() {
                     if i < self.jobs.len() {
                         let removed = self.jobs.remove(i);
+                        self.speeds.forget(removed.id);
                         let _ = self.cmd_tx.send(UiCommand::RemoveJob(removed.id));
                         self.status_msg = t!("ui.status.remove_requested", file = removed.filename);
                         if self.jobs.is_empty() {
@@ -220,7 +234,9 @@ impl App {
                     j.parts = parts;
                 }
             }
-            JobEvent::Speed { .. } => {}
+            JobEvent::Speed { id, bytes_per_sec } => {
+                self.speeds.set_reported(id, bytes_per_sec, Instant::now());
+            }
             JobEvent::Finished { id, result } => {
                 if let Some(j) = self.jobs.iter_mut().find(|j| j.id == id) {
                     if !matches!(
@@ -234,6 +250,13 @@ impl App {
                     }
                 }
             }
+        }
+    }
+
+    /// Feeds the current progress of all jobs into the speed estimator.
+    pub fn sample_speeds(&mut self, now: Instant) {
+        for j in &self.jobs {
+            self.speeds.observe(j.id, j.bytes_done, now);
         }
     }
 
@@ -273,6 +296,7 @@ pub fn run(app: SharedApp) -> Result<()> {
             while let Ok(event) = a.job_event_rx.try_recv() {
                 a.apply_event(event);
             }
+            a.sample_speeds(Instant::now());
         }
         terminal.draw(|f| {
             let a = app.lock().unwrap();
@@ -344,9 +368,10 @@ fn draw(f: &mut Frame, app: &App) {
 
 fn draw_downloads(f: &mut Frame, area: Rect, app: &App) {
     // Aufteilung: Liste oben, Gauge unten
+    let bottom = if app.detail_open { 12 } else { 5 };
     let inner = Layout::default()
         .direction(Direction::Vertical)
-        .constraints([Constraint::Min(3), Constraint::Length(5)])
+        .constraints([Constraint::Min(3), Constraint::Length(bottom)])
         .split(area);
 
     if app.jobs.is_empty() {
@@ -402,9 +427,17 @@ fn draw_downloads(f: &mut Frame, area: Rect, app: &App) {
         .highlight_symbol(">> ");
     f.render_stateful_widget(list, inner[0], &mut app.list_state.clone());
 
-    // Gauge für ausgewählten Job
+    // Detail panel or gauge for the selected job
     if let Some(sel) = app.list_state.selected() {
         if let Some(j) = app.jobs.get(sel) {
+            if app.detail_open {
+                let text = detail::detail_text(j, app.speeds.speed(j.id), app.tor_health.as_ref());
+                let p = Paragraph::new(text)
+                    .block(Block::default().borders(Borders::ALL).title(t!("ui.detail.title")))
+                    .wrap(Wrap { trim: false });
+                f.render_widget(p, inner[1]);
+                return;
+            }
             let pct_f = if j.total_bytes > 0 {
                 j.bytes_done as f64 / j.total_bytes as f64
             } else {
@@ -478,7 +511,7 @@ fn draw_settings(f: &mut Frame, area: Rect) {
     f.render_widget(p, area);
 }
 
-fn fmt_bytes(b: u64) -> String {
+pub(crate) fn fmt_bytes(b: u64) -> String {
     const KB: f64 = 1024.0;
     const MB: f64 = KB * 1024.0;
     const GB: f64 = MB * 1024.0;

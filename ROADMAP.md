@@ -65,7 +65,7 @@ Abhängig von M1 (Engine muss echten Fortschritt liefern).
 - [ ] 🔴 Echtzeit-Update der Queue über Channel (`tokio::sync::watch`/`mpsc`) statt Stubs
 - [x] 🔴 Session-Restore: Tracker lädt offene Downloads beim Start und setzt sie fort (nutzt M1-Resume)
 - [x] 🟠 Steuerung pro Eintrag: Pause · Resume · Cancel · Remove · Ordner öffnen
-- [ ] 🟠 Detail-Ansicht: Parts, Speed, ETA, Circuit-Infos
+- [x] 🟠 Detail-Ansicht: Parts, Speed, ETA, Circuit-Infos
 - [ ] 🟠 Batch-Import (mehrere URLs, Datei, Clipboard) → bildet die Basis des LinkGrabbers
 - [ ] 🟠 History/Abgeschlossen-Liste mit Statistiken + Export (CSV/JSON)
 - [ ] 🟢 Themes, globaler Clipboard-Hotkey
