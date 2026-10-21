@@ -18,6 +18,9 @@ use uuid::Uuid;
 use crate::contract::{ByteRange, Transport};
 use crate::tor::TorManager;
 
+pub mod retry;
+pub use retry::RetryPolicy;
+
 /// Fortschritt eines einzelnen Parts.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct PartProgress {
@@ -31,6 +34,7 @@ pub struct PartProgress {
 pub enum PartStatus {
     Pending,
     Downloading,
+    Retrying { attempt: u32, max: u32 },
     Done,
     Failed(String),
 }
@@ -209,6 +213,7 @@ async fn download_part(
     dest: PathBuf,
     range: Option<(u64, u64)>, // inklusiv; None = ganze Datei ohne Range-Header
     bytes_done: Arc<AtomicU64>,
+    part_bytes_done: &mut u64,
 ) -> Result<()> {
     let host = url.host_str().context("Kein Host in URL")?.to_string();
     let port = url.port_or_known_default().unwrap_or(80);
@@ -270,11 +275,19 @@ async fn download_part(
         .await
         .with_context(|| format!("Teildatei anlegen: {dest:?}"))?;
 
+    // Vorherige Bytes für diesen Part aus `bytes_done` abziehen (falls Wiederholungsversuch)
+    if *part_bytes_done > 0 {
+        bytes_done.fetch_sub(*part_bytes_done, Ordering::Relaxed);
+        *part_bytes_done = 0;
+    }
+
     // Rest der Response (evtl. schon Teil des Body in buf) schreiben
     if buf.len() > header_end {
         let body_start = &buf[header_end..];
         file.write_all(body_start).await?;
-        bytes_done.fetch_add(body_start.len() as u64, Ordering::Relaxed);
+        let len = body_start.len() as u64;
+        bytes_done.fetch_add(len, Ordering::Relaxed);
+        *part_bytes_done += len;
     }
 
     loop {
@@ -283,7 +296,9 @@ async fn download_part(
             break;
         }
         file.write_all(&tmp[..n]).await?;
-        bytes_done.fetch_add(n as u64, Ordering::Relaxed);
+        let len = n as u64;
+        bytes_done.fetch_add(len, Ordering::Relaxed);
+        *part_bytes_done += len;
     }
     file.flush().await?;
     Ok(())
@@ -344,6 +359,8 @@ pub async fn run_job(
     let mut part_paths = Vec::new();
     let mut handles = Vec::new();
 
+    let retry_policy = RetryPolicy::default();
+
     for part in &plan {
         let (i, start, end) = (part.index, part.start, part.end);
         // Ein einzelner Part über die ganze Datei braucht keinen Range-Header.
@@ -354,11 +371,39 @@ pub async fn run_job(
         let url = job.url.clone();
         let bd = bytes_done.clone();
         let cancel_c = cancel.clone();
+        let progress_c = progress.clone();
         let handle = tokio::spawn(async move {
-            tokio::select! {
-                res = download_part(tor_c, i, url, dest, range, bd) => res,
-                _ = cancel_c.notified() => Err(anyhow::anyhow!("Part {i} abgebrochen")),
-            }
+            let part_bytes = Arc::new(AtomicU64::new(0));
+            retry_policy
+                .retry_with_cancel(
+                    &*cancel_c,
+                    |_attempt| {
+                        let tor_c = tor_c.clone();
+                        let url = url.clone();
+                        let dest = dest.clone();
+                        let bd = bd.clone();
+                        let pb_arc = part_bytes.clone();
+                        async move {
+                            let mut pb = pb_arc.load(Ordering::Relaxed);
+                            let res = download_part(tor_c, i, url, dest, range, bd, &mut pb).await;
+                            pb_arc.store(pb, Ordering::Relaxed);
+                            res
+                        }
+                    },
+                    |next_attempt, _delay, _err| {
+                        let progress_c = progress_c.clone();
+                        tokio::spawn(async move {
+                            let mut p = progress_c.lock().await;
+                            if let Some(pp) = p.parts.get_mut(i) {
+                                pp.status = PartStatus::Retrying {
+                                    attempt: next_attempt,
+                                    max: retry_policy.max_retries,
+                                };
+                            }
+                        });
+                    },
+                )
+                .await
         });
         handles.push((i, handle));
     }
