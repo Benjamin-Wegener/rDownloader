@@ -1,17 +1,13 @@
 # rdownloader status
 
-Generated 2026-10-22 at commit c8f644c - regenerate with `scripts/status-md.sh`
+Generated 2026-10-22 at commit bd5dbe3 - regenerate with `scripts/status-md.sh`
 
-`[###################-]` **35/37** steps done (95%), 1 in progress, 1 open
-Roadmap items: 41 checked, 15 open
+`[###############-----]` **36/47** steps done (77%), 3 in progress, 8 open
+Roadmap items: 42 checked, 27 open
 
-## i18n (2/2)
+## core (9/14)
 
-- [x] `i18n-1` src/i18n.rs: String-Katalog (en), Schlüssel + benannte Platzhalter, Tests; Clap-Help darüber
-- [x] `i18n-2` Bestehende deutsche Strings/Kommentare/Docs im Code auf Englisch, UI-Texte in den Katalog
-
-## core (8/8)
-
+- [x] `core-9` Zentraler Dateinamen-Bereiniger fuer alle Quellen (Plugin/Container/URL): kein Pfad-Ausbruch, Windows-Reservenamen, Kollision -> automatisch umbenennen
 - [x] `core-1` src/contract.rs: Verträge A (Transport) + B (JobEvent/JobCommand), MockTransport, FakeJob
 - [x] `core-2` M1.2 Range-Prüfung (Accept-Ranges) + Single-Connection-Fallback
 - [x] `core-3` M1.3 Retries mit Backoff pro Part
@@ -20,8 +16,18 @@ Roadmap items: 41 checked, 15 open
 - [x] `core-6` M1.8 Bandbreiten-Limit
 - [x] `core-7` Job-Scheduler & Per-Host-Limits (parallele Jobs, Hoster-Drosselung)
 - [x] `core-8` Auto-Extract-Engine fuer Multi-Part-Archive (.rar, .zip, .7z)
+- [ ] `core-10` Freier-Speicher-Pruefung vor dem Start + Vorab-Reservierung der Zieldatei
+- [ ] `core-11` macOS-Quarantaene-Attribut (com.apple.quarantine) auf fertige Downloads setzen
+- [ ] `core-12` Langsame Verbindungen kappen (lowest-speed-limit) + bedingtes Laden (If-Modified-Since)
+- [ ] `core-13` Mirrors (mehrere URLs pro Datei, Auswahl nach Geschwindigkeit) + Metalink-Block-Pruefsummen
+- [ ] `core-14` Ereignis-Hooks (Start/Fertig/Fehler -> eigener Befehl) und Desktop-Benachrichtigung
 
-## net (7/7)
+## i18n (2/2)
+
+- [x] `i18n-1` src/i18n.rs: String-Katalog (en), Schlüssel + benannte Platzhalter, Tests; Clap-Help darüber
+- [x] `i18n-2` Bestehende deutsche Strings/Kommentare/Docs im Code auf Englisch, UI-Texte in den Katalog
+
+## net (7/10)
 
 - [x] `net-1` TLS über Arti-Stream (https-Connector, vertragsfrei)
 - [x] `net-2` TorTransport implementiert Vertrag A
@@ -30,8 +36,11 @@ Roadmap items: 41 checked, 15 open
 - [x] `net-5` M1.6 Health-Check / Auto-Reconnect
 - [x] `net-6` M5 DNS-Leak-Check, Bridges
 - [x] `net-7` Headless-Daemon & RPC-API (JSON-RPC/REST-Steuerung)
+- [~] `net-8` Onion-Dienste: .onion-URLs (Arti-Feature onion-service-client) + Vanguards - **in progress**
+- [ ] `net-9` FTP/SFTP ueber Tor
+- [ ] `net-10` HLS/DASH: Segment-Downloads (parallele Fragmente, Zusammenfuegen)
 
-## plugins (6/7)
+## plugins (6/8)
 
 - [x] `plugins-1` Beispiel-Hoster-Plugin (Redirect-Auflösung)
 - [x] `plugins-2` Crawler-Plugin-Typ
@@ -39,7 +48,8 @@ Roadmap items: 41 checked, 15 open
 - [x] `plugins-4` Captcha-Plugin-Typ (interaktive Lösung in TUI)
 - [x] `plugins-5` Berechtigungsmodell (Design-Dokument)
 - [x] `plugins-6` Container- & Listen-Import (.dlc, .ccf, Textlisten, .metalink)
-- [ ] `plugins-7` WASM-Plugin-Laufzeit (Wasmtime-Sandbox unter Berechtigungsmodell)
+- [~] `plugins-7` WASM-Plugin-Laufzeit (Wasmtime-Sandbox unter Berechtigungsmodell) - **in progress**
+- [ ] `plugins-8` netrc-Zugangsdaten + Cookie-Import (Firefox/Chromium/Netscape-Format)
 
 ## infra (6/6)
 
