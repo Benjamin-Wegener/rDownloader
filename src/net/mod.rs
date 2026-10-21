@@ -34,6 +34,8 @@ use crate::tor::{AsyncReadWrite, TorManager};
 
 pub mod transport;
 
+mod disposition;
+
 pub use transport::TorTransport;
 
 /// Future, die einen rohen Bytestrom zu `host:port` liefert.

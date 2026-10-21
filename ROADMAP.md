@@ -43,7 +43,7 @@ Reihenfolge ist Abhängigkeitsreihenfolge – von oben nach unten.
 1. 🔴 **Tor-Transport entscheiden & fertigstellen**
    - [x] Entscheidung treffen (siehe „Design-Entscheidungen“, Empfehlung: Hyper/`reqwest` über eigenen Connector auf dem Arti-Stream statt handgeschriebenem HTTP)
    - [x] HEAD/GET komplett über Tor-Stream inkl. TLS für `https` (Arti liefert nur rohe TCP-Streams → TLS-Layer nötig)
-   - [ ] Redirects, Chunked-Encoding und `Content-Disposition`-Dateiname korrekt behandeln
+   - [x] Redirects, Chunked-Encoding und `Content-Disposition`-Dateiname korrekt behandeln
    - [ ] Eigener Header-Parser (`find_subsequence`) entfällt dadurch
 2. ✅ **Range-Support-Prüfung** (`Accept-Ranges`, Test-GET `bytes=0-0`) → Fallback Single-Connection
 3. [x] 🔴 **Retries mit Backoff pro Part** (Part-Fehler darf nicht den ganzen Job killen)
