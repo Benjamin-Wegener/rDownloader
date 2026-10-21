@@ -424,6 +424,12 @@ fn start_job_background(
             })
         };
 
+        // Jobs wait here (status stays "queued") until the scheduler has a free slot
+        // overall and for this host.
+        let _slot = download::scheduler::global()
+            .acquire(&download::scheduler::host_key(&job.url))
+            .await;
+
         let cancel = Arc::new(tokio::sync::Notify::new());
         let res = if let Some(tor) = tor {
             run_job(&job, tor, progress.clone(), cancel).await

@@ -45,6 +45,14 @@ pub struct Config {
     #[serde(default = "default_read_timeout")]
     pub read_timeout_secs: u64,
 
+    /// Jobs that may run at the same time (0 = unlimited)
+    #[serde(default = "default_max_concurrent_jobs")]
+    pub max_concurrent_jobs: usize,
+
+    /// Jobs per host that may run at the same time (0 = unlimited)
+    #[serde(default = "default_max_jobs_per_host")]
+    pub max_jobs_per_host: usize,
+
     /// Global download speed limit in KiB/s (0 = unlimited)
     #[serde(default)]
     pub max_speed_kib: u64,
@@ -73,6 +81,12 @@ fn default_timeout() -> u64 {
 fn default_read_timeout() -> u64 {
     60
 }
+fn default_max_concurrent_jobs() -> usize {
+    3
+}
+fn default_max_jobs_per_host() -> usize {
+    2
+}
 fn default_retries() -> u32 {
     3
 }
@@ -92,6 +106,8 @@ impl Default for Config {
             user_agent: default_ua(),
             connect_timeout_secs: default_timeout(),
             read_timeout_secs: default_read_timeout(),
+            max_concurrent_jobs: default_max_concurrent_jobs(),
+            max_jobs_per_host: default_max_jobs_per_host(),
             max_speed_kib: 0,
             max_retries: default_retries(),
             log_level: default_log_level(),

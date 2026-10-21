@@ -24,6 +24,7 @@ pub mod checksum;
 pub mod limiter;
 pub mod resume;
 pub mod retry;
+pub mod scheduler;
 pub use resume::{PartOffset, ResumeState};
 pub use retry::RetryPolicy;
 

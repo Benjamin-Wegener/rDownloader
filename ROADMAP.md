@@ -102,7 +102,8 @@ CI früh starten (parallel zu M1), Rest nach M2.
 
 **Automation, Limits & Post-Processing**
 - [ ] 🟠 **Auto-Extract Engine**: Automatisches Entpacken von Multi-Part-Archiven (`.rar`, `.zip`, `.7z`) nach Download & Hash-Verifikation
-- [ ] 🟠 **Job-Scheduler & Per-Host Limits**: Max. gleichzeitige Jobs, parallele Downloads pro Hoster und Zeitfenster
+- [x] 🟠 **Job-Scheduler & Per-Host Limits**: Max. gleichzeitige Jobs und parallele Jobs pro Hoster (`max_concurrent_jobs`, `max_jobs_per_host`)
+- [ ] 🟢 Scheduler-Zeitfenster (Downloads nur zu bestimmten Uhrzeiten)
 - [ ] 🟢 Watch-Ordner · RSS-Reader · Desktop-Notifications
 
 ## M6 – GUI & Headless RPC (optional, nach M4) ⬜ 🟢
