@@ -83,15 +83,21 @@ async fn main() -> Result<()> {
     info!("Config: {}", cfg.describe());
 
     // Tor-Manager bootstrap (oder deaktiviert)
-    let tor_clients = cli.tor_clients.unwrap_or(cfg.tor_clients).clamp(1, 10);
+    // One client is enough: every part gets its own isolation token.
+    let configured_clients = cli.tor_clients.unwrap_or(cfg.tor_clients).clamp(1, 10);
     let tor = if cli.no_tor {
-        warn!("Tor deaktiviert (--no-tor) – Verkehr läuft ungeschützt!");
+        warn!("Tor disabled (--no-tor) - traffic is unprotected!");
         None
     } else {
-        info!("Bootstrapping {tor_clients} Tor-Client(s) (Arti) …");
-        match TorManager::bootstrap(tor_clients, cfg.tor_data_dir()).await {
+        if configured_clients > 1 {
+            info!(
+                "tor_clients={configured_clients} ignored: a single client isolates every part per stream"
+            );
+        }
+        info!("Bootstrapping Tor client (Arti) ...");
+        match TorManager::bootstrap(cfg.tor_data_dir()).await {
             Ok(tm) => {
-                info!("Tor bereit: {} Clients", tm.len());
+                info!("Tor ready");
                 Some(Arc::new(tm))
             }
             Err(e) => {

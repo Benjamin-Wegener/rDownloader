@@ -26,7 +26,7 @@ const EN: &[(&str, &str)] = &[
     ),
     (
         "cli.arg.tor_clients",
-        "Number of parallel Tor clients (1..=10, overrides config)",
+        "Deprecated: a single Tor client isolates every download part",
     ),
     ("cli.arg.parts", "Number of parts per download (1..=10)"),
     ("cli.arg.output", "Target path (file or directory)"),

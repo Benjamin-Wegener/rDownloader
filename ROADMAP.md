@@ -49,7 +49,7 @@ Reihenfolge ist Abhängigkeitsreihenfolge – von oben nach unten.
 3. [x] 🔴 **Retries mit Backoff pro Part** (Part-Fehler darf nicht den ganzen Job killen)
 4. [x] 🔴 **Resume**: Part-Fortschritt persistieren (Offset je Part, ETag/Last-Modified zur Validierung)
 5. 🟠 **Stream-Isolation pro Part** sicherstellen (kein Circuit-Sharing)
-   - [ ] Prüfen, ob ein einzelner `TorClient` + `isolated_client()` pro Part statt 10 getrennter Clients reicht – spart 9× Bootstrap und Data-Dirs
+   - [x] Prüfen, ob ein einzelner `TorClient` + `isolated_client()` pro Part statt 10 getrennter Clients reicht – spart 9× Bootstrap und Data-Dirs (umgesetzt: ein Client, `IsolationToken` je Part)
 6. 🟠 **Health-Check / Auto-Reconnect** bei Circuit-Failure (baut auf Retry auf)
 7. ✅ Checksummen-Verifikation (nur wenn Server/Plugin Hash liefert)
 8. 🟢 Bandbreiten-Limit (globales Token-Bucket)

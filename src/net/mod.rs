@@ -52,9 +52,7 @@ pub trait StreamProvider: Send + Sync {
 
 impl StreamProvider for TorManager {
     fn connect<'a>(&'a self, isolation: u64, host: &'a str, port: u16) -> ConnectFuture<'a> {
-        Box::pin(async move {
-            TorManager::connect_isolated(self, isolation as usize, host, port, isolation).await
-        })
+        Box::pin(async move { TorManager::connect_isolated(self, host, port, isolation).await })
     }
 }
 

@@ -90,7 +90,7 @@ impl DownloadJob {
 }
 
 /// Resolve Content-Length via einen Tor-Circuit + HEAD-Request.
-async fn resolve_size(tor: &TorManager, idx: usize, url: &url::Url) -> Result<ServerInfo> {
+async fn resolve_size(tor: &TorManager, url: &url::Url) -> Result<ServerInfo> {
     // Für echte Tor-Nutzung bauen wir einen HTTP-Stream über Tor und machen dort
     // einen manuellen HEAD-Request. Hier vereinfacht: reqwest mit socks-ähnlichem
     // Routing via TorManager.connect() als Rohstream → zu aufwändig für HEAD.
@@ -98,7 +98,7 @@ async fn resolve_size(tor: &TorManager, idx: usize, url: &url::Url) -> Result<Se
     // aber strikt optional: Falls gewünscht, über Tor. Für saubere Anonymität
     // auch über Tor: wir nutzen den Tor-Stream + manuelles HTTP/1.1.
     let stream = tor
-        .connect(idx, url.host_str().unwrap_or("localhost"), 80)
+        .connect(url.host_str().unwrap_or("localhost"), 80)
         .await?;
     // TODO: Manueller HTTP/1.1 HEAD über den Tor-Stream (AsyncRead/Write).
     // Für MVP nutzen wir reqwest (ohne Proxy) nur zur Größe-Ermittlung.
@@ -226,12 +226,27 @@ fn plan_parts(
         .collect()
 }
 
+/// Stream-isolation id for one part of a job.
+///
+/// Parts of the same job get distinct ids, and ids are stable across restarts
+/// so a resumed part may reuse its previous circuit. The hash also keeps parts
+/// of different jobs apart.
+fn part_isolation(job: Uuid, part_idx: usize) -> u64 {
+    use std::collections::hash_map::DefaultHasher;
+    use std::hash::{Hash, Hasher};
+
+    let mut hasher = DefaultHasher::new();
+    job.hash(&mut hasher);
+    part_idx.hash(&mut hasher);
+    hasher.finish()
+}
+
 /// Lädt einen Part (Byte-Range) über Tor herunter und schreibt nach `dest`.
 /// Unterstützt Resuming: Wenn `dest` bereits Daten enthält und Ranges unterstützt werden,
 /// wird am vorhandenen Dateiende aufgesetzt.
 async fn download_part(
     tor: Arc<TorManager>,
-    part_idx: usize,
+    isolation: u64,
     url: url::Url,
     dest: PathBuf,
     range: Option<(u64, u64)>, // inklusiv; None = ganze Datei ohne Range-Header
@@ -271,8 +286,9 @@ async fn download_part(
         }
     };
 
-    // Tor-Stream öffnen
-    let mut stream = tor.connect(part_idx, &host, port).await?;
+    // Open the part's own circuit: streams with different isolation ids never
+    // share one.
+    let mut stream = tor.connect_isolated(&host, port, isolation).await?;
 
     // Einfacher HTTP/1.1 GET mit Range-Header über den Tor-Stream
     let path = if url.path().is_empty() {
@@ -396,7 +412,7 @@ pub async fn run_job(
         p.status = JobStatus::Resolving;
     }
 
-    let info = resolve_size(&tor, 0, &job.url).await?;
+    let info = resolve_size(&tor, &job.url).await?;
     let total = info.total;
     let plan = plan_parts(total, job.max_parts, job.part_size, info.accepts_ranges);
     let parts_count = plan.len();
@@ -480,6 +496,7 @@ pub async fn run_job(
     let mut handles = Vec::new();
 
     let retry_policy = RetryPolicy::default();
+    let job_id = job.id;
 
     for part in &plan {
         let (i, start, end) = (part.index, part.start, part.end);
@@ -494,6 +511,7 @@ pub async fn run_job(
         let progress_c = progress.clone();
         let handle = tokio::spawn(async move {
             let part_bytes = Arc::new(AtomicU64::new(0));
+            let isolation = part_isolation(job_id, i);
             retry_policy
                 .retry_with_cancel(
                     &*cancel_c,
@@ -505,7 +523,9 @@ pub async fn run_job(
                         let pb_arc = part_bytes.clone();
                         async move {
                             let mut pb = pb_arc.load(Ordering::Relaxed);
-                            let res = download_part(tor_c, i, url, dest, range, bd, &mut pb).await;
+                            let res =
+                                download_part(tor_c, isolation, url, dest, range, bd, &mut pb)
+                                    .await;
                             pb_arc.store(pb, Ordering::Relaxed);
                             res
                         }
@@ -650,6 +670,15 @@ pub async fn run_job(
 mod tests {
     use super::*;
     use crate::contract::{MockResource, MockTransport};
+
+    #[test]
+    fn part_isolation_ids_are_stable_and_distinct() {
+        let job = Uuid::new_v4();
+        let other = Uuid::new_v4();
+        assert_eq!(part_isolation(job, 0), part_isolation(job, 0));
+        assert_ne!(part_isolation(job, 0), part_isolation(job, 1));
+        assert_ne!(part_isolation(job, 0), part_isolation(other, 0));
+    }
 
     #[test]
     fn accept_ranges_header() {

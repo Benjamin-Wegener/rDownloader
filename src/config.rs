@@ -7,7 +7,8 @@ use std::sync::OnceLock;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Config {
-    /// An paralleler Tor-Clients (1..=10, wie JDownloader max. Connections)
+    /// Deprecated: a single Tor client isolates every part. Kept for backward
+    /// compatible config files; values above 1 are ignored.
     #[serde(default = "default_tor_clients")]
     pub tor_clients: usize,
 

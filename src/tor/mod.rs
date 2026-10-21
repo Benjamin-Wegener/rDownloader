@@ -1,7 +1,11 @@
-//! Tor-Integration via `arti-client` (offizielle Rust-Tor-Implementierung des Tor-Projekts).
+//! Tor integration via `arti-client` (the Tor Project's official Rust implementation).
 //!
-//! Clean-room: Kein Code aus JDownloader oder C-Tor übernommen.
-//! Baut pro Download-Part einen eigenen Tor-Circuit via isolierte Clients.
+//! Clean-room: no code taken from JDownloader or C Tor.
+//!
+//! A single bootstrapped [`TorClient`] serves the whole process. Each download
+//! part requests its own [`IsolationToken`], so streams only share a circuit
+//! when they carry the same isolation id. This keeps part isolation without
+//! paying for one client (and one data directory) per part.
 
 use anyhow::{Context, Result};
 use arti_client::config::TorClientConfigBuilder;
@@ -13,106 +17,101 @@ use tokio::io::{AsyncRead, AsyncWrite};
 use tor_rtcompat::PreferredRuntime;
 use tracing::info;
 
-/// Wrapper für AsyncRead + AsyncWrite, weil `arti_client`'s DataStream beides ist
-/// aber wir es als trait-object für Flexibilität brauchen.
+/// Read + write byte stream, usable as a trait object.
 pub trait AsyncReadWrite: AsyncRead + AsyncWrite + Send + Unpin {}
 impl<T> AsyncReadWrite for T where T: AsyncRead + AsyncWrite + Send + Unpin {}
 
-/// Hält mehrere unabhängige Tor-Clients (je mit eigenem Data-Directory = eigener Circuit-Pool).
+/// One Tor client plus stable isolation tokens per stream group.
 pub struct TorManager {
-    clients: Vec<Arc<TorClient<PreferredRuntime>>>,
-    /// Stable isolation token per `isolation` id. The same id may share
-    /// circuits, different ids never do.
-    isolations: Mutex<HashMap<u64, IsolationToken>>,
+    client: Arc<TorClient<PreferredRuntime>>,
+    isolations: IsolationTokens,
 }
 
 impl TorManager {
-    /// Erstellt `count` unabhängige Tor-Client-Instanzen (je eigener State/Circuit-Pool).
-    pub async fn bootstrap(count: usize, data_dir_base: PathBuf) -> Result<Self> {
-        let mut clients = Vec::with_capacity(count);
-        for i in 0..count {
-            let dir = data_dir_base.join(format!("tor-{i}"));
-            std::fs::create_dir_all(&dir)
-                .with_context(|| format!("Tor-Data-Dir anlegen: {dir:?}"))?;
+    /// Bootstraps a single Tor client with state and cache below `data_dir`.
+    pub async fn bootstrap(data_dir: PathBuf) -> Result<Self> {
+        std::fs::create_dir_all(&data_dir)
+            .with_context(|| format!("Creating Tor data directory: {data_dir:?}"))?;
 
-            // TorClientConfig mit eigenem state/cache Dir pro Instanz
-            let config =
-                TorClientConfigBuilder::from_directories(dir.join("state"), dir.join("cache"))
-                    .build()
-                    .map_err(|e| anyhow::anyhow!("TorClientConfig bauen: {e}"))?;
+        let config = TorClientConfigBuilder::from_directories(
+            data_dir.join("state"),
+            data_dir.join("cache"),
+        )
+        .build()
+        .map_err(|e| anyhow::anyhow!("Building TorClientConfig: {e}"))?;
 
-            info!("Tor-Client {i}: bootstrap ({dir:?}) …");
-            let client = TorClient::builder()
-                .config(config)
-                .create_bootstrapped()
-                .await
-                .map_err(|e| anyhow::anyhow!("Tor-Client {i} bootstrap: {e}"))?;
+        info!("Bootstrapping Tor client ({data_dir:?}) ...");
+        let client = TorClient::builder()
+            .config(config)
+            .create_bootstrapped()
+            .await
+            .map_err(|e| anyhow::anyhow!("Tor client bootstrap: {e}"))?;
+        info!("Tor client bootstrapped");
 
-            info!("Tor-Client {i}: bootstrapped OK");
-            clients.push(client);
+        Ok(Self::from_client(client))
+    }
+
+    /// Wraps an already bootstrapped client (tests, custom bootstrapping).
+    pub fn from_client(client: Arc<TorClient<PreferredRuntime>>) -> Self {
+        Self {
+            client,
+            isolations: IsolationTokens::default(),
         }
-        Ok(Self {
-            clients,
-            isolations: Mutex::new(HashMap::new()),
-        })
     }
 
-    pub fn client(&self, index: usize) -> Result<Arc<TorClient<PreferredRuntime>>> {
-        self.clients
-            .get(index % self.clients.len())
-            .cloned()
-            .context("Tor-Client Index ungültig")
+    pub fn client(&self) -> &Arc<TorClient<PreferredRuntime>> {
+        &self.client
     }
 
-    pub fn len(&self) -> usize {
-        self.clients.len()
-    }
-
-    pub fn is_empty(&self) -> bool {
-        self.clients.is_empty()
-    }
-
-    /// Baut eine frische Tor-Stream-Verbindung zum Ziel (Host:Port).
-    /// Gibt ein AsyncRead+AsyncWrite-Paar zurück.
-    pub async fn connect(
-        &self,
-        index: usize,
-        host: &str,
-        port: u16,
-    ) -> Result<Box<dyn AsyncReadWrite>> {
-        let client = self.client(index)?;
-        let stream = client
+    /// Opens a fresh stream without a dedicated isolation group.
+    pub async fn connect(&self, host: &str, port: u16) -> Result<Box<dyn AsyncReadWrite>> {
+        let stream = self
+            .client
             .connect((host, port))
             .await
-            .map_err(|e| anyhow::anyhow!("Tor-Stream {index} → {host}:{port}: {e}"))?;
+            .map_err(|e| anyhow::anyhow!("Tor stream -> {host}:{port}: {e}"))?;
         Ok(Box::new(stream))
     }
 
-    /// Like [`TorManager::connect`], but streams with the same `isolation`
-    /// may share a circuit while different ids never do.
+    /// Opens a stream that shares circuits only with streams of the same
+    /// `isolation` id. Different ids never share a circuit.
     pub async fn connect_isolated(
         &self,
-        index: usize,
         host: &str,
         port: u16,
         isolation: u64,
     ) -> Result<Box<dyn AsyncReadWrite>> {
-        let client = self.client(index)?;
-        let token = self.isolation_token(isolation);
-        let mut prefs = StreamPrefs::new();
-        prefs.set_isolation(token);
-        let stream = client
+        let prefs = self.stream_prefs(isolation);
+        let stream = self
+            .client
             .connect_with_prefs((host, port), &prefs)
             .await
             .map_err(|e| {
-                anyhow::anyhow!("Tor stream {index} -> {host}:{port} (isolation {isolation}): {e}")
+                anyhow::anyhow!("Tor stream -> {host}:{port} (isolation {isolation}): {e}")
             })?;
         Ok(Box::new(stream))
     }
 
-    fn isolation_token(&self, isolation: u64) -> IsolationToken {
+    fn stream_prefs(&self, isolation: u64) -> StreamPrefs {
+        let mut prefs = StreamPrefs::new();
+        prefs.set_isolation(self.isolations.token(isolation));
+        prefs
+    }
+}
+
+/// Stable [`IsolationToken`] per numeric isolation id.
+///
+/// The same id always maps to the same token (so reconnects of a part may reuse
+/// its circuit); different ids always map to different tokens.
+#[derive(Default)]
+struct IsolationTokens {
+    tokens: Mutex<HashMap<u64, IsolationToken>>,
+}
+
+impl IsolationTokens {
+    fn token(&self, isolation: u64) -> IsolationToken {
         *self
-            .isolations
+            .tokens
             .lock()
             .expect("isolation map poisoned")
             .entry(isolation)
@@ -124,20 +123,24 @@ impl TorManager {
 mod tests {
     use super::*;
 
-    fn manager() -> TorManager {
-        TorManager {
-            clients: Vec::new(),
-            isolations: Mutex::new(HashMap::new()),
-        }
+    #[test]
+    fn isolation_ids_map_to_stable_distinct_tokens() {
+        let tokens = IsolationTokens::default();
+        let a = tokens.token(1);
+        let b = tokens.token(1);
+        let c = tokens.token(2);
+        assert_eq!(a, b);
+        assert_ne!(a, c);
     }
 
     #[test]
-    fn isolation_ids_map_to_stable_distinct_tokens() {
-        let tor = manager();
-        let a = tor.isolation_token(1);
-        let b = tor.isolation_token(1);
-        let c = tor.isolation_token(2);
-        assert_eq!(a, b);
-        assert_ne!(a, c);
+    fn distinct_ids_never_share_a_token() {
+        let tokens = IsolationTokens::default();
+        let all: Vec<_> = (0..16).map(|id| tokens.token(id)).collect();
+        for (i, left) in all.iter().enumerate() {
+            for right in &all[i + 1..] {
+                assert_ne!(left, right);
+            }
+        }
     }
 }
