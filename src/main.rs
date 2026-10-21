@@ -27,7 +27,7 @@ use crate::contract::JobEvent;
 use crate::download::{run_job, DownloadJob, JobProgress, JobStatus};
 use crate::plugin::{DirectDownloadPlugin, ExampleRedirectHosterPlugin, PluginRegistry};
 use crate::tor::TorManager;
-use crate::tracker::Tracker;
+use crate::tracker::{RestoreAction, TrackEntry, Tracker};
 use crate::ui::{App, SharedApp, UiCommand};
 
 #[derive(Parser, Debug)]
@@ -233,6 +233,13 @@ async fn run_tui(
     let app_for_ui = app.clone();
     let app_for_tui = app.clone();
 
+    // Continue the downloads of the previous session.
+    let restored = restore_session(&tracker, tor.clone(), jobs_progress.clone());
+    if restored > 0 {
+        let mut a = app.lock().unwrap();
+        a.status_msg = t!("ui.status.session_restored", count = restored);
+    }
+
     // UI-Command-Handler: neue Downloads enqueue
     let tor_c = tor.clone();
     let registry_c = registry.clone();
@@ -301,6 +308,9 @@ async fn run_tui(
                     if let Some(j) = jp.iter_mut().find(|j| j.id == id) {
                         j.status = JobStatus::Cancelled;
                     }
+                    drop(jp);
+                    // A cancelled download must not be continued in a later session.
+                    let _ = tracker_c.set_status(id, JobStatus::Cancelled);
                 }
                 UiCommand::PauseJob(id) => {
                     let mut jp = jobs_progress_c.lock().unwrap();
@@ -319,6 +329,9 @@ async fn run_tui(
                 UiCommand::RemoveJob(id) => {
                     let mut jp = jobs_progress_c.lock().unwrap();
                     jp.retain(|j| j.id != id);
+                    drop(jp);
+                    // Removed downloads must not come back on the next start.
+                    let _ = tracker_c.remove(id);
                 }
             }
         }
@@ -358,6 +371,15 @@ fn start_job_background(
 ) {
     let output = job.output.clone();
     let parts = job.max_parts;
+    // Register the job with the tracker before the transfer starts: a session
+    // that is killed during the download must still be restorable.
+    if let Err(e) = tracker.register(TrackEntry::from_job(
+        &job,
+        &output.to_string_lossy(),
+        parts,
+    )) {
+        warn!("Job {} could not be tracked: {e:#}", job.id);
+    }
     tokio::spawn(async move {
         // In jobs_progress eintragen
         {
@@ -367,12 +389,51 @@ fn start_job_background(
             jp.push(p.clone());
         }
 
+        // Mirror the engine's progress into the queue and keep the tracker
+        // current, so a killed session can be continued later on.
+        let forwarder = {
+            let progress = progress.clone();
+            let tracker = tracker.clone();
+            let jobs_progress = jobs_progress.clone();
+            let output = output.to_string_lossy().to_string();
+            tokio::spawn(async move {
+                let mut tick: u32 = 0;
+                loop {
+                    tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+                    let p = progress.lock().await.clone();
+                    {
+                        let mut jp = jobs_progress.lock().unwrap();
+                        if let Some(existing) = jp.iter_mut().find(|x| x.id == p.id) {
+                            *existing = p.clone();
+                        } else {
+                            jp.push(p.clone());
+                        }
+                    }
+                    tick = tick.wrapping_add(1);
+                    // The tracker is written less often than the queue is drawn.
+                    if tick.is_multiple_of(4) {
+                        if let Err(e) = tracker.update_from_progress(&p, &output, parts) {
+                            warn!("Tracker update failed: {e:#}");
+                        }
+                    }
+                    if matches!(
+                        p.status,
+                        JobStatus::Done | JobStatus::Cancelled | JobStatus::Failed(_)
+                    ) {
+                        break;
+                    }
+                }
+            })
+        };
+
         let cancel = Arc::new(tokio::sync::Notify::new());
         let res = if let Some(tor) = tor {
             run_job(&job, tor, progress.clone(), cancel).await
         } else {
             Err(anyhow::anyhow!("Tor nicht verfügbar"))
         };
+
+        forwarder.abort();
 
         // Finale Progress + Tracker-Update
         {
@@ -391,4 +452,175 @@ fn start_job_background(
             Err(e) => error!("Job fehlgeschlagen: {e:#}"),
         }
     });
+}
+
+/// Continues the downloads that were open when the app last stopped.
+///
+/// The tracker keeps the job id, so the engine finds the resume data of the
+/// previous session in the temp directory and continues where it left off.
+/// Returns the number of continued downloads.
+fn restore_session(
+    tracker: &Tracker,
+    tor: Option<Arc<TorManager>>,
+    jobs_progress: Arc<Mutex<Vec<JobProgress>>>,
+) -> usize {
+    let entries = tracker.open_entries();
+    let mut restored = 0usize;
+
+    for entry in entries {
+        match entry.restore_action(tor.is_some()) {
+            RestoreAction::Finished => {
+                // Merged right before the shutdown: nothing left to continue.
+                info!("Download already complete: {}", entry.filename);
+                let _ = tracker.set_status(entry.id, JobStatus::Done);
+            }
+            RestoreAction::KeepPaused => {
+                // Paused jobs stay paused, they are only shown in the queue.
+                show_in_queue(&entry, &jobs_progress, JobStatus::Paused);
+            }
+            RestoreAction::Continue => {
+                let job = match entry.to_download_job() {
+                    Ok(j) => j,
+                    Err(e) => {
+                        warn!("Download {} cannot be restored: {e:#}", entry.filename);
+                        continue;
+                    }
+                };
+                info!("Restoring download: {}", entry.filename);
+                let progress = Arc::new(tokio::sync::Mutex::new(JobProgress {
+                    id: job.id,
+                    url: job.url.to_string(),
+                    filename: entry.filename.clone(),
+                    total_bytes: entry.total_bytes,
+                    bytes_done: entry.bytes_done,
+                    parts: vec![],
+                    status: JobStatus::Queued,
+                }));
+                start_job_background(
+                    job,
+                    tor.clone(),
+                    progress,
+                    tracker.clone(),
+                    mpsc::unbounded_channel().0,
+                    jobs_progress.clone(),
+                );
+                restored += 1;
+            }
+        }
+    }
+
+    restored
+}
+
+/// Puts a tracked download into the queue without starting it.
+fn show_in_queue(
+    entry: &TrackEntry,
+    jobs_progress: &Arc<Mutex<Vec<JobProgress>>>,
+    status: JobStatus,
+) {
+    let p = JobProgress {
+        id: entry.id,
+        url: entry.url.clone(),
+        filename: entry.filename.clone(),
+        total_bytes: entry.total_bytes,
+        bytes_done: entry.bytes_done,
+        parts: vec![],
+        status,
+    };
+    let mut jp = jobs_progress.lock().unwrap();
+    jp.retain(|x| x.id != p.id);
+    jp.push(p);
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use chrono::Utc;
+    use uuid::Uuid;
+
+    fn tracked_entry(dir: &std::path::Path, status: JobStatus) -> TrackEntry {
+        TrackEntry {
+            id: Uuid::new_v4(),
+            url: "http://example.com/a.bin".into(),
+            filename: "a.bin".into(),
+            output: dir.join("a.bin").to_string_lossy().to_string(),
+            total_bytes: 100,
+            bytes_done: 10,
+            status,
+            created_at: Utc::now(),
+            updated_at: Utc::now(),
+            tor_parts: 4,
+            etag: None,
+            last_modified: None,
+        }
+    }
+
+    #[test]
+    fn restore_session_shows_open_downloads_as_paused_without_tor() {
+        let dir = std::env::temp_dir().join(format!("rdl-restore-test-{}", Uuid::new_v4()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let tracker = Tracker::at(dir.join("downloads.json")).unwrap();
+        let entry = tracked_entry(&dir, JobStatus::Downloading);
+        let id = entry.id;
+        tracker.add(entry).unwrap();
+
+        let jobs: Arc<Mutex<Vec<JobProgress>>> = Arc::new(Mutex::new(Vec::new()));
+        // Without a transport nothing is continued, but the download shows up.
+        let restored = restore_session(&tracker, None, jobs.clone());
+        assert_eq!(restored, 0);
+
+        let list = jobs.lock().unwrap();
+        assert_eq!(list.len(), 1);
+        assert_eq!(list[0].id, id);
+        assert_eq!(list[0].filename, "a.bin");
+        assert!(matches!(list[0].status, JobStatus::Paused));
+        drop(list);
+
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn restore_session_skips_finished_downloads() {
+        let dir = std::env::temp_dir().join(format!("rdl-restore-test-{}", Uuid::new_v4()));
+        std::fs::create_dir_all(&dir).unwrap();
+        // The output file is already complete.
+        std::fs::write(dir.join("a.bin"), b"0123456789").unwrap();
+
+        let tracker = Tracker::at(dir.join("downloads.json")).unwrap();
+        let mut entry = tracked_entry(&dir, JobStatus::Downloading);
+        entry.total_bytes = 10;
+        let id = entry.id;
+        tracker.add(entry).unwrap();
+
+        let jobs: Arc<Mutex<Vec<JobProgress>>> = Arc::new(Mutex::new(Vec::new()));
+        let restored = restore_session(&tracker, None, jobs.clone());
+        assert_eq!(restored, 0);
+        assert!(jobs.lock().unwrap().is_empty());
+
+        // The entry is closed now, so it is not restored again.
+        let list = tracker.list();
+        assert_eq!(list.len(), 1);
+        assert_eq!(list[0].id, id);
+        assert!(matches!(list[0].status, JobStatus::Done));
+
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn removed_downloads_do_not_come_back() {
+        let dir = std::env::temp_dir().join(format!("rdl-restore-test-{}", Uuid::new_v4()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let tracker = Tracker::at(dir.join("downloads.json")).unwrap();
+        let entry = tracked_entry(&dir, JobStatus::Downloading);
+        let id = entry.id;
+        tracker.add(entry).unwrap();
+        tracker.remove(id).unwrap();
+
+        let jobs: Arc<Mutex<Vec<JobProgress>>> = Arc::new(Mutex::new(Vec::new()));
+        let restored = restore_session(&tracker, None, jobs.clone());
+        assert_eq!(restored, 0);
+        assert!(jobs.lock().unwrap().is_empty());
+
+        let _ = std::fs::remove_dir_all(dir);
+    }
 }

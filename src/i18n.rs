@@ -95,6 +95,10 @@ const EN: &[(&str, &str)] = &[
         "Enter URL: {buffer}_",
     ),
     (
+        "ui.status.session_restored",
+        "Restored {count} download(s) from the previous session",
+    ),
+    (
         "ui.queue.empty",
         "No downloads – press 'a' to add a URL.",
     ),

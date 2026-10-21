@@ -63,7 +63,7 @@ Reihenfolge ist Abhängigkeitsreihenfolge – von oben nach unten.
 ## M2 – Bedienbare TUI 🟨 🟠
 Abhängig von M1 (Engine muss echten Fortschritt liefern).
 - [ ] 🔴 Echtzeit-Update der Queue über Channel (`tokio::sync::watch`/`mpsc`) statt Stubs
-- [ ] 🔴 Session-Restore: Tracker lädt offene Downloads beim Start und setzt sie fort (nutzt M1-Resume)
+- [x] 🔴 Session-Restore: Tracker lädt offene Downloads beim Start und setzt sie fort (nutzt M1-Resume)
 - [x] 🟠 Steuerung pro Eintrag: Pause · Resume · Cancel · Remove · Ordner öffnen
 - [ ] 🟠 Detail-Ansicht: Parts, Speed, ETA, Circuit-Infos
 - [ ] 🟠 Batch-Import (mehrere URLs, Datei, Clipboard) → bildet die Basis des LinkGrabbers
