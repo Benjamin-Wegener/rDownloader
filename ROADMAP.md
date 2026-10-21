@@ -16,11 +16,11 @@ Inspiriert von JDownloader (Konzept/UX), **kein Code übernommen** – alles von
 ## Reihenfolge auf einen Blick
 
 ```
-M0 Fundament ✅ ─► M1 Zuverlässiger Download-Kern ─► M2 Bedienbare TUI ─► M3 Plugins ─► M4 Release
-                   (Tor-HTTP, Ranges, Retry,          (Live-Queue,         (statisch,    (CI, Binaries,
-                    Resume, Persistenz)                Pause/Resume)        dann dyn.)    crates.io)
-                                                                                ▲
-                                          M5 Härtung & Extras (parallel ab M2) ─┘
+M0 Fundament ✅ ─► M1 Zuverlässiger Download-Kern ✅ ─► M2 Bedienbare TUI ─► M3 Plugins ─► M4 Release
+                   (Tor-HTTP, Ranges, Retry,            (Live-Queue,           (statisch,    (CI, Binaries,
+                    Resume, Persistenz)                  Pause/Resume, Grabber) dann WASM)    crates.io)
+                                                                                  ▲
+                                            M5 Härtung & Extras (parallel ab M2) ─┘
 ```
 
 Regel: Nichts aus M3+ anfangen, bevor M1 ein Testdownload mit Abbruch + Resume besteht.
@@ -37,20 +37,20 @@ Der Kern (M1) ist das Risiko; Plugins/GUI sind ohne ihn wertlos.
 - [x] TUI-Grundgerüst: Tabs, Queue mit Farben/Gauge, `a`/`q`/Tab/↑↓
 - [x] rustls statt OpenSSL
 
-## M1 – Zuverlässiger Download-Kern 🟨 🔴
+## M1 – Zuverlässiger Download-Kern ✅ 🔴
 Reihenfolge ist Abhängigkeitsreihenfolge – von oben nach unten.
 
 1. 🔴 **Tor-Transport entscheiden & fertigstellen**
-   - [x] Entscheidung treffen (siehe „Design-Entscheidungen“, Empfehlung: Hyper/`reqwest` über eigenen Connector auf dem Arti-Stream statt handgeschriebenem HTTP)
-   - [x] HEAD/GET komplett über Tor-Stream inkl. TLS für `https` (Arti liefert nur rohe TCP-Streams → TLS-Layer nötig)
+   - [x] Entscheidung treffen (Hyper-Client über eigenen Connector auf dem Arti-Stream)
+   - [x] HEAD/GET komplett über Tor-Stream inkl. TLS für `https` (Arti liefert rohe TCP-Streams → TLS-Layer via `tokio-rustls`)
    - [x] Redirects, Chunked-Encoding und `Content-Disposition`-Dateiname korrekt behandeln
-   - [ ] Eigener Header-Parser (`find_subsequence`) entfällt dadurch
+   - [x] HEAD/GET-Routing komplett über `TorTransport`
 2. ✅ **Range-Support-Prüfung** (`Accept-Ranges`, Test-GET `bytes=0-0`) → Fallback Single-Connection
 3. [x] 🔴 **Retries mit Backoff pro Part** (Part-Fehler darf nicht den ganzen Job killen)
 4. [x] 🔴 **Resume**: Part-Fortschritt persistieren (Offset je Part, ETag/Last-Modified zur Validierung)
 5. 🟠 **Stream-Isolation pro Part** sicherstellen (kein Circuit-Sharing)
-   - [x] Prüfen, ob ein einzelner `TorClient` + `isolated_client()` pro Part statt 10 getrennter Clients reicht – spart 9× Bootstrap und Data-Dirs (umgesetzt: ein Client, `IsolationToken` je Part)
-6. [x] 🟠 **Health-Check / Auto-Reconnect** bei Circuit-Failure (baut auf Retry auf) – `TorManager::health()` liest den Arti-Bootstrap-Status; fehlgeschlagene Streams/Part-Retries verwerfen ihren `IsolationToken` und bauen einen frischen Circuit auf
+   - [x] Ein `TorClient` + `IsolationToken` je Part – spart Bootstrap & Data-Dirs
+6. [x] 🟠 **Health-Check / Auto-Reconnect** bei Circuit-Failure – `TorManager::health()` liest Arti-Bootstrap-Status; Part-Retries rotieren Circuits
 7. ✅ Checksummen-Verifikation (nur wenn Server/Plugin Hash liefert)
 8. ✅ Bandbreiten-Limit (globales Token-Bucket)
 
@@ -61,36 +61,38 @@ Reihenfolge ist Abhängigkeitsreihenfolge – von oben nach unten.
 - [x] 🟠 Bestehende deutsche Texte in Code, Hilfe und UI auf Englisch umstellen (i18n-2)
 
 ## M2 – Bedienbare TUI 🟨 🟠
-Abhängig von M1 (Engine muss echten Fortschritt liefern).
-- [ ] 🔴 Echtzeit-Update der Queue über Channel (`tokio::sync::watch`/`mpsc`) statt Stubs
+Abhängig von M1 (Engine liefert echten Fortschritt).
+- [x] 🔴 Echtzeit-Update der Queue über Channel (`mpsc`)
 - [x] 🔴 Session-Restore: Tracker lädt offene Downloads beim Start und setzt sie fort (nutzt M1-Resume)
 - [x] 🟠 Steuerung pro Eintrag: Pause · Resume · Cancel · Remove · Ordner öffnen
 - [x] 🟠 Detail-Ansicht: Parts, Speed, ETA, Circuit-Infos
 - [x] 🟠 Batch-Import (mehrere URLs, Datei, Clipboard) → bildet die Basis des LinkGrabbers
 - [ ] 🟠 History/Abgeschlossen-Liste mit Statistiken + Export (CSV/JSON)
+- [ ] 🟠 **LinkGrabber-Workflow**: Entkoppeltes Sammeln $\to$ Paketieren/Filtern (Hoster, Dateityp) $\to$ Bestätigen & Übertrag in Download-Queue
+- [ ] 🟠 **Container- & Listen-Import**: `.dlc`, `.ccf`, Text-Linklisten und `.metalink`
 - [ ] 🟢 Themes, globaler Clipboard-Hotkey
 
 ## M3 – Plugin-System 🟨 🟠
-Statisch zuerst, dynamisch erst bei echtem Bedarf.
+Statisch zuerst, dynamisch unter Sandboxing.
 - [x] 🟠 Beispiel-Hoster-Plugin (Redirect-Auflösung einer konkreten Site) – validiert, ob der Trait taugt
 - [x] 🟠 Crawler-Plugin-Typ (weitere Links auf einer Seite) → speist LinkGrabber
 - [x] 🟠 Account-Plugin-Typ (Login-Cookies, Session-Management)
 - [x] 🟠 Captcha-Plugin-Typ (interaktive Lösung in der TUI)
 - [x] 🟠 Berechtigungsmodell definieren (Netzwerk / Dateisystem), **bevor** dynamisches Laden gebaut wird (Design: `src/plugin/PERMISSIONS.md`, Code: `src/plugin/permissions.rs`)
-- [ ] 🟢 Dynamisches Laden (`cdylib`, stabile C-ABI oder WASM – siehe Design-Entscheidung 2)
+- [ ] 🟠 **WASM-Plugin-Laufzeit (Wasmtime/Wasmi)**: Dynamisches Laden von `.wasm`-Plugins zur Laufzeit mit strikter Capability-Sandbox
 - [ ] 🟢 Plugin-Marktplatz / signierte Auto-Updates
 
-## M4 – Release 🟠
+## M4 – Release 🟨 🟠
 CI früh starten (parallel zu M1), Rest nach M2.
 - [x] 🔴 **CI jetzt**: GitHub Actions mit `cargo fmt --check`, `clippy -D warnings`, `cargo test` (macOS + Linux)
-- [ ] 🟠 Prebuilt-Binaries (macOS/Linux/Windows) via GitHub Releases
+- [x] 🟠 Prebuilt-Binaries (macOS/Linux/Windows) via GitHub Releases (`.github/workflows/release.yml`)
 - [x] 🟠 Manpage + `--help` (clap), README mit Quickstart (Threat-Modell: docs/threat-model.md)
 - [ ] 🟢 `cargo install` (crates.io), Homebrew-Tap / AUR / Scoop
 
-## M5 – Härtung & Extras (parallel, nicht blockierend) 🟢
+## M5 – Härtung, Automation & Headless (parallel) 🟢
 **Sicherheit/Privacy**
-- [ ] 🟠 Threat-Modell-Doku: was Tor schützt / was nicht (Fingerprints, Endpoints, Exit-Sicht bei HTTP)
-- [x] 🟠 DNS-Leak-Prüfung (alle Auflösungen über Tor, auch in Plugins) – Größen-HEAD läuft jetzt über `TorTransport`, Guard-Test verbietet lokale Resolver/HTTP-Clients im Quellcode
+- [x] 🟠 Threat-Modell-Doku: was Tor schützt / was nicht (`docs/threat-model.md`)
+- [x] 🟠 DNS-Leak-Prüfung (alle Auflösungen über Tor, auch in Plugins) – Guard-Test verbietet lokale Resolver im Code
 - [ ] 🟠 Keine Telemetrie – als Test/Grep-Check in CI absichern
 - [ ] 🟢 Bridges / Pluggable Transports (obfs4, snowflake)
   - [x] Direkte Bridge-Lines (Config-Feld `bridges`, in Arti geladen; `Bridge `-Präfix optional)
@@ -98,31 +100,33 @@ CI früh starten (parallel zu M1), Rest nach M2.
 - [ ] 🟢 Erkennung eines laufenden System-`tor` (Ports nutzen statt eigene Clients)
 - [ ] 🟢 Certificate-Pinning-Option
 
-**Integrationen**
-- [ ] 🟢 Watch-Ordner · RSS-Reader · Scheduler · Desktop-Notifications
+**Automation, Limits & Post-Processing**
+- [ ] 🟠 **Auto-Extract Engine**: Automatisches Entpacken von Multi-Part-Archiven (`.rar`, `.zip`, `.7z`) nach Download & Hash-Verifikation
+- [ ] 🟠 **Job-Scheduler & Per-Host Limits**: Max. gleichzeitige Jobs, parallele Downloads pro Hoster und Zeitfenster
+- [ ] 🟢 Watch-Ordner · RSS-Reader · Desktop-Notifications
 
-## M6 – GUI (optional, erst nach M4) ⬜ 🟢
-- [ ] Entscheidung egui vs. Tauri vs. nur TUI – erst entscheiden, wenn M2 steht und Nutzerfeedback vorliegt
-- [ ] Tray-Integration, Browser-Extension-Brücke
+## M6 – GUI & Headless RPC (optional, nach M4) ⬜ 🟢
+- [ ] 🟠 **Headless Daemon & RPC/Web-API**: JSON-RPC / REST / WebSocket für Fernsteuerung ohne TUI
+- [ ] 🟢 GUI-Entscheidung: egui vs. Tauri vs. Browser-WebUI
+- [ ] 🟢 Tray-Integration, Browser-Extension-Brücke
 
 ---
 
 ## Design-Entscheidungen (mit Empfehlung)
-1. **HTTP-Client** – *Empfehlung: Hyper/`reqwest` mit eigenem Connector über den Arti-Stream (+ `tokio-rustls`).* Kein Handparsing von Headern, trotzdem kein externer Tor-Daemon nötig. Das `socks`-Feature von reqwest wäre nur bei externem Tor sinnvoll und kann dann entfallen. **Entschieden in net-1:** eigener Hyper-Client auf dem Arti-Stream, TLS via `tokio-rustls` (`src/net/`).
-2. **Plugin-ABI** – *Empfehlung: statisch eingebettete Rust-Plugins (`Box<dyn Trait>`) bis M3 abgeschlossen; danach WASM-Sandbox statt `cdylib`.* WASM löst Sicherheit + ABI-Stabilität gleichzeitig, `cdylib` bräuchte `unsafe` und hat keine Isolation.
-3. **GUI** – verschoben nach M6; TUI zuerst.
+1. **HTTP-Client** – *Hyper/`tokio-rustls` über Arti-Stream.* Eigener Hyper-Client auf dem Arti-Stream, TLS via `tokio-rustls` (`src/net/`).
+2. **Plugin-ABI** – *WASM-Sandbox (`wasm32-wasip1`) statt `cdylib`.* Löst Sicherheit (Capability-Whitelisting) + ABI-Stabilität. Design fertig in `src/plugin/PERMISSIONS.md`.
+3. **GUI vs. Daemon** – TUI + headless Daemon mit RPC-Schnittstelle zuerst; native Desktop-GUI nach Nutzerfeedback.
 
 ## Aufräumen in `Cargo.toml`
-Beim Abschluss von M1 prüfen und entfernen, was ungenutzt ist (z. B. `tor-circmgr`, `tor-dirmgr`, `tor-rtcompat` falls nicht direkt importiert, `reqwest/socks`, `indicatif` neben ratatui). Kürzere Build-Zeit und kleinere Angriffsfläche.
-
-Erledigt (infra-4): `reqwest` (inkl. `socks`), `indicatif` und `thiserror` entfernt, `tokio` auf die tatsächlich genutzten Features reduziert, `futures` ohne `executor`. `hyper` bleibt dev-Dependency (Server-Feature für die Unit-Tests in `src/net/mod.rs`), `tor-rtcompat` wird direkt importiert, `tor-circmgr`/`tor-dirmgr` kommen transitiv über `arti-client`. Dependency-Baum: 602 → 579 Pakete.
+Beim Abschluss von M1 prüfen und entfernen, was ungenutzt ist.
+Erledigt (infra-4): `reqwest` (inkl. `socks`), `indicatif` und `thiserror` entfernt, `tokio` auf genutzte Features reduziert. Dependency-Baum: 602 → 579 Pakete.
 
 ## Bekannte Limitationen (ehrlich)
 - JDs `.jar`-Plugins lassen sich clean-room **nicht** laden (Java + proprietäre API).
 - Manche Hoster brauchen JS zum Link-Auflösen – ohne Browser-Engine nicht sauber lösbar; Workaround: vorberechnete Endpunkte oder manuelle Eingabe.
-- Tor ist langsam – 10 Parallel-Circuits helfen nur, wenn der Hoster Ranges erlaubt und nicht der Guard der Flaschenhals ist. **Vor M2 messen**, ob 10 Parts gegenüber z. B. 4 überhaupt etwas bringen, und den Default entsprechend setzen.
+- Tor ist langsam – 10 Parallel-Circuits helfen nur, wenn der Hoster Ranges erlaubt und nicht der Guard der Flaschenhals ist.
 - Arti hat noch keine volle C-Tor-Parität (Relay-Mode etc.); als Client produktionsreif (v2.7+).
 
 ---
 
-*Zuletzt aktualisiert: 2026-10-21*
+*Zuletzt aktualisiert: 2026-10-22*

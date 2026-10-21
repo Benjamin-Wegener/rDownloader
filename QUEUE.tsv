@@ -31,3 +31,9 @@ infra-5	infra	Threat-Modell-Doku, README, Manpage	infra-4
 ui-6	ui	History + Export (CSV/JSON)	ui-5
 net-6	net	M5 DNS-Leak-Check, Bridges	net-5
 infra-6	infra	Release-Binaries (GitHub Releases)	infra-5
+ui-7	ui	LinkGrabber-Workflow: Entkoppeltes Sammeln, Filtern & Bestaetigen	ui-5
+plugins-6	plugins	Container- & Listen-Import (.dlc, .ccf, Textlisten, .metalink)	plugins-2
+plugins-7	plugins	WASM-Plugin-Laufzeit (Wasmtime-Sandbox unter Berechtigungsmodell)	plugins-5
+core-7	core	Job-Scheduler & Per-Host-Limits (parallele Jobs, Hoster-Drosselung)	core-6
+core-8	core	Auto-Extract-Engine fuer Multi-Part-Archive (.rar, .zip, .7z)	core-5
+net-7	net	Headless-Daemon & RPC-API (JSON-RPC/REST-Steuerung)	core-1,net-5

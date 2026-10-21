@@ -7,6 +7,7 @@
 
 use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
+use std::fmt;
 use std::path::{Path, PathBuf};
 use url::Url;
 
@@ -132,24 +133,54 @@ impl PluginPermissions {
 }
 
 /// Errors raised when a plugin attempts an unpermitted operation.
-#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 #[allow(clippy::enum_variant_names)]
 pub enum PermissionDenied {
-    #[error("Plugin attempted network request to unauthorized host: {0}")]
     NetworkAccessDenied(String),
-
-    #[error("Plugin attempted unauthorized filesystem read from: {0:?}")]
     FileReadDenied(PathBuf),
-
-    #[error("Plugin attempted unauthorized filesystem write to: {0:?}")]
     FileWriteDenied(PathBuf),
-
-    #[error("Plugin attempted to access account credentials without permission")]
     AccountAccessDenied,
-
-    #[error("Plugin attempted to trigger an interactive Captcha prompt without permission")]
     CaptchaPromptDenied,
 }
+
+impl fmt::Display for PermissionDenied {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::NetworkAccessDenied(host) => {
+                write!(
+                    f,
+                    "Plugin attempted network request to unauthorized host: {host}"
+                )
+            }
+            Self::FileReadDenied(path) => {
+                write!(
+                    f,
+                    "Plugin attempted unauthorized filesystem read from: {path:?}"
+                )
+            }
+            Self::FileWriteDenied(path) => {
+                write!(
+                    f,
+                    "Plugin attempted unauthorized filesystem write to: {path:?}"
+                )
+            }
+            Self::AccountAccessDenied => {
+                write!(
+                    f,
+                    "Plugin attempted to access account credentials without permission"
+                )
+            }
+            Self::CaptchaPromptDenied => {
+                write!(
+                    f,
+                    "Plugin attempted to trigger an interactive Captcha prompt without permission"
+                )
+            }
+        }
+    }
+}
+
+impl std::error::Error for PermissionDenied {}
 
 #[cfg(test)]
 mod tests {
