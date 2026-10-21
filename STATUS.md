@@ -1,9 +1,9 @@
 # rdownloader status
 
-Generated 2026-10-22 at commit 4ed769c - regenerate with `scripts/status-md.sh`
+Generated 2026-10-22 at commit c8ba9fe - regenerate with `scripts/status-md.sh`
 
-`[################----]` **40/48** steps done (83%), 2 in progress, 6 open
-Roadmap items: 47 checked, 23 open
+`[#################---]` **41/48** steps done (85%), 2 in progress, 5 open
+Roadmap items: 48 checked, 22 open
 
 ## core (10/14)
 
@@ -17,7 +17,7 @@ Roadmap items: 47 checked, 23 open
 - [x] `core-7` Job-Scheduler & Per-Host-Limits (parallele Jobs, Hoster-Drosselung)
 - [x] `core-8` Auto-Extract-Engine fuer Multi-Part-Archive (.rar, .zip, .7z)
 - [x] `core-10` Freier-Speicher-Pruefung vor dem Start + Vorab-Reservierung der Zieldatei
-- [ ] `core-11` macOS-Quarantaene-Attribut (com.apple.quarantine) auf fertige Downloads setzen
+- [~] `core-11` macOS-Quarantaene-Attribut (com.apple.quarantine) auf fertige Downloads setzen - **in progress**
 - [ ] `core-12` Langsame Verbindungen kappen (lowest-speed-limit) + bedingtes Laden (If-Modified-Since)
 - [ ] `core-13` Mirrors (mehrere URLs pro Datei, Auswahl nach Geschwindigkeit) + Metalink-Block-Pruefsummen
 - [ ] `core-14` Ereignis-Hooks (Start/Fertig/Fehler -> eigener Befehl) und Desktop-Benachrichtigung
@@ -61,7 +61,7 @@ Roadmap items: 47 checked, 23 open
 - [x] `infra-5` Threat-Modell-Doku, README, Manpage
 - [x] `infra-6` Release-Binaries (GitHub Releases)
 
-## ui (6/7)
+## ui (7/7)
 
 - [x] `ui-1` Queue-Rendering gegen FakeJob (Live-Updates über Vertrag B)
 - [x] `ui-2` Steuerung pro Eintrag: Pause/Resume/Cancel/Remove
@@ -69,4 +69,4 @@ Roadmap items: 47 checked, 23 open
 - [x] `ui-4` Detail-Ansicht (Parts, Speed, ETA, Circuit)
 - [x] `ui-5` Batch-Import (Datei, Clipboard)
 - [x] `ui-6` History + Export (CSV/JSON)
-- [~] `ui-7` LinkGrabber-Workflow: Entkoppeltes Sammeln, Filtern & Bestaetigen - **in progress**
+- [x] `ui-7` LinkGrabber-Workflow: Entkoppeltes Sammeln, Filtern & Bestaetigen
