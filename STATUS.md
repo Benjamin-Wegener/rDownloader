@@ -1,9 +1,9 @@
 # rdownloader status
 
-Generated 2026-10-22 at commit 0fa33c5 - regenerate with `scripts/status-md.sh`
+Generated 2026-10-22 at commit 47133d3 - regenerate with `scripts/status-md.sh`
 
-`[################----]` **31/37** steps done (84%), 3 in progress, 3 open
-Roadmap items: 35 checked, 18 open
+`[#################---]` **32/37** steps done (86%), 3 in progress, 2 open
+Roadmap items: 36 checked, 17 open
 
 ## i18n (2/2)
 
@@ -19,7 +19,7 @@ Roadmap items: 35 checked, 18 open
 - [x] `core-5` M1.7 Checksummen-Verifikation
 - [x] `core-6` M1.8 Bandbreiten-Limit
 - [x] `core-7` Job-Scheduler & Per-Host-Limits (parallele Jobs, Hoster-Drosselung)
-- [ ] `core-8` Auto-Extract-Engine fuer Multi-Part-Archive (.rar, .zip, .7z)
+- [~] `core-8` Auto-Extract-Engine fuer Multi-Part-Archive (.rar, .zip, .7z) - **in progress**
 
 ## net (6/7)
 
@@ -50,12 +50,12 @@ Roadmap items: 35 checked, 18 open
 - [x] `infra-5` Threat-Modell-Doku, README, Manpage
 - [x] `infra-6` Release-Binaries (GitHub Releases)
 
-## ui (5/7)
+## ui (6/7)
 
 - [x] `ui-1` Queue-Rendering gegen FakeJob (Live-Updates über Vertrag B)
 - [x] `ui-2` Steuerung pro Eintrag: Pause/Resume/Cancel/Remove
 - [x] `ui-3` Session-Restore im Tracker
 - [x] `ui-4` Detail-Ansicht (Parts, Speed, ETA, Circuit)
 - [x] `ui-5` Batch-Import (Datei, Clipboard)
-- [~] `ui-6` History + Export (CSV/JSON) - **in progress**
+- [x] `ui-6` History + Export (CSV/JSON)
 - [ ] `ui-7` LinkGrabber-Workflow: Entkoppeltes Sammeln, Filtern & Bestaetigen
