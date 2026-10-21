@@ -11,8 +11,11 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use url::Url;
 
+pub mod crawler;
 pub mod example_redirect;
 
+#[allow(unused_imports)] // public plugin API; wired into the link grabber later
+pub use crawler::{CrawledLink, CrawlerPlugin, HtmlLinkCrawlerPlugin};
 pub use example_redirect::ExampleRedirectHosterPlugin;
 
 /// Metadaten eines Plugins.
@@ -83,11 +86,12 @@ pub trait DownloadPlugin: Send + Sync {
 #[derive(Clone)]
 pub struct PluginRegistry {
     plugins: HashMap<String, Arc<dyn DownloadPlugin>>,
+    crawlers: Vec<Arc<dyn CrawlerPlugin>>,
 }
 
 impl PluginRegistry {
     pub fn new() -> Self {
-        Self { plugins: HashMap::new() }
+        Self { plugins: HashMap::new(), crawlers: Vec::new() }
     }
 
     pub fn register(&mut self, plugin: Arc<dyn DownloadPlugin>) {
@@ -95,8 +99,17 @@ impl PluginRegistry {
         self.plugins.insert(id, plugin);
     }
 
+    pub fn register_crawler(&mut self, crawler: Arc<dyn CrawlerPlugin>) {
+        self.crawlers.push(crawler);
+    }
+
+    /// First registered crawler that accepts `url` (registration order = priority).
+    pub fn find_crawler_for_url(&self, url: &Url) -> Option<Arc<dyn CrawlerPlugin>> {
+        self.crawlers.iter().find(|c| c.can_handle(url)).cloned()
+    }
+
     pub fn list(&self) -> Vec<PluginMeta> {
-        self.plugins.values().map(|p| p.meta()).collect()
+        self.plugins.values().map(|p| p.meta()).chain(self.crawlers.iter().map(|c| c.meta())).collect()
     }
 
     pub fn find_for_url(&self, url: &Url) -> Option<Arc<dyn DownloadPlugin>> {
@@ -157,5 +170,20 @@ impl DownloadPlugin for DirectDownloadPlugin {
             supports_ranges: true,
             additional_headers: HashMap::new(),
         })
+    }
+}
+
+#[cfg(test)]
+mod registry_tests {
+    use super::*;
+
+    #[test]
+    fn crawler_registry_lookup() {
+        let mut reg = PluginRegistry::new();
+        let url = Url::parse("https://x.test/").unwrap();
+        assert!(reg.find_crawler_for_url(&url).is_none());
+        reg.register_crawler(Arc::new(HtmlLinkCrawlerPlugin));
+        assert!(reg.find_crawler_for_url(&url).is_some());
+        assert!(reg.list().iter().any(|m| m.kind == PluginKind::Crawler));
     }
 }
