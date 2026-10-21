@@ -1,9 +1,9 @@
 # rdownloader status
 
-Generated 2026-10-22 at commit 22a4dd4 - regenerate with `scripts/status-md.sh`
+Generated 2026-10-22 at commit 24706fb - regenerate with `scripts/status-md.sh`
 
-`[###############-----]` **37/47** steps done (79%), 2 in progress, 8 open
-Roadmap items: 43 checked, 26 open
+`[################----]` **38/47** steps done (81%), 1 in progress, 8 open
+Roadmap items: 45 checked, 24 open
 
 ## core (9/14)
 
@@ -27,7 +27,7 @@ Roadmap items: 43 checked, 26 open
 - [x] `i18n-1` src/i18n.rs: String-Katalog (en), Schlüssel + benannte Platzhalter, Tests; Clap-Help darüber
 - [x] `i18n-2` Bestehende deutsche Strings/Kommentare/Docs im Code auf Englisch, UI-Texte in den Katalog
 
-## net (7/10)
+## net (8/10)
 
 - [x] `net-1` TLS über Arti-Stream (https-Connector, vertragsfrei)
 - [x] `net-2` TorTransport implementiert Vertrag A
@@ -36,7 +36,7 @@ Roadmap items: 43 checked, 26 open
 - [x] `net-5` M1.6 Health-Check / Auto-Reconnect
 - [x] `net-6` M5 DNS-Leak-Check, Bridges
 - [x] `net-7` Headless-Daemon & RPC-API (JSON-RPC/REST-Steuerung)
-- [~] `net-8` Onion-Dienste: .onion-URLs (Arti-Feature onion-service-client) + Vanguards - **in progress**
+- [x] `net-8` Onion-Dienste: .onion-URLs (Arti-Feature onion-service-client) + Vanguards
 - [ ] `net-9` FTP/SFTP ueber Tor
 - [ ] `net-10` HLS/DASH: Segment-Downloads (parallele Fragmente, Zusammenfuegen)
 
