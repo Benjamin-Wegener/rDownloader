@@ -1,9 +1,9 @@
 # rdownloader status
 
-Generated 2026-10-22 at commit c8ba9fe - regenerate with `scripts/status-md.sh`
+Generated 2026-10-22 at commit 0456921 - regenerate with `scripts/status-md.sh`
 
-`[#################---]` **41/48** steps done (85%), 2 in progress, 5 open
-Roadmap items: 48 checked, 22 open
+`[#################---]` **42/48** steps done (88%), 1 in progress, 5 open
+Roadmap items: 49 checked, 21 open
 
 ## core (10/14)
 
@@ -41,7 +41,7 @@ Roadmap items: 48 checked, 22 open
 - [ ] `net-10` HLS/DASH: Segment-Downloads (parallele Fragmente, Zusammenfuegen)
 - [ ] `net-11` SFTP (SSH-Client mit Host-Key-Pruefung) und FTPS ueber Tor
 
-## plugins (7/8)
+## plugins (8/8)
 
 - [x] `plugins-1` Beispiel-Hoster-Plugin (Redirect-Auflösung)
 - [x] `plugins-2` Crawler-Plugin-Typ
@@ -50,7 +50,7 @@ Roadmap items: 48 checked, 22 open
 - [x] `plugins-5` Berechtigungsmodell (Design-Dokument)
 - [x] `plugins-6` Container- & Listen-Import (.dlc, .ccf, Textlisten, .metalink)
 - [x] `plugins-7` WASM-Plugin-Laufzeit (Wasmtime-Sandbox unter Berechtigungsmodell)
-- [~] `plugins-8` netrc-Zugangsdaten + Cookie-Import (Firefox/Chromium/Netscape-Format) - **in progress**
+- [x] `plugins-8` netrc-Zugangsdaten + Cookie-Import (Firefox/Chromium/Netscape-Format)
 
 ## infra (6/6)
 
