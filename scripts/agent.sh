@@ -13,13 +13,13 @@ rows() { grep -v '^#' "$queue" | grep -v '^[[:space:]]*$'; }
 is_done() { [ -e "$state/done/$1" ]; }
 
 startable() { # gibt "id<TAB>bereich<TAB>titel" der ersten startbaren Zeile aus
-  declare -A blocked=()
+  seen=' '
   while IFS=$'\t' read -r id area title needs; do
     is_done "$id" && continue
-    if [ -n "${blocked[$area]:-}" ]; then continue; fi
-    blocked[$area]=1                       # Bereich strikt sequenziell: nur der erste offene Schritt zählt
+    case "$seen" in *" $area "*) continue;; esac
+    seen="$seen$area "                     # Bereich strikt sequenziell: nur der erste offene Schritt zählt
     [ -e "$state/areas/$area" ] && continue
-    ok=1; if [ "$needs" != "-" ]; then IFS=, read -ra n <<<"$needs"; for d in "${n[@]}"; do is_done "$d" || ok=0; done; fi
+    ok=1; if [ "$needs" != "-" ]; then for d in $(echo "$needs" | tr , " "); do is_done "$d" || ok=0; done; fi
     [ $ok = 1 ] && { printf '%s\t%s\t%s\n' "$id" "$area" "$title"; return 0; }
   done < <(rows)
   return 1
