@@ -123,7 +123,7 @@ Abgleich mit aria2, JDownloader, yt-dlp und der Arti-Dokumentation. Reihenfolge 
 - [ ] 🟢 Bedingtes Laden (`If-Modified-Since`) (core-12)
 - [ ] 🟠 Mirrors: mehrere URLs pro Datei, Auswahl nach Geschwindigkeit; Metalink-Block-Prüfsummen (core-13)
 - [ ] 🟢 Ereignis-Hooks bei Start/Fertig/Fehler und Desktop-Benachrichtigung (core-14)
-- [ ] 🟢 `~/.netrc`-Zugangsdaten und Cookie-Import aus Browsern (plugins-8)
+- [x] 🟢 `~/.netrc`-Zugangsdaten und Cookie-Import aus Browsern (Firefox/Chromium/Netscape, plugins-8)
 
 **Protokolle & Inhalte**
 - [x] 🟢 FTP über Tor (unverschlüsselt; Passiv-Modus, Resume, pro Part eigene Isolation) (net-9)

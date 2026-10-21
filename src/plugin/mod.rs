@@ -15,8 +15,10 @@ use url::Url;
 pub mod account;
 pub mod captcha;
 pub mod container;
+pub mod cookies;
 pub mod crawler;
 pub mod example_redirect;
+pub mod netrc;
 pub mod permissions;
 pub mod wasm;
 
@@ -36,8 +38,15 @@ pub use container::{
     ContainerContent, ContainerFormat, ContainerItem,
 };
 #[allow(unused_imports)]
+pub use cookies::{
+    import_cookie_file, parse_netscape_cookies, read_chromium_cookies, read_firefox_cookies,
+    CookieFormat, CookieImportReport, ImportedCookie,
+};
+#[allow(unused_imports)]
 pub use crawler::{CrawledLink, CrawlerPlugin, HtmlLinkCrawlerPlugin};
 pub use example_redirect::ExampleRedirectHosterPlugin;
+#[allow(unused_imports)]
+pub use netrc::{Netrc, NetrcEntry};
 #[allow(unused_imports)]
 pub use permissions::{PermissionDenied, PluginPermissions};
 #[allow(unused_imports)]
