@@ -68,7 +68,7 @@ Abhängig von M1 (Engine muss echten Fortschritt liefern).
 
 ## M3 – Plugin-System 🟨 🟠
 Statisch zuerst, dynamisch erst bei echtem Bedarf.
-- [ ] 🟠 Beispiel-Hoster-Plugin (Redirect-Auflösung einer konkreten Site) – validiert, ob der Trait taugt
+- [x] 🟠 Beispiel-Hoster-Plugin (Redirect-Auflösung einer konkreten Site) – validiert, ob der Trait taugt
 - [ ] 🟠 Crawler-Plugin-Typ (weitere Links auf einer Seite) → speist LinkGrabber
 - [ ] 🟠 Account-Plugin-Typ (Login-Cookies, Session-Management)
 - [ ] 🟠 Captcha-Plugin-Typ (interaktive Lösung in der TUI)

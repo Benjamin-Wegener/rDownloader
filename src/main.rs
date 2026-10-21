@@ -22,7 +22,7 @@ use tracing::{error, info, warn};
 use tracing_subscriber::EnvFilter;
 
 use crate::download::{run_job, DownloadJob, JobProgress, JobStatus};
-use crate::plugin::{DirectDownloadPlugin, PluginRegistry};
+use crate::plugin::{DirectDownloadPlugin, ExampleRedirectHosterPlugin, PluginRegistry};
 use crate::tor::TorManager;
 use crate::tracker::Tracker;
 use crate::ui::{App, SharedApp, UiCommand};
@@ -92,6 +92,7 @@ async fn main() -> Result<()> {
     // Plugin-Registry
     let mut registry = PluginRegistry::new();
     registry.register(Arc::new(DirectDownloadPlugin));
+    registry.register(Arc::new(ExampleRedirectHosterPlugin::new()));
     info!("{} Plugin(s) geladen", registry.len());
 
     // Tracker

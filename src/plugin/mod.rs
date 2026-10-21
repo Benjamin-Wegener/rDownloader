@@ -11,6 +11,10 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use url::Url;
 
+pub mod example_redirect;
+
+pub use example_redirect::ExampleRedirectHosterPlugin;
+
 /// Metadaten eines Plugins.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PluginMeta {
