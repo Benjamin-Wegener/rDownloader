@@ -15,6 +15,13 @@ reqwest = { version = "0.12", features = ["rustls-tls", "stream", "socks"], defa
 futures = "0.3"
 bytes = "1"
 
+# HTTP/1.1 über Arti-Stream + TLS (net-1)
+hyper = { version = "1", features = ["client", "http1"] }
+hyper-util = { version = "0.1", features = ["tokio"] }
+http-body-util = "0.1"
+tokio-rustls = { version = "0.26", default-features = false, features = ["ring", "tls12"] }
+webpki-roots = "1"
+
 # Serialization / Config / Tracking
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
@@ -38,6 +45,9 @@ url = { version = "2", features = ["serde"] }
 uuid = { version = "1", features = ["v4", "serde"] }
 chrono = { version = "0.4", features = ["serde"] }
 indicatif = "0.17"
+
+[dev-dependencies]
+hyper = { version = "1", features = ["server"] }
 
 [profile.release]
 lto = true

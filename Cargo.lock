@@ -1880,6 +1880,7 @@ dependencies = [
  "http",
  "http-body",
  "httparse",
+ "httpdate",
  "itoa",
  "pin-project-lite",
  "smallvec",
@@ -3278,6 +3279,9 @@ dependencies = [
  "crossterm",
  "dirs 5.0.1",
  "futures",
+ "http-body-util",
+ "hyper",
+ "hyper-util",
  "indicatif",
  "ratatui",
  "reqwest",
@@ -3285,12 +3289,14 @@ dependencies = [
  "serde_json",
  "thiserror 1.0.69",
  "tokio",
+ "tokio-rustls",
  "toml 0.8.23",
  "tor-rtcompat",
  "tracing",
  "tracing-subscriber",
  "url",
  "uuid",
+ "webpki-roots",
 ]
 
 [[package]]

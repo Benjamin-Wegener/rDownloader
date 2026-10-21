@@ -8,6 +8,7 @@
 mod config;
 mod contract;
 mod download;
+pub mod net;
 mod plugin;
 mod tor;
 mod tracker;
