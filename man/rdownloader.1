@@ -1,0 +1,87 @@
+.TH RDOWNLOADER 1 "2026-10-22" "rdownloader" "User Commands"
+.SH NAME
+rdownloader \- download manager with Tor, multi-part downloads and a terminal UI
+.SH SYNOPSIS
+.B rdownloader
+[\fIOPTIONS\fR] [\fIURL\fR]
+.SH DESCRIPTION
+.B rdownloader
+downloads files through the Tor network using an embedded Arti client.
+Each download is split into parts that use separate circuits, failed parts are retried,
+and interrupted downloads can be resumed.
+Without a URL the terminal UI starts.
+.SH OPTIONS
+.TP
+.BR \-p ", " \-\-parts " \fIN\fR"
+Number of parts per download (1\-10). Servers without byte-range support are downloaded over one connection.
+.TP
+.BR \-o ", " \-\-output " \fIPATH\fR"
+Target file or directory.
+.TP
+.B \-\-headless
+No terminal UI; log progress to the terminal.
+.TP
+.BR \-t ", " \-\-tor\-clients " \fIN\fR"
+Deprecated and ignored. A single Tor client isolates every part.
+.TP
+.B \-\-no\-tor
+Do not start Tor. For testing only; downloads need Tor and do not run in this mode.
+.TP
+.BR \-h ", " \-\-help
+Print help.
+.TP
+.BR \-V ", " \-\-version
+Print the version.
+.SH TERMINAL UI KEYS
+.TP
+.B a
+Add a URL.
+.TP
+.B i
+Import links from a text or M3U file.
+.TP
+.B v
+Import links from the clipboard.
+.TP
+.B Enter
+Show or hide details (parts, speed, ETA, Tor state) of the selected download.
+.TP
+.BR p ", " r ", " c ", " d
+Pause, resume, cancel, remove the selected download.
+.TP
+.BR Tab ", " Shift+Tab
+Switch tab.
+.TP
+.B q
+Quit.
+.SH FILES
+.TP
+.I config.toml
+In the platform config directory under
+.IR rdownloader/ ,
+for example
+.I ~/.config/rdownloader/config.toml
+on Linux and
+.I ~/Library/Application Support/rdownloader/config.toml
+on macOS. Created on first start. Keys:
+.BR max_parts ", " max_retries ", " max_speed_kib " (KiB/s, 0 = unlimited), " bridges ", " download_dir ", " temp_dir ", " tor_data_dir ", " user_agent ", " connect_timeout_secs ", " read_timeout_secs ", " log_level .
+.TP
+.I downloads.json
+Download history and session state, in the platform data directory under
+.IR rdownloader/ .
+Stored unencrypted.
+.SH ENVIRONMENT
+.TP
+.B RUST_LOG
+Log filter; overrides
+.BR log_level .
+.TP
+.B RDOWNLOADER_LANG
+Interface language code, when a catalog for it is loaded.
+.SH SECURITY
+Anonymity depends on Tor. Plain http URLs are visible to the exit relay; prefer https.
+Local state files are not encrypted. See
+.I docs/threat-model.md
+in the source tree.
+.SH SEE ALSO
+.BR tor (1)

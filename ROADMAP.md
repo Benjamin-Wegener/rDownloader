@@ -84,7 +84,7 @@ Statisch zuerst, dynamisch erst bei echtem Bedarf.
 CI früh starten (parallel zu M1), Rest nach M2.
 - [x] 🔴 **CI jetzt**: GitHub Actions mit `cargo fmt --check`, `clippy -D warnings`, `cargo test` (macOS + Linux)
 - [ ] 🟠 Prebuilt-Binaries (macOS/Linux/Windows) via GitHub Releases
-- [ ] 🟠 Manpage + `--help` (clap), README mit Quickstart
+- [x] 🟠 Manpage + `--help` (clap), README mit Quickstart (Threat-Modell: docs/threat-model.md)
 - [ ] 🟢 `cargo install` (crates.io), Homebrew-Tap / AUR / Scoop
 
 ## M5 – Härtung & Extras (parallel, nicht blockierend) 🟢
