@@ -4,15 +4,16 @@ use std::collections::HashMap;
 use url::Url;
 
 use super::{DownloadPlugin, PluginKind, PluginMeta, ResolvedLink};
+use crate::t;
 
-/// Ein Beispiel-Hoster-Plugin, das Redirect-URLs / Forwarding-Links auflöst.
+/// An example hoster plugin that resolves redirect URLs / forwarding links.
 ///
-/// Handhabt Domains wie `example-hoster.local`, `redirector.local`, `hoster.example.com`.
+/// Handles domains such as `example-hoster.local`, `redirector.local`, `hoster.example.com`.
 ///
-/// Unterstützt typische Redirect-Formen von Share-Hostern:
-/// 1. Query-Parameter wie `?target=...` oder `?url=...` oder `?download=...`
-/// 2. Pfad-basierte Redirects: `/dl/<target-url>`
-/// 3. HTTP-Redirects via Location-Header (wenn aufgelöst mit HTTP-Client)
+/// Supports typical redirect forms of share hosters:
+/// 1. Query parameters such as `?target=...` or `?url=...` or `?download=...`
+/// 2. Path-based redirects: `/dl/<target-url>`
+/// 3. HTTP redirects via the Location header (when resolved with an HTTP client)
 pub struct ExampleRedirectHosterPlugin {
     meta: PluginMeta,
 }
@@ -25,7 +26,7 @@ impl ExampleRedirectHosterPlugin {
                 name: "Example Redirect Hoster".into(),
                 version: "0.1.0".into(),
                 author: "rdownloader".into(),
-                description: "Beispiel-Hoster-Plugin zur Auflösung von Link-Redirects".into(),
+                description: t!("plugin.redirect.description"),
                 kind: PluginKind::Hoster,
                 domains: vec![
                     "example-hoster.local".into(),
@@ -37,9 +38,9 @@ impl ExampleRedirectHosterPlugin {
         }
     }
 
-    /// Hilfsfunktion zur Extraktion einer Ziel-URL aus einer Weiterleitungs-URL
+    /// Helper to extract a target URL from a redirect URL
     pub fn extract_redirect_target(url: &Url) -> Result<Url> {
-        // 1. Suche nach bekannten Query-Parametern ("url", "target", "link", "download", "dest")
+        // 1. Look for known query parameters ("url", "target", "link", "download", "dest")
         for (key, val) in url.query_pairs() {
             if matches!(
                 key.as_ref(),
@@ -51,7 +52,7 @@ impl ExampleRedirectHosterPlugin {
             }
         }
 
-        // 2. Pfad-basiertes Weiterleiten, z. B. /dl/https://... oder /download/https://...
+        // 2. Path-based forwarding, e.g. /dl/https://... or /download/https://...
         let path = url.path();
         for prefix in &["/dl/", "/download/", "/goto/", "/out/"] {
             if let Some(rest) = path.strip_prefix(prefix) {
@@ -61,7 +62,7 @@ impl ExampleRedirectHosterPlugin {
             }
         }
 
-        bail!("Kein gültiges Weiterleitungsziel in URL '{}' gefunden", url)
+        bail!(t!("plugin.redirect.no_target", url = url))
     }
 }
 
@@ -78,8 +79,8 @@ impl DownloadPlugin for ExampleRedirectHosterPlugin {
     }
 
     async fn resolve(&self, url: Url) -> Result<ResolvedLink> {
-        let target_url = Self::extract_redirect_target(&url)
-            .context("Beispiel-Hoster-Plugin konnte den Download-Link nicht auflösen")?;
+        let target_url =
+            Self::extract_redirect_target(&url).context(t!("plugin.redirect.resolve_failed"))?;
 
         let filename = target_url
             .path_segments()

@@ -1,8 +1,8 @@
-//! rdownloader – Clean-room Rust Download-Manager mit Tor (Arti), Multi-Part & TUI.
+//! rdownloader – clean-room Rust download manager with Tor (Arti), multi-part & TUI.
 //!
-//! Inspiriert von JDownloader (Konzept/UX), kein Code übernommen.
+//! Inspired by JDownloader (concept/UX), no code taken.
 
-// Das Gerüst wächst schrittweise; ungenutzter Code ist bis dahin erwartet.
+// The scaffold grows step by step; unused code is expected until then.
 #![allow(dead_code)]
 
 mod config;
@@ -71,7 +71,7 @@ async fn main() -> Result<()> {
     }
     let cli = Cli::from_arg_matches(&cli_command().get_matches())?;
 
-    // Config laden
+    // Load config
     let cfg = config::init()?;
     tracing_subscriber::fmt()
         .with_env_filter(
@@ -79,10 +79,10 @@ async fn main() -> Result<()> {
         )
         .init();
 
-    info!("rdownloader gestartet");
+    info!("rdownloader started");
     info!("Config: {}", cfg.describe());
 
-    // Tor-Manager bootstrap (oder deaktiviert)
+    // Tor manager bootstrap (or disabled)
     // One client is enough: every part gets its own isolation token.
     let configured_clients = cli.tor_clients.unwrap_or(cfg.tor_clients).clamp(1, 10);
     let tor = if cli.no_tor {
@@ -109,40 +109,40 @@ async fn main() -> Result<()> {
                 Some(Arc::new(tm))
             }
             Err(e) => {
-                error!("Tor-Bootstrap fehlgeschlagen: {e:#}");
-                anyhow::bail!("Tor konnte nicht gestartet werden: {e:#}");
+                error!("Tor bootstrap failed: {e:#}");
+                anyhow::bail!(t!("main.error.tor_start", e = format!("{e:#}")));
             }
         }
     };
 
-    // Plugin-Registry
+    // Plugin registry
     let mut registry = PluginRegistry::new();
     registry.register(Arc::new(DirectDownloadPlugin));
     registry.register(Arc::new(ExampleRedirectHosterPlugin::new()));
-    info!("{} Plugin(s) geladen", registry.len());
+    info!("{} plugin(s) loaded", registry.len());
 
     // Tracker
     let tracker = Tracker::new()?;
     info!("Tracker: {}", tracker.path().display());
 
-    // Download-Verzeichnis anlegen
+    // Create the download directory
     let dl_dir = cfg.download_dir();
     std::fs::create_dir_all(&dl_dir)?;
 
-    // Job-Queue + UI-Command-Channel
+    // Job queue + UI command channel
     let (job_tx, job_rx) = mpsc::unbounded_channel::<(DownloadJob, oneshot::Sender<Result<()>>)>();
     let (ui_cmd_tx, ui_cmd_rx) = mpsc::unbounded_channel::<UiCommand>();
     let (_job_event_tx, job_event_rx) = mpsc::unbounded_channel::<JobEvent>();
 
-    // Gemeinsamer Job-Progress-Store für TUI + Engine
+    // Shared job progress store for TUI + engine
     let jobs_progress: Arc<Mutex<Vec<JobProgress>>> = Arc::new(Mutex::new(Vec::new()));
 
-    // Wenn CLI-URL angegeben → direkter Download (headless oder mit TUI-Hintergrund)
+    // If a CLI URL is given → direct download (headless or with the TUI in the background)
     if let Some(url_str) = &cli.url {
-        let url = url::Url::parse(url_str).context("Ungültige URL")?;
+        let url = url::Url::parse(url_str).context(t!("ui.status.invalid_url"))?;
         let plugin = registry
             .find_for_url(&url)
-            .context("Kein Plugin für diese URL")?;
+            .context(t!("ui.status.no_plugin", url = url_str))?;
         let resolved = plugin.resolve(url).await?;
         let filename = resolved
             .filename
@@ -167,7 +167,7 @@ async fn main() -> Result<()> {
         }));
 
         if cli.headless || cli.tor_clients.is_some() {
-            // Headless: direkt ausführen
+            // Headless: run directly
             if let Some(tor) = tor {
                 let cancel = Arc::new(tokio::sync::Notify::new());
                 let res = run_job(&job, tor, progress.clone(), cancel).await;
@@ -175,10 +175,10 @@ async fn main() -> Result<()> {
                 tracker.update_from_progress(&p, output.to_str().unwrap_or(""), parts)?;
                 res
             } else {
-                anyhow::bail!("Headless ohne Tor nicht unterstützt (noch)")
+                anyhow::bail!(t!("main.error.headless_without_tor"))
             }
         } else {
-            // Mit TUI: Job im Hintergrund, TUI zeigt Fortschritt
+            // With TUI: job in the background, the TUI shows progress
             start_job_background(
                 job,
                 tor.clone(),
@@ -201,7 +201,7 @@ async fn main() -> Result<()> {
             .await
         }
     } else {
-        // Nur TUI
+        // TUI only
         run_tui(
             ui_cmd_tx,
             ui_cmd_rx,
@@ -240,7 +240,7 @@ async fn run_tui(
         a.status_msg = t!("ui.status.session_restored", count = restored);
     }
 
-    // UI-Command-Handler: neue Downloads enqueue
+    // UI command handler: enqueue new downloads
     let tor_c = tor.clone();
     let registry_c = registry.clone();
     let tracker_c = tracker.clone();
@@ -257,7 +257,7 @@ async fn run_tui(
                                 Some(p) => p,
                                 None => {
                                     let mut a = app_for_ui.lock().unwrap();
-                                    a.status_msg = format!("Kein Plugin für {url}");
+                                    a.status_msg = t!("ui.status.no_plugin", url = url);
                                     continue;
                                 }
                             };
@@ -284,22 +284,22 @@ async fn run_tui(
                                         tor_c.clone(),
                                         progress.clone(),
                                         tracker_c.clone(),
-                                        // Direkt in jobs_progress spiegeln
+                                        // Mirror directly into jobs_progress
                                         mpsc::unbounded_channel().0,
                                         jobs_progress_c.clone(),
                                     );
                                     let mut a = app_for_ui.lock().unwrap();
-                                    a.status_msg = format!("Download gestartet: {filename}");
+                                    a.status_msg = t!("ui.status.started", file = filename);
                                 }
                                 Err(e) => {
                                     let mut a = app_for_ui.lock().unwrap();
-                                    a.status_msg = format!("Resolve-Fehler: {e}");
+                                    a.status_msg = t!("ui.status.resolve_error", e = e);
                                 }
                             }
                         }
                         Err(_) => {
                             let mut a = app_for_ui.lock().unwrap();
-                            a.status_msg = "Ungültige URL".into();
+                            a.status_msg = t!("ui.status.invalid_url");
                         }
                     }
                 }
@@ -337,7 +337,7 @@ async fn run_tui(
         }
     });
 
-    // Fortschritt-Poller: spiegelt Job-Progress in App.jobs (für TUI-Draw)
+    // Progress poller: mirrors job progress into App.jobs (for the TUI draw)
     {
         let app = app.clone();
         let jobs_progress = jobs_progress.clone();
@@ -353,8 +353,8 @@ async fn run_tui(
         });
     }
 
-    // TUI auf dem Haupt-Thread (blocking)
-    // crossterm braucht den Main-Thread auf macOS
+    // TUI on the main thread (blocking)
+    // crossterm needs the main thread on macOS
     tokio::task::spawn_blocking(move || {
         let _ = ui::run(app_for_tui);
     })
@@ -375,15 +375,11 @@ fn start_job_background(
     let parts = job.max_parts;
     // Register the job with the tracker before the transfer starts: a session
     // that is killed during the download must still be restorable.
-    if let Err(e) = tracker.register(TrackEntry::from_job(
-        &job,
-        &output.to_string_lossy(),
-        parts,
-    )) {
+    if let Err(e) = tracker.register(TrackEntry::from_job(&job, &output.to_string_lossy(), parts)) {
         warn!("Job {} could not be tracked: {e:#}", job.id);
     }
     tokio::spawn(async move {
-        // In jobs_progress eintragen
+        // Insert into jobs_progress
         {
             let p = progress.lock().await;
             let mut jp = jobs_progress.lock().unwrap();
@@ -432,12 +428,12 @@ fn start_job_background(
         let res = if let Some(tor) = tor {
             run_job(&job, tor, progress.clone(), cancel).await
         } else {
-            Err(anyhow::anyhow!("Tor nicht verfügbar"))
+            Err(anyhow::anyhow!(t!("main.error.tor_unavailable")))
         };
 
         forwarder.abort();
 
-        // Finale Progress + Tracker-Update
+        // Final progress + tracker update
         {
             let p = progress.lock().await;
             let _ = tracker.update_from_progress(&p, output.to_str().unwrap_or(""), parts);
@@ -450,8 +446,8 @@ fn start_job_background(
         }
 
         match res {
-            Ok(()) => info!("Job fertig: {}", job.output.display()),
-            Err(e) => error!("Job fehlgeschlagen: {e:#}"),
+            Ok(()) => info!("Job done: {}", job.output.display()),
+            Err(e) => error!("Job failed: {e:#}"),
         }
     });
 }

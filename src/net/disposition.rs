@@ -163,8 +163,8 @@ mod tests {
         let value = "attachment; filename=\"fallback.txt\"; filename*=UTF-8''na%C3%AFve%20file.txt";
         assert_eq!(filename(value).as_deref(), Some("naïve file.txt"));
 
-        let latin1 = "attachment; filename*=iso-8859-1''%E4rger.txt";
-        assert_eq!(filename(latin1).as_deref(), Some("ärger.txt"));
+        let latin1 = "attachment; filename*=iso-8859-1''caf%E9.txt";
+        assert_eq!(filename(latin1).as_deref(), Some("café.txt"));
 
         assert_eq!(
             filename("attachment; filename*=UTF-8''bad%ZZ.txt").as_deref(),

@@ -1,13 +1,12 @@
-//! HTTP(S)-Connector über Tor-Streams.
+//! HTTP(S) connector over Tor streams.
 //!
-//! `arti-client` liefert nur rohe TCP-Streams. Für `https` wird der Stream mit
-//! `tokio-rustls` (WebPKI-Wurzeln) um TLS erweitert; darauf setzt ein
-//! Hyper-HTTP/1.1-Client auf. Dadurch müssen weder Statuszeile noch Header
-//! oder Chunked-Encoding von Hand geparst werden.
+//! `arti-client` only provides raw TCP streams. For `https` the stream is wrapped
+//! in TLS via `tokio-rustls` (WebPKI roots); a Hyper HTTP/1.1 client is built on
+//! top of that. This means neither the status line nor headers or chunked
+//! encoding have to be parsed by hand.
 //!
-//! Vertragsfrei: Dieses Modul kennt weder `contract.rs` noch die
-//! Download-Engine und lässt sich mit einem beliebigen [`StreamProvider`]
-//! testen.
+//! Contract-free: this module knows neither `contract.rs` nor the download
+//! engine and can be tested with any [`StreamProvider`].
 
 use std::error::Error;
 use std::future::Future;
@@ -30,6 +29,7 @@ use tokio_rustls::TlsConnector as RustlsConnector;
 use tracing::debug;
 use url::Url;
 
+use crate::t;
 use crate::tor::{AsyncReadWrite, TorManager};
 
 pub mod transport;
@@ -38,7 +38,7 @@ mod disposition;
 
 pub use transport::TorTransport;
 
-/// Future, die einen rohen Bytestrom zu `host:port` liefert.
+/// Future that yields a raw byte stream to `host:port`.
 pub type ConnectFuture<'a> =
     Pin<Box<dyn Future<Output = Result<Box<dyn AsyncReadWrite>>> + Send + 'a>>;
 
@@ -56,14 +56,14 @@ impl StreamProvider for TorManager {
     }
 }
 
-/// WebPKI-Wurzeln (Mozilla-Trust-Store), wie sie auch Browser verwenden.
+/// WebPKI roots (Mozilla trust store), as used by browsers.
 pub fn root_store() -> RootCertStore {
     let mut roots = RootCertStore::empty();
     roots.extend(webpki_roots::TLS_SERVER_ROOTS.iter().cloned());
     roots
 }
 
-/// TLS-Konfiguration für ausgehende Verbindungen (nur HTTP/1.1 via ALPN).
+/// TLS configuration for outgoing connections (HTTP/1.1 only via ALPN).
 pub fn tls_config() -> Arc<ClientConfig> {
     let mut config = ClientConfig::builder()
         .with_root_certificates(root_store())
@@ -75,17 +75,17 @@ pub fn tls_config() -> Arc<ClientConfig> {
 fn server_name(host: &str) -> Result<ServerName<'static>> {
     let host = bare_host(host);
     ServerName::try_from(host.to_owned())
-        .map_err(|_| anyhow::anyhow!("Ungültiger TLS-Hostname: {host:?}"))
+        .map_err(|_| anyhow::anyhow!(t!("net.error.tls_hostname", host = format!("{host:?}"))))
 }
 
-/// Entfernt IPv6-Klammern (`[::1]` → `::1`).
+/// Strips IPv6 brackets (`[::1]` → `::1`).
 fn bare_host(host: &str) -> &str {
     host.strip_prefix('[')
         .and_then(|h| h.strip_suffix(']'))
         .unwrap_or(host)
 }
 
-/// Wrappt einen Stream in TLS.
+/// Wraps a stream in TLS.
 #[derive(Clone)]
 pub struct TlsConnector {
     inner: RustlsConnector,
@@ -108,7 +108,7 @@ impl TlsConnector {
         }
     }
 
-    /// Führt den TLS-Handshake über einem bereits offenen Bytestrom aus.
+    /// Performs the TLS handshake over an already open byte stream.
     pub async fn connect<S>(&self, stream: S, host: &str) -> Result<TlsStream<S>>
     where
         S: AsyncRead + AsyncWrite + Unpin,
@@ -117,11 +117,11 @@ impl TlsConnector {
         self.inner
             .connect(name, stream)
             .await
-            .with_context(|| format!("TLS-Handshake mit {host}"))
+            .with_context(|| t!("net.error.tls_handshake", host = host))
     }
 }
 
-/// Verbindungsziel einer URL: Port und ob TLS nötig ist.
+/// Connection target of a URL: port and whether TLS is needed.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct ConnectPlan {
     pub port: u16,
@@ -137,24 +137,24 @@ fn default_port(scheme: &str) -> Option<u16> {
 }
 
 fn plan_for(scheme: Option<&str>, port: Option<u16>) -> Result<ConnectPlan> {
-    let scheme = scheme.context("URL ohne Schema")?;
+    let scheme = scheme.context(t!("net.error.url_without_scheme"))?;
     let tls = match scheme {
         "https" => true,
         "http" => false,
-        other => bail!("Nicht unterstütztes Schema: {other}"),
+        other => bail!(t!("net.error.unsupported_scheme", scheme = other)),
     };
     let port = port
         .or_else(|| default_port(scheme))
-        .context("URL ohne Port")?;
+        .context(t!("net.error.url_without_port"))?;
     Ok(ConnectPlan { port, tls })
 }
 
-/// Ermittelt Port + TLS-Bedarf einer URL.
+/// Determines the port and TLS requirement of a URL.
 pub fn connect_plan(url: &Url) -> Result<ConnectPlan> {
     plan_for(Some(url.scheme()), url.port_or_known_default())
 }
 
-/// Verbindet über einen [`StreamProvider`] und ergänzt bei Bedarf TLS.
+/// Connects via a [`StreamProvider`] and adds TLS when needed.
 #[derive(Clone)]
 pub struct TorConnector {
     provider: Arc<dyn StreamProvider>,
@@ -172,7 +172,7 @@ impl TorConnector {
 
     /// Opens a byte stream to `url` (plain HTTP, TLS for HTTPS).
     pub async fn connect(&self, isolation: u64, url: &Url) -> Result<Box<dyn AsyncReadWrite>> {
-        let host = url.host_str().context("URL ohne Host")?;
+        let host = url.host_str().context(t!("net.error.url_without_host"))?;
         let plan = connect_plan(url)?;
         self.connect_addr(isolation, host, plan.port, plan.tls)
             .await
@@ -190,7 +190,7 @@ impl TorConnector {
             .provider
             .connect(isolation, host, port)
             .await
-            .with_context(|| format!("Stream → {host}:{port}"))?;
+            .with_context(|| t!("net.error.stream", host = host, port = port))?;
         if tls {
             let stream = self.tls.connect(stream, host).await?;
             Ok(Box::new(stream))
@@ -204,8 +204,8 @@ fn default_user_agent() -> String {
     concat!("rdownloader/", env!("CARGO_PKG_VERSION")).to_string()
 }
 
-/// Minimaler HTTP/1.1-Client, der jede Verbindung über den [`TorConnector`]
-/// aufbaut.
+/// Minimal HTTP/1.1 client that opens every connection through the
+/// [`TorConnector`].
 #[derive(Clone)]
 pub struct TorHttpClient {
     connector: TorConnector,
@@ -268,7 +268,9 @@ impl TorHttpClient {
     {
         let uri = request.uri().clone();
         let plan = plan_for(uri.scheme_str(), uri.port_u16())?;
-        let host = uri.host().context("Request-URI ohne Host")?;
+        let host = uri
+            .host()
+            .context(t!("net.error.request_uri_without_host"))?;
 
         if !request.headers().contains_key(HOST) {
             let authority = authority(&uri, host, plan.port);
@@ -283,18 +285,18 @@ impl TorHttpClient {
             .await?;
         let (mut sender, connection) = http1::handshake(TokioIo::new(stream))
             .await
-            .context("HTTP/1.1-Handshake")?;
+            .context(t!("net.error.http_handshake"))?;
 
         tokio::spawn(async move {
             if let Err(error) = connection.await {
-                debug!("HTTP-Verbindung beendet: {error}");
+                debug!("HTTP connection closed: {error}");
             }
         });
 
         sender
             .send_request(request)
             .await
-            .context("HTTP-Request senden")
+            .context(t!("net.error.send_request"))
     }
 }
 
@@ -333,7 +335,7 @@ mod tests {
 
     fn test_client_config() -> Arc<ClientConfig> {
         let mut roots = RootCertStore::empty();
-        roots.add(cert_der()).expect("Test-Zertifikat");
+        roots.add(cert_der()).expect("test certificate");
         let mut config = ClientConfig::builder()
             .with_root_certificates(roots)
             .with_no_client_auth();
@@ -346,7 +348,7 @@ mod tests {
             ServerConfig::builder()
                 .with_no_client_auth()
                 .with_single_cert(vec![cert_der()], key_der())
-                .expect("Test-Server-Config"),
+                .expect("test server config"),
         )
     }
 

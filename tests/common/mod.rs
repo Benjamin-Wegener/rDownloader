@@ -1,13 +1,13 @@
-//! Test-Harness: lokaler HTTP-Server mit Range-Support und Abbruch-Simulation.
+//! Test harness: local HTTP server with range support and abort simulation.
 //!
-//! Bewusst abhängigkeitsfrei (nur `tokio`), damit es von jedem Test in
-//! `tests/` genutzt werden kann und keine zusätzlichen Crates braucht.
+//! Deliberately dependency-free (only `tokio`) so any test under `tests/` can
+//! use it without additional crates.
 //!
-//! Der Server bietet:
-//! - `HEAD`/`GET` mit `Accept-Ranges: bytes` und `Range`-Unterstützung (206),
+//! The server provides:
+//! - `HEAD`/`GET` with `Accept-Ranges: bytes` and `Range` support (206),
 //! - `ETag`/`Last-Modified`/`Content-Disposition`,
-//! - Abbruch-Simulation: die Verbindung wird mitten im Body abgerissen,
-//! - Aufzeichnung aller Anfragen für Assertions.
+//! - abort simulation: the connection is torn down in the middle of the body,
+//! - recording of all requests for assertions.
 
 #![allow(dead_code)]
 
@@ -18,26 +18,26 @@ use std::sync::{Arc, Mutex};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::{TcpListener, TcpStream};
 
-/// Eine vom Server empfangene Anfrage.
+/// A request received by the server.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RecordedRequest {
     pub method: String,
     pub path: String,
-    /// `Range`-Header als `(start, end)`; `end == None` heißt "bis zum Ende".
+    /// `Range` header as `(start, end)`; `end == None` means "until the end".
     pub range: Option<(u64, Option<u64>)>,
 }
 
-/// Konfiguration des Test-Servers.
+/// Configuration of the test server.
 #[derive(Debug, Clone)]
 pub struct ServerConfig {
     pub body: Vec<u8>,
-    /// `Accept-Ranges: bytes` senden und Range-Anfragen beantworten.
+    /// Send `Accept-Ranges: bytes` and answer range requests.
     pub accept_ranges: bool,
     pub etag: Option<String>,
     pub last_modified: Option<String>,
     pub filename: Option<String>,
-    /// Nach wie vielen Bytes der Body abgerissen wird (Abbruch-Simulation).
-    /// `None` = kein Abbruch.
+    /// After how many bytes the body is torn down (abort simulation).
+    /// `None` = no abort.
     pub abort_after: Option<usize>,
 }
 
@@ -78,14 +78,14 @@ impl ServerConfig {
     }
 }
 
-/// Laufender Test-Server.
+/// Running test server.
 pub struct TestServer {
     addr: SocketAddr,
     requests: Arc<Mutex<Vec<RecordedRequest>>>,
 }
 
 impl TestServer {
-    /// Startet den Server auf einem freien Loopback-Port.
+    /// Starts the server on a free loopback port.
     pub async fn start(config: ServerConfig) -> Self {
         let listener = TcpListener::bind(("127.0.0.1", 0))
             .await
@@ -115,12 +115,12 @@ impl TestServer {
         self.addr
     }
 
-    /// Absolute URL für einen Pfad, z. B. `http://127.0.0.1:1234/file`.
+    /// Absolute URL for a path, e.g. `http://127.0.0.1:1234/file`.
     pub fn url(&self, path: &str) -> String {
         format!("http://{}{}", self.addr, path)
     }
 
-    /// Alle bisher empfangenen Anfragen.
+    /// All requests received so far.
     pub fn requests(&self) -> Vec<RecordedRequest> {
         self.requests.lock().expect("requests lock").clone()
     }
@@ -183,7 +183,7 @@ async fn handle_connection(
         ));
     }
 
-    // Range auswerten.
+    // Evaluate the Range header.
     let (status, start, end) = match (config.accept_ranges, range) {
         (true, Some((start, end))) => {
             let end = end
@@ -236,7 +236,7 @@ async fn handle_connection(
         return Ok(());
     }
 
-    // Body senden – ggf. mitten im Body abbrechen (Abbruch-Simulation).
+    // Send the body - possibly abort in the middle (abort simulation).
     let abort_after = if path == PATH_TRUNCATED {
         Some(config.abort_after.unwrap_or(slice.len() / 2))
     } else {
@@ -246,8 +246,8 @@ async fn handle_connection(
         let limit = limit.min(slice.len());
         sock.write_all(&slice[..limit]).await?;
         sock.flush().await?;
-        // Socket schließen, ohne den Rest zu senden → der Client sieht einen
-        // unvollständigen Body.
+        // Close the socket without sending the rest → the client sees an
+        // incomplete body.
         drop(sock);
         return Ok(());
     }
@@ -257,7 +257,7 @@ async fn handle_connection(
     Ok(())
 }
 
-/// Liest den HTTP-Request-Kopf (bis `\r\n\r\n`).
+/// Reads the HTTP request head (up to `\r\n\r\n`).
 async fn read_head(sock: &mut TcpStream) -> io::Result<Option<String>> {
     let mut buf = Vec::new();
     let mut tmp = [0u8; 1024];
@@ -279,7 +279,7 @@ async fn read_head(sock: &mut TcpStream) -> io::Result<Option<String>> {
     }
 }
 
-/// Parst `bytes=start-end` / `bytes=start-`.
+/// Parses `bytes=start-end` / `bytes=start-`.
 fn parse_range(value: &str) -> Option<(u64, Option<u64>)> {
     let spec = value.strip_prefix("bytes=")?;
     let (start, end) = spec.split_once('-')?;
@@ -291,12 +291,12 @@ fn parse_range(value: &str) -> Option<(u64, Option<u64>)> {
     Some((start, end))
 }
 
-/// Pfad, der den vollen Body liefert.
+/// Path that serves the full body.
 pub const PATH_FILE: &str = "/file";
-/// Pfad, bei dem die Verbindung mitten im Body abgerissen wird.
+/// Path where the connection is torn down in the middle of the body.
 pub const PATH_TRUNCATED: &str = "/truncated";
 
-/// Antwort eines Roh-HTTP-Client-Requests.
+/// Response of a raw HTTP client request.
 #[derive(Debug, Clone)]
 pub struct RawResponse {
     pub status: u16,
@@ -313,11 +313,11 @@ impl RawResponse {
     }
 }
 
-/// Minimaler HTTP-Client für die Tests (kein zusätzlicher Crate).
+/// Minimal HTTP client for the tests (no extra crate).
 ///
-/// Bricht der Server die Verbindung mitten im Body ab, wird ein Fehler
-/// (`UnexpectedEof`) zurückgegeben – genau das Verhalten, gegen das der
-/// Download-Kern getestet werden soll.
+/// If the server aborts the connection in the middle of the body, an error
+/// (`UnexpectedEof`) is returned - exactly the behavior the download core is
+/// meant to be tested against.
 pub async fn fetch(
     addr: SocketAddr,
     path: &str,
@@ -362,7 +362,7 @@ pub async fn fetch(
         .map(|(k, v)| (k.trim().to_string(), v.trim().to_string()))
         .collect();
 
-    // Unvollständiger Body => Abbruch erkannt.
+    // Incomplete body => abort detected.
     let expected = headers
         .iter()
         .find(|(k, _)| k.eq_ignore_ascii_case("content-length"))

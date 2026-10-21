@@ -98,6 +98,11 @@ const EN: &[(&str, &str)] = &[
         "ui.status.captcha_prompt",
         "Captcha [{host}]: {prompt} -> {buffer}_",
     ),
+    ("ui.status.captcha_title", "Captcha Challenge"),
+    (
+        "ui.status.captcha_image_default",
+        "Solve image captcha",
+    ),
     (
         "ui.status.session_restored",
         "Restored {count} download(s) from the previous session",
@@ -278,6 +283,82 @@ const EN: &[(&str, &str)] = &[
         "ui.settings.title",
         "Settings",
     ),
+    (
+        "ui.settings.body",
+        "Tor clients: {tor_clients}\nMax parts: {max_parts}\nTor data dir: {tor_data_dir}\nTemp dir: {temp_dir}\nDownload dir: {download_dir}\nUser agent: {user_agent}\nConnect timeout: {connect_timeout}s\nRead timeout: {read_timeout}s\nMax retries: {max_retries}\nLog level: {log_level}",
+    ),
+    ("ui.status.title", "Status"),
+    ("ui.status.input_title", "Add URL"),
+    ("ui.status.started", "Download started: {file}"),
+    (
+        "plugin.direct.description",
+        "Direct download without redirect resolution",
+    ),
+    (
+        "plugin.redirect.description",
+        "Example hoster plugin for resolving link redirects",
+    ),
+    (
+        "plugin.redirect.no_target",
+        "No valid redirect target found in URL '{url}'",
+    ),
+    (
+        "plugin.redirect.resolve_failed",
+        "Example hoster plugin could not resolve the download link",
+    ),
+    (
+        "download.error.content_length_missing",
+        "Content-Length missing",
+    ),
+    ("download.error.no_host", "URL has no host"),
+    (
+        "download.error.header_closed",
+        "Connection closed before end of headers",
+    ),
+    ("download.error.header_too_large", "HTTP header too large"),
+    (
+        "download.error.unexpected_status",
+        "Unexpected status: {status}",
+    ),
+    (
+        "download.error.create_part_file",
+        "create part file: {path}",
+    ),
+    (
+        "download.error.create_output",
+        "create output file: {path}",
+    ),
+    ("download.error.open_part", "open part file: {path}"),
+    ("download.error.part_failed", "At least one part failed"),
+    ("download.error.incomplete", "Download incomplete"),
+    (
+        "net.error.tls_hostname",
+        "Invalid TLS hostname: {host}",
+    ),
+    ("net.error.url_without_scheme", "URL without scheme"),
+    (
+        "net.error.unsupported_scheme",
+        "Unsupported scheme: {scheme}",
+    ),
+    ("net.error.url_without_port", "URL without port"),
+    ("net.error.url_without_host", "URL without host"),
+    ("net.error.tls_handshake", "TLS handshake with {host}"),
+    ("net.error.stream", "Stream -> {host}:{port}"),
+    (
+        "net.error.request_uri_without_host",
+        "Request URI without host",
+    ),
+    ("net.error.http_handshake", "HTTP/1.1 handshake"),
+    ("net.error.send_request", "send HTTP request"),
+    (
+        "main.error.tor_start",
+        "Tor could not be started: {e}",
+    ),
+    (
+        "main.error.headless_without_tor",
+        "Headless without Tor is not supported yet",
+    ),
+    ("main.error.tor_unavailable", "Tor not available"),
 ];
 
 struct State {
@@ -390,9 +471,9 @@ mod tests {
     #[test]
     fn translation_with_fallback() {
         // One test mutates the global language; keep all language switching here.
-        load_catalog("xx", "\"cli.arg.parts\" = \"Teile: {n}\"").unwrap();
+        load_catalog("xx", "\"cli.arg.parts\" = \"Piezas: {n}\"").unwrap();
         assert!(set_language("xx"));
-        assert_eq!(t!("cli.arg.parts", n = 3), "Teile: 3");
+        assert_eq!(t!("cli.arg.parts", n = 3), "Piezas: 3");
         // Key missing in "xx" falls back to English.
         assert_eq!(
             tr("cli.arg.url"),

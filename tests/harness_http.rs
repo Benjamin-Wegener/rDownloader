@@ -1,7 +1,7 @@
-//! Tests für das Test-Harness (lokaler HTTP-Server mit Range-Support).
+//! Tests for the test harness (local HTTP server with range support).
 //!
-//! Der Harness ist die Grundlage für die späteren Integrationstests
-//! (Kill + Resume + Hash).
+//! The harness is the basis for the later integration tests
+//! (kill + resume + hash).
 
 mod common;
 
@@ -12,7 +12,7 @@ fn payload() -> Vec<u8> {
 }
 
 #[tokio::test]
-async fn liefert_vollstaendigen_body() {
+async fn serves_full_body() {
     let body = payload();
     let server = TestServer::start(ServerConfig::new(body.clone())).await;
 
@@ -23,7 +23,7 @@ async fn liefert_vollstaendigen_body() {
 }
 
 #[tokio::test]
-async fn range_anfrage_liefert_206_mit_content_range() {
+async fn range_request_returns_206_with_content_range() {
     let body = payload();
     let server = TestServer::start(ServerConfig::new(body.clone())).await;
 
@@ -39,7 +39,7 @@ async fn range_anfrage_liefert_206_mit_content_range() {
 }
 
 #[tokio::test]
-async fn offene_range_laeuft_bis_zum_ende() {
+async fn open_range_runs_to_the_end() {
     let body = payload();
     let server = TestServer::start(ServerConfig::new(body.clone())).await;
 
@@ -51,7 +51,7 @@ async fn offene_range_laeuft_bis_zum_ende() {
 }
 
 #[tokio::test]
-async fn range_ausserhalb_der_datei_ergibt_416() {
+async fn range_outside_the_file_returns_416() {
     let server = TestServer::start(ServerConfig::new(payload())).await;
 
     let resp = fetch(server.addr(), PATH_FILE, Some((999_999, None)))
@@ -61,7 +61,7 @@ async fn range_ausserhalb_der_datei_ergibt_416() {
 }
 
 #[tokio::test]
-async fn ohne_accept_ranges_ignoriert_der_server_range() {
+async fn without_accept_ranges_server_ignores_range() {
     let body = payload();
     let server = TestServer::start(ServerConfig::new(body.clone()).without_ranges()).await;
 
@@ -74,7 +74,7 @@ async fn ohne_accept_ranges_ignoriert_der_server_range() {
 }
 
 #[tokio::test]
-async fn etag_und_content_disposition_werden_gesendet() {
+async fn etag_and_content_disposition_are_sent() {
     let server = TestServer::start(ServerConfig::new(payload()).with_etag("\"abc123\"")).await;
 
     let resp = fetch(server.addr(), PATH_FILE, None).await.unwrap();
@@ -82,7 +82,7 @@ async fn etag_und_content_disposition_werden_gesendet() {
 }
 
 #[tokio::test]
-async fn abruption_mitten_im_body_wird_als_eof_erkannt() {
+async fn abort_mid_body_is_detected_as_eof() {
     let server = TestServer::start(ServerConfig::new(payload()).aborting_after(100)).await;
 
     let err = fetch(server.addr(), PATH_TRUNCATED, None)
@@ -92,7 +92,7 @@ async fn abruption_mitten_im_body_wird_als_eof_erkannt() {
 }
 
 #[tokio::test]
-async fn anfragen_werden_aufgezeichnet() {
+async fn requests_are_recorded() {
     let server = TestServer::start(ServerConfig::new(payload())).await;
 
     fetch(server.addr(), PATH_FILE, Some((0, Some(9))))
@@ -109,7 +109,7 @@ async fn anfragen_werden_aufgezeichnet() {
 }
 
 #[tokio::test]
-async fn unbekannter_pfad_ergibt_404() {
+async fn unknown_path_returns_404() {
     let server = TestServer::start(ServerConfig::new(payload())).await;
 
     let resp = fetch(server.addr(), "/nope", None).await.unwrap();

@@ -1,9 +1,10 @@
-//! Clean-room Plugin-System (eigenes, NICHT JDs .jar-Plugins).
+//! Clean-room plugin system (our own, NOT JD's .jar plugins).
 //!
-//! JD-Plugins sind Java, gebunden an JDownloads interne API – eine clean-room
-//! Rust-Implementierung kann diese nicht laden. Stattdessen: eigenes, sicheres
-//! Plugin-Trait-System mit gleicher Idee (Hoster-, Captcha-, Account-Resolver).
+//! JD plugins are Java and bound to JDownloader's internal API – a clean-room
+//! Rust implementation cannot load them. Instead: our own, safe plugin trait
+//! system with the same idea (hoster, captcha, account resolvers).
 
+use crate::t;
 use anyhow::Result;
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
@@ -33,7 +34,7 @@ pub use example_redirect::ExampleRedirectHosterPlugin;
 #[allow(unused_imports)]
 pub use permissions::{PermissionDenied, PluginPermissions};
 
-/// Metadaten eines Plugins.
+/// Metadata of a plugin.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PluginMeta {
     pub id: String,
@@ -42,23 +43,23 @@ pub struct PluginMeta {
     pub author: String,
     pub description: String,
     pub kind: PluginKind,
-    /// Domains die dieses Plugin handhaben (z.B. "example.com")
+    /// Domains this plugin handles (e.g. "example.com")
     pub domains: Vec<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub enum PluginKind {
-    /// Löst einen Link in eine direkte Download-URL auf (Hoster-Resolver)
+    /// Resolves a link into a direct download URL (hoster resolver)
     Hoster,
-    /// Captcha-Löser (z.B. manuell, 2captcha-API, etc.)
+    /// Captcha solver (e.g. manual, 2captcha API, etc.)
     Captcha,
-    /// Account-Login für Hoster (Premium etc.)
+    /// Account login for hosters (premium etc.)
     Account,
-    /// Link-Crawler (findet mehr Links auf einer Seite)
+    /// Link crawler (finds more links on a page)
     Crawler,
 }
 
-/// Ergebnis eines Hoster-Plugins: Direkte Download-URL + Metadaten.
+/// Result of a hoster plugin: direct download URL + metadata.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ResolvedLink {
     pub url: Url,
@@ -68,7 +69,7 @@ pub struct ResolvedLink {
     pub additional_headers: HashMap<String, String>,
 }
 
-/// Plugin-Definition: Metadaten + Verhaltens-Callback.
+/// Plugin definition: metadata + behavior callbacks.
 #[async_trait]
 pub trait DownloadPlugin: Send + Sync {
     fn meta(&self) -> PluginMeta;
@@ -92,7 +93,7 @@ pub trait DownloadPlugin: Send + Sync {
     }
 }
 
-/// Statische Registry aller geladenen Plugins.
+/// Static registry of all loaded plugins.
 #[derive(Clone)]
 pub struct PluginRegistry {
     plugins: HashMap<String, Arc<dyn DownloadPlugin>>,
@@ -164,8 +165,8 @@ impl Default for PluginRegistry {
     }
 }
 
-/// Einfaches Direkt-Download-Plugin (Fallback, funktioniert für jeden URL der
-/// bereits eine direkte Datei ist – kein Hoster-Redirect).
+/// Simple direct-download plugin (fallback, works for any URL that is
+/// already a direct file – no hoster redirect).
 pub struct DirectDownloadPlugin;
 
 #[async_trait::async_trait]
@@ -176,14 +177,14 @@ impl DownloadPlugin for DirectDownloadPlugin {
             name: "Direct Download".into(),
             version: "0.1.0".into(),
             author: "rdownloader".into(),
-            description: "Direkter Download ohne Redirect-Auflösung".into(),
+            description: t!("plugin.direct.description"),
             kind: PluginKind::Hoster,
             domains: vec!["*".into()],
         }
     }
 
     fn can_handle(&self, _url: &Url) -> bool {
-        true // Fallback – fängt alles
+        true // fallback - catches everything
     }
 
     async fn resolve(&self, url: Url) -> Result<ResolvedLink> {

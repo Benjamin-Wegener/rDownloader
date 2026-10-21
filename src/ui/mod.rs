@@ -1,7 +1,7 @@
-//! TUI-Oberfläche (ratatui/crossterm) – JDownloader-ähnlich: Linkliste, Fortschritt, Statusleiste.
+//! TUI (ratatui/crossterm) – JDownloader-like: link list, progress, status bar.
 //!
-//! Nutzt `std::sync::Mutex` für App-State (synchronous draw-Loop), Kommunikation
-//! zu Download-Tasks läuft über `tokio::sync::mpsc`.
+//! Uses `std::sync::Mutex` for app state (synchronous draw loop); communication
+//! with download tasks runs over `tokio::sync::mpsc`.
 
 use anyhow::Result;
 use crossterm::{
@@ -19,8 +19,8 @@ use ratatui::{
 };
 use std::io::{self, Stdout};
 use std::sync::{Arc, Mutex};
-use std::time::Instant;
 use std::time::Duration;
+use std::time::Instant;
 use tokio::sync::oneshot;
 
 mod detail;
@@ -41,7 +41,7 @@ pub enum AppTab {
     Settings,
 }
 
-/// Befehl, den die UI an die Download-Engine senden kann.
+/// Command the UI can send to the download engine.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum UiCommand {
     AddUrl(String),
@@ -278,7 +278,7 @@ impl App {
         }
     }
 
-    /// Wendet ein Vertrag-B-`JobEvent` auf den App-State an (live-Update der Queue).
+    /// Applies a contract-B `JobEvent` to the app state (live queue update).
     pub fn apply_event(&mut self, event: JobEvent) {
         match event {
             JobEvent::Status { id, status } => {
@@ -318,7 +318,7 @@ impl App {
                     ) {
                         j.status = match result {
                             Ok(()) => JobStatus::Done,
-                            Err(_) => JobStatus::Failed("finished with error".into()),
+                            Err(e) => JobStatus::Failed(e),
                         };
                     }
                 }
@@ -351,7 +351,7 @@ impl App {
 
 pub type SharedApp = Arc<Mutex<App>>;
 
-/// Startet die TUI-Loop (blocking, auf dem Haupt-Thread).
+/// Starts the TUI loop (blocking, on the main thread).
 pub fn run(app: SharedApp) -> Result<()> {
     enable_raw_mode()?;
     let mut stdout = io::stdout();
@@ -365,7 +365,7 @@ pub fn run(app: SharedApp) -> Result<()> {
             if a.should_quit {
                 break;
             }
-            // Live-Updates über Vertrag B: Job-Events sofort in den Queue-State einpflegen.
+            // Live updates via contract B: apply job events to the queue state immediately.
             while let Ok(event) = a.job_event_rx.try_recv() {
                 a.apply_event(event);
             }
@@ -402,14 +402,19 @@ fn draw(f: &mut Frame, app: &App) {
         ])
         .split(f.area());
 
-    let titles = [" Downloads ", " LinkGrabber ", " Plugins ", " Settings "];
+    let titles = [
+        format!(" {} ", t!("ui.tab.downloads")),
+        format!(" {} ", t!("ui.tab.linkgrabber")),
+        format!(" {} ", t!("ui.tab.plugins")),
+        format!(" {} ", t!("ui.tab.settings")),
+    ];
     let tab_idx = match app.tab {
         AppTab::Downloads => 0,
         AppTab::LinkGrabber => 1,
         AppTab::Plugins => 2,
         AppTab::Settings => 3,
     };
-    let tabs = Tabs::new(titles.to_vec())
+    let tabs = Tabs::new(titles)
         .block(Block::default().borders(Borders::ALL).title("rdownloader"))
         .select(tab_idx)
         .style(Style::default().fg(Color::White))
@@ -431,7 +436,11 @@ fn draw(f: &mut Frame, app: &App) {
         match &app.input_prompt {
             InputPrompt::AddUrl => {
                 Paragraph::new(t!("ui.status.input_url", buffer = app.input_buffer))
-                    .block(Block::default().borders(Borders::ALL).title("Add URL"))
+                    .block(
+                        Block::default()
+                            .borders(Borders::ALL)
+                            .title(t!("ui.status.input_title")),
+                    )
                     .style(Style::default().fg(Color::Green))
             }
             InputPrompt::ImportFile => {
@@ -440,10 +449,11 @@ fn draw(f: &mut Frame, app: &App) {
                     .style(Style::default().fg(Color::Green))
             }
             InputPrompt::Captcha { challenge, .. } => {
+                let image_default = t!("ui.status.captcha_image_default");
                 let prompt_text = match &challenge.payload {
                     ChallengePayload::Text { prompt } => prompt.as_str(),
                     ChallengePayload::Image { instructions, .. } => {
-                        instructions.as_deref().unwrap_or("Solve image captcha")
+                        instructions.as_deref().unwrap_or(image_default.as_str())
                     }
                     ChallengePayload::Token { service, .. } => service.as_str(),
                 };
@@ -456,21 +466,25 @@ fn draw(f: &mut Frame, app: &App) {
                 .block(
                     Block::default()
                         .borders(Borders::ALL)
-                        .title("Captcha Challenge"),
+                        .title(t!("ui.status.captcha_title")),
                 )
                 .style(Style::default().fg(Color::Yellow))
             }
         }
     } else {
         Paragraph::new(app.status_msg.clone())
-            .block(Block::default().borders(Borders::ALL).title("Status"))
+            .block(
+                Block::default()
+                    .borders(Borders::ALL)
+                    .title(t!("ui.status.title")),
+            )
             .wrap(Wrap { trim: true })
     };
     f.render_widget(status, chunks[2]);
 }
 
 fn draw_downloads(f: &mut Frame, area: Rect, app: &App) {
-    // Aufteilung: Liste oben, Gauge unten
+    // Layout: list on top, gauge or details below
     let bottom = if app.detail_open { 12 } else { 5 };
     let inner = Layout::default()
         .direction(Direction::Vertical)
@@ -536,7 +550,11 @@ fn draw_downloads(f: &mut Frame, area: Rect, app: &App) {
             if app.detail_open {
                 let text = detail::detail_text(j, app.speeds.speed(j.id), app.tor_health.as_ref());
                 let p = Paragraph::new(text)
-                    .block(Block::default().borders(Borders::ALL).title(t!("ui.detail.title")))
+                    .block(
+                        Block::default()
+                            .borders(Borders::ALL)
+                            .title(t!("ui.detail.title")),
+                    )
                     .wrap(Wrap { trim: false });
                 f.render_widget(p, inner[1]);
                 return;

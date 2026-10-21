@@ -2,7 +2,7 @@
 name = "rdownloader"
 version = "0.1.0"
 edition = "2021"
-description = "Clean-room Rust Download-Manager mit Tor (Arti), Multi-Part, Plugin-System & TUI – inspiriert von JDownloader, kein Code übernommen."
+description = "Clean-room Rust download manager with Tor (Arti), multi-part downloads, plugin system and TUI - inspired by JDownloader, no code taken."
 
 [dependencies]
 # Tor (official Rust implementation of the Tor project)

@@ -1,4 +1,4 @@
-//! Zentrale Konfiguration (TOML, unter `~/.config/rdownloader/config.toml`).
+//! Central configuration (TOML, under `~/.config/rdownloader/config.toml`).
 
 use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
@@ -12,11 +12,11 @@ pub struct Config {
     #[serde(default = "default_tor_clients")]
     pub tor_clients: usize,
 
-    /// Max. Parts pro Download (1..=10)
+    /// Max parts per download (1..=10)
     #[serde(default = "default_max_parts")]
     pub max_parts: usize,
 
-    /// Tor-Data-Verzeichnis-Basis
+    /// Base directory for Tor data
     #[serde(default)]
     pub tor_data_dir: Option<PathBuf>,
 
@@ -25,23 +25,23 @@ pub struct Config {
     #[serde(default)]
     pub bridges: Vec<String>,
 
-    /// Temp-Verzeichnis für Teildateien
+    /// Temp directory for part files
     #[serde(default)]
     pub temp_dir: Option<PathBuf>,
 
-    /// Ziel-Verzeichnis für Downloads
+    /// Target directory for downloads
     #[serde(default)]
     pub download_dir: Option<PathBuf>,
 
-    /// Standard-User-Agent
+    /// Default user agent
     #[serde(default = "default_ua")]
     pub user_agent: String,
 
-    /// Verbindungs-Timeout (Sekunden)
+    /// Connection timeout (seconds)
     #[serde(default = "default_timeout")]
     pub connect_timeout_secs: u64,
 
-    /// Read-Timeout (Sekunden)
+    /// Read timeout (seconds)
     #[serde(default = "default_read_timeout")]
     pub read_timeout_secs: u64,
 
@@ -49,22 +49,36 @@ pub struct Config {
     #[serde(default)]
     pub max_speed_kib: u64,
 
-    /// Max. Retries pro Part
+    /// Max retries per part
     #[serde(default = "default_retries")]
     pub max_retries: u32,
 
-    /// Tor-Logging-Level (error/warn/info/debug/trace)
+    /// Tor logging level (error/warn/info/debug/trace)
     #[serde(default = "default_log_level")]
     pub log_level: String,
 }
 
-fn default_tor_clients() -> usize { 10 }
-fn default_max_parts() -> usize { 10 }
-fn default_ua() -> String { "rdownloader/0.1".into() }
-fn default_timeout() -> u64 { 30 }
-fn default_read_timeout() -> u64 { 60 }
-fn default_retries() -> u32 { 3 }
-fn default_log_level() -> String { "info".into() }
+fn default_tor_clients() -> usize {
+    10
+}
+fn default_max_parts() -> usize {
+    10
+}
+fn default_ua() -> String {
+    "rdownloader/0.1".into()
+}
+fn default_timeout() -> u64 {
+    30
+}
+fn default_read_timeout() -> u64 {
+    60
+}
+fn default_retries() -> u32 {
+    3
+}
+fn default_log_level() -> String {
+    "info".into()
+}
 
 impl Default for Config {
     fn default() -> Self {
@@ -105,9 +119,12 @@ impl Config {
     }
 
     pub fn tor_data_dir(&self) -> PathBuf {
-        self.tor_data_dir
-            .clone()
-            .unwrap_or_else(|| dirs::data_dir().unwrap_or_else(|| PathBuf::from(".")).join("rdownloader").join("tor"))
+        self.tor_data_dir.clone().unwrap_or_else(|| {
+            dirs::data_dir()
+                .unwrap_or_else(|| PathBuf::from("."))
+                .join("rdownloader")
+                .join("tor")
+        })
     }
 
     pub fn temp_dir(&self) -> PathBuf {
@@ -117,9 +134,11 @@ impl Config {
     }
 
     pub fn download_dir(&self) -> PathBuf {
-        self.download_dir
-            .clone()
-            .unwrap_or_else(|| dirs::download_dir().unwrap_or_else(|| PathBuf::from(".")).join("rdownloader"))
+        self.download_dir.clone().unwrap_or_else(|| {
+            dirs::download_dir()
+                .unwrap_or_else(|| PathBuf::from("."))
+                .join("rdownloader")
+        })
     }
 }
 
@@ -128,9 +147,9 @@ static CONFIG: OnceLock<Config> = OnceLock::new();
 pub fn load() -> Result<Config> {
     let path = Config::config_path();
     if path.exists() {
-        let s = std::fs::read_to_string(&path)
-            .with_context(|| format!("Config lesen: {path:?}"))?;
-        let cfg: Config = toml::from_str(&s).context("Config parsen (TOML)")?;
+        let s =
+            std::fs::read_to_string(&path).with_context(|| format!("reading config: {path:?}"))?;
+        let cfg: Config = toml::from_str(&s).context("parsing config (TOML)")?;
         Ok(cfg)
     } else {
         let cfg = Config::default();

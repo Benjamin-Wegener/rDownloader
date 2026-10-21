@@ -1,10 +1,10 @@
-//! Stabile Verträge zwischen den Bereichen.
+//! Stable contracts between the areas.
 //!
-//! - Vertrag A (`Transport`): HTTP-Zugriff, den `net` implementiert und `core` konsumiert.
-//! - Vertrag B (`JobEvent`/`JobCommand`): Ereignis- und Steuerkanal zwischen Job und `ui`.
+//! - Contract A (`Transport`): HTTP access implemented by `net` and consumed by `core`.
+//! - Contract B (`JobEvent`/`JobCommand`): event and control channel between job and `ui`.
 //!
-//! Änderungen hier brauchen einen `HANDOFF.md`-Eintrag und Absprache mit dem Nutzer.
-//! `MockTransport` und `FakeJob` erlauben, `core` und `ui` unabhängig voneinander zu testen.
+//! Changes here need a `HANDOFF.md` entry and agreement with the user.
+//! `MockTransport` and `FakeJob` allow `core` and `ui` to be tested independently.
 
 #![allow(dead_code)]
 
@@ -20,25 +20,25 @@ use uuid::Uuid;
 
 use crate::download::{JobStatus, PartProgress};
 
-// ───────────────────────── Vertrag A: Transport ─────────────────────────
+// ───────────────────────── Contract A: Transport ─────────────────────────
 
-/// Byte-Bereich einer Anfrage (inklusive Grenzen, wie `Range: bytes=start-end`).
+/// Byte range of a request (inclusive bounds, like `Range: bytes=start-end`).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct ByteRange {
     pub start: u64,
-    /// `None` = bis zum Ende.
+    /// `None` = until the end.
     pub end: Option<u64>,
 }
 
-/// Ergebnis eines HEAD bzw. die Kopfdaten einer GET-Antwort.
+/// Result of a HEAD, or the headers of a GET response.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ResponseHead {
     pub status: u16,
-    /// URL nach Redirects.
+    /// URL after redirects.
     pub final_url: Url,
-    /// Länge des Bodys dieser Antwort; bei Range-Antworten die Teillänge.
+    /// Length of this response body; for range responses the partial length.
     pub content_length: Option<u64>,
-    /// Gesamtgröße der Ressource (aus `Content-Range` bzw. `Content-Length`).
+    /// Total size of the resource (from `Content-Range` or `Content-Length`).
     pub total_size: Option<u64>,
     pub accepts_ranges: bool,
     pub filename: Option<String>,
@@ -48,23 +48,23 @@ pub struct ResponseHead {
 
 pub type ByteStream = BoxStream<'static, Result<Bytes>>;
 
-/// Antwort einer GET-Anfrage: Kopfdaten plus Body als Stream.
+/// Response to a GET request: headers plus body as a stream.
 pub struct Response {
     pub head: ResponseHead,
     pub body: ByteStream,
 }
 
-/// Transport-Schicht (z. B. HTTP über Tor).
+/// Transport layer (e.g. HTTP over Tor).
 ///
-/// `isolation` gruppiert Anfragen: gleiche ID darf einen Circuit teilen,
-/// verschiedene IDs dürfen **nie** einen Circuit teilen (Stream-Isolation pro Part).
+/// `isolation` groups requests: the same ID may share a circuit,
+/// different IDs must **never** share a circuit (stream isolation per part).
 #[async_trait]
 pub trait Transport: Send + Sync {
     async fn head(&self, url: &Url, isolation: u64) -> Result<ResponseHead>;
     async fn get(&self, url: &Url, range: Option<ByteRange>, isolation: u64) -> Result<Response>;
 }
 
-/// Aufgezeichnete Anfrage des `MockTransport`.
+/// Recorded request of the `MockTransport`.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum RecordedRequest {
     Head {
@@ -78,7 +78,7 @@ pub enum RecordedRequest {
     },
 }
 
-/// Eine vom `MockTransport` bediente Ressource.
+/// A resource served by the `MockTransport`.
 #[derive(Debug, Clone)]
 pub struct MockResource {
     pub data: Bytes,
@@ -98,7 +98,7 @@ impl MockResource {
     }
 }
 
-/// In-Memory-Transport für Tests: Ranges, Chunking, Fehlerinjektion, Aufzeichnung.
+/// In-memory transport for tests: ranges, chunking, fault injection, recording.
 #[derive(Clone, Default)]
 pub struct MockTransport {
     inner: Arc<Mutex<MockState>>,
@@ -108,11 +108,11 @@ pub struct MockTransport {
 struct MockState {
     resources: HashMap<Url, MockResource>,
     requests: Vec<RecordedRequest>,
-    /// Die nächsten n `get`-Aufrufe schlagen fehl.
+    /// The next n `get` calls fail.
     fail_next_gets: usize,
-    /// Body in Stücken dieser Größe ausliefern (0 = ein Stück).
+    /// Deliver the body in chunks of this size (0 = one chunk).
     chunk_size: usize,
-    /// Body bricht nach so vielen Bytes mit Fehler ab (einmalig).
+    /// Body aborts with an error after this many bytes (once).
     truncate_after: Option<usize>,
 }
 
@@ -122,7 +122,7 @@ impl MockTransport {
     }
 
     pub fn with_resource(self, url: &str, res: MockResource) -> Self {
-        let url = Url::parse(url).expect("gültige Test-URL");
+        let url = Url::parse(url).expect("valid test URL");
         self.inner.lock().unwrap().resources.insert(url, res);
         self
     }
@@ -179,7 +179,7 @@ impl Transport for MockTransport {
         });
         if st.fail_next_gets > 0 {
             st.fail_next_gets -= 1;
-            return Err(anyhow!("injizierter Fehler"));
+            return Err(anyhow!("injected error"));
         }
         let res = st
             .resources
@@ -188,11 +188,11 @@ impl Transport for MockTransport {
             .clone();
         let total = res.data.len() as u64;
 
-        // Ohne Range-Unterstützung ignoriert der Server den Header (200, ganzer Body).
+        // Without range support the server ignores the header (200, whole body).
         let (status, slice) = match range {
             Some(r) if res.accepts_ranges => {
                 if r.start >= total {
-                    return Err(anyhow!("416: Range außerhalb"));
+                    return Err(anyhow!("416: range out of bounds"));
                 }
                 let end = r.end.map_or(total, |e| (e + 1).min(total));
                 (206, res.data.slice(r.start as usize..end as usize))
@@ -218,7 +218,7 @@ impl Transport for MockTransport {
             pos += n;
         }
         if truncate.is_some() {
-            items.push(Err(anyhow!("Verbindung abgebrochen")));
+            items.push(Err(anyhow!("connection aborted")));
         }
         Ok(Response {
             head,
@@ -227,30 +227,30 @@ impl Transport for MockTransport {
     }
 }
 
-// ───────────────────────── Vertrag B: Job-Ereignisse ─────────────────────────
+// ───────────────────────── Contract B: job events ─────────────────────────
 
 pub type JobId = Uuid;
 
-/// Job → UI. Jeder Job sendet seine Ereignisse über einen `mpsc`-Kanal.
+/// Job → UI. Every job sends its events over an `mpsc` channel.
 #[derive(Debug, Clone, PartialEq)]
 pub enum JobEvent {
-    /// Status hat gewechselt.
+    /// Status changed.
     Status { id: JobId, status: JobStatus },
-    /// Größe/Dateiname sind bekannt (nach HEAD).
+    /// Size/filename are known (after HEAD).
     Resolved {
         id: JobId,
         filename: String,
         total_bytes: Option<u64>,
     },
-    /// Fortschritt, gedrosselt gesendet (nicht pro Chunk).
+    /// Progress, sent throttled (not per chunk).
     Progress {
         id: JobId,
         bytes_done: u64,
         parts: Vec<PartProgress>,
     },
-    /// Aktuelle Geschwindigkeit in Bytes/s.
+    /// Current speed in bytes/s.
     Speed { id: JobId, bytes_per_sec: u64 },
-    /// Endzustand erreicht; danach kommen keine Ereignisse mehr.
+    /// Final state reached; no further events follow.
     Finished {
         id: JobId,
         result: Result<(), String>,
@@ -265,12 +265,12 @@ pub enum JobCommand {
     Cancel,
 }
 
-/// Skriptgesteuerter Job für UI-Tests: sendet Ereignisse, reagiert auf Kommandos.
+/// Scripted job for UI tests: sends events, reacts to commands.
 pub struct FakeJob {
     pub id: JobId,
     pub filename: String,
     pub total_bytes: u64,
-    /// Bytes pro Schritt.
+    /// Bytes per step.
     pub step: u64,
 }
 
@@ -284,8 +284,8 @@ impl FakeJob {
         }
     }
 
-    /// Startet den Job; liefert den Kommando-Sender. Ereignisse gehen an `events`.
-    /// Läuft ohne Zeitverzögerung (ein Schritt pro Scheduler-Tick), Pause hält ihn an.
+    /// Starts the job; returns the command sender. Events go to `events`.
+    /// Runs without delay (one step per scheduler tick); pause halts it.
     pub fn spawn(
         self,
         events: mpsc::UnboundedSender<JobEvent>,
@@ -313,7 +313,7 @@ impl FakeJob {
             let mut done = 0u64;
             let mut paused = false;
             loop {
-                // Kommandos zuerst; im Pausenzustand blockierend darauf warten.
+                // Commands first; while paused, wait for them blocking.
                 let cmd = if paused {
                     cmd_rx.recv().await
                 } else {
@@ -327,7 +327,7 @@ impl FakeJob {
                         });
                         send(JobEvent::Finished {
                             id,
-                            result: Err("abgebrochen".into()),
+                            result: Err("cancelled".into()),
                         });
                         return;
                     }
@@ -339,7 +339,7 @@ impl FakeJob {
                         paused = false;
                         continue;
                     }
-                    None if paused => return, // Steuerkanal geschlossen
+                    None if paused => return, // control channel closed
                     None => {}
                 }
 
@@ -379,7 +379,7 @@ mod tests {
 
     fn transport() -> (MockTransport, Url) {
         let mut res = MockResource::new(&b"0123456789"[..]);
-        res.filename = Some("zehn.bin".into());
+        res.filename = Some("ten.bin".into());
         let t = MockTransport::new()
             .with_resource("http://x.test/f", res)
             .with_chunk_size(3);
@@ -387,16 +387,16 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn head_liefert_metadaten() {
+    async fn head_returns_metadata() {
         let (t, url) = transport();
         let h = t.head(&url, 0).await.unwrap();
         assert_eq!(h.total_size, Some(10));
         assert!(h.accepts_ranges);
-        assert_eq!(h.filename.as_deref(), Some("zehn.bin"));
+        assert_eq!(h.filename.as_deref(), Some("ten.bin"));
     }
 
     #[tokio::test]
-    async fn get_voll_und_range() {
+    async fn get_full_and_range() {
         let (t, url) = transport();
         let r = t.get(&url, None, 0).await.unwrap();
         assert_eq!(r.head.status, 200);
@@ -432,7 +432,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn ohne_range_support_kommt_ganzer_body() {
+    async fn without_range_support_whole_body_is_returned() {
         let mut res = MockResource::new(&b"abc"[..]);
         res.accepts_ranges = false;
         let t = MockTransport::new().with_resource("http://x.test/n", res);
@@ -453,7 +453,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn fehlerinjektion_und_aufzeichnung() {
+    async fn fault_injection_and_recording() {
         let (t, url) = transport();
         t.fail_next_gets(1);
         assert!(t.get(&url, None, 7).await.is_err());
@@ -478,7 +478,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn unbekannte_url_ist_fehler() {
+    async fn unknown_url_is_an_error() {
         let t = MockTransport::new();
         let url = Url::parse("http://x.test/none").unwrap();
         assert!(t.head(&url, 0).await.is_err());
@@ -497,7 +497,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn fakejob_laeuft_bis_done() {
+    async fn fakejob_runs_until_done() {
         let (tx, mut rx) = mpsc::unbounded_channel();
         let job = FakeJob::new("a.bin", 100, 40);
         let id = job.id;
