@@ -5,8 +5,9 @@
 //! top of that. This means neither the status line nor headers or chunked
 //! encoding have to be parsed by hand.
 //!
-//! Contract-free: this module knows neither `contract.rs` nor the download
-//! engine and can be tested with any [`StreamProvider`].
+//! The connector is contract-free: it knows neither `contract.rs` nor the
+//! download engine and can be tested with any [`StreamProvider`]. The `rpc`
+//! submodule exposes the headless control API.
 
 use std::error::Error;
 use std::future::Future;
@@ -32,6 +33,7 @@ use url::Url;
 use crate::t;
 use crate::tor::{AsyncReadWrite, TorManager};
 
+pub mod rpc;
 pub mod transport;
 
 mod disposition;

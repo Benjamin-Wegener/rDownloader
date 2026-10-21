@@ -107,7 +107,10 @@ CI früh starten (parallel zu M1), Rest nach M2.
 - [ ] 🟢 Watch-Ordner · RSS-Reader · Desktop-Notifications
 
 ## M6 – GUI & Headless RPC (optional, nach M4) ⬜ 🟢
-- [ ] 🟠 **Headless Daemon & RPC/Web-API**: JSON-RPC / REST / WebSocket für Fernsteuerung ohne TUI
+- [x] 🟠 **Headless Daemon & RPC/Web-API**: JSON-RPC 2.0 + REST für Fernsteuerung ohne TUI (`src/net/rpc.rs`, `--daemon`)
+  - [x] Queue-Liste, Status, Hinzufügen, Pause/Resume/Cancel/Remove über `POST /rpc` und `/api/jobs`
+  - [x] Optionaler Bearer-Token (`rpc_token`), Loopback-Bindung ohne Token erzwungen
+  - [ ] WebSocket-Unterstützung für Live-Events
 - [ ] 🟢 GUI-Entscheidung: egui vs. Tauri vs. Browser-WebUI
 - [ ] 🟢 Tray-Integration, Browser-Extension-Brücke
 

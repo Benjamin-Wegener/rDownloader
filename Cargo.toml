@@ -25,7 +25,7 @@ futures = { version = "0.3", default-features = false, features = ["std"] }
 bytes = "1"
 
 # HTTP/1.1 over the Arti stream + TLS (net-1)
-hyper = { version = "1", features = ["client", "http1"] }
+hyper = { version = "1", features = ["client", "http1", "server"] }
 hyper-util = { version = "0.1", features = ["tokio"] }
 http-body-util = "0.1"
 tokio-rustls = { version = "0.26", default-features = false, features = ["ring", "tls12"] }
@@ -61,10 +61,6 @@ sha1 = "0.10"
 md-5 = "0.10"
 zip = { version = "2", default-features = false, features = ["deflate"] }
 sevenz-rust = "0.6"
-
-[dev-dependencies]
-# The unit tests in src/net/mod.rs run a local hyper server.
-hyper = { version = "1", features = ["server"] }
 
 [profile.release]
 lto = true

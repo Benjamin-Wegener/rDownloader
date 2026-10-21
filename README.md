@@ -43,6 +43,7 @@ the build at Homebrew LLVM and a standalone macOS SDK.
 rdownloader                         # start the TUI
 rdownloader URL                     # download a URL, showing progress in the TUI
 rdownloader --headless -p 4 -o ~/Downloads URL
+rdownloader --daemon                # JSON-RPC/REST control API (no TUI)
 ```
 
 | Option | Meaning |
@@ -50,6 +51,7 @@ rdownloader --headless -p 4 -o ~/Downloads URL
 | `-p, --parts N` | parts per download (1-10) |
 | `-o, --output PATH` | target file or directory |
 | `--headless` | no TUI, log to the terminal |
+| `--daemon` | no TUI; serve the JSON-RPC/REST control API |
 | `-t, --tor-clients N` | deprecated and ignored: one Tor client isolates every part |
 | `--no-tor` | do not start Tor (testing only; downloads need Tor and will not run) |
 
@@ -81,8 +83,40 @@ All keys are optional.
 | `download_dir`, `temp_dir`, `tor_data_dir` | platform defaults | where files and Tor state live |
 | `user_agent`, `connect_timeout_secs`, `read_timeout_secs` | | HTTP behaviour |
 | `log_level` | `info` | log level (`RUST_LOG` overrides it) |
+| `rpc_listen` | `127.0.0.1:8765` | listen address of the headless RPC server |
+| `rpc_token` | unset | optional bearer token; required for non-loopback addresses |
 
 `RDOWNLOADER_LANG=<code>` selects the interface language when a catalog for it is loaded.
+
+## Headless daemon & RPC
+
+`rdownloader --daemon` runs without the TUI and exposes the download queue over
+HTTP. It listens on `127.0.0.1:8765` by default; set `rpc_listen` to change the
+address and `rpc_token` to require `Authorization: Bearer <token>`. Binding to a
+non-loopback address without a token is refused.
+
+REST endpoints:
+
+```sh
+curl http://127.0.0.1:8765/api/jobs
+curl -X POST http://127.0.0.1:8765/api/jobs -d '{"url":"https://example.com/file.bin"}'
+curl -X POST http://127.0.0.1:8765/api/jobs/<id>/pause
+curl -X POST http://127.0.0.1:8765/api/jobs/<id>/resume
+curl -X POST http://127.0.0.1:8765/api/jobs/<id>/cancel
+curl -X DELETE http://127.0.0.1:8765/api/jobs/<id>
+```
+
+JSON-RPC 2.0 is available at `POST /rpc`; supported methods are `jobs.list`,
+`jobs.get`, `jobs.add`, `jobs.pause`, `jobs.resume`, `jobs.cancel`, `jobs.remove`
+and `health`:
+
+```sh
+curl -X POST http://127.0.0.1:8765/rpc \
+  -d '{"jsonrpc":"2.0","id":1,"method":"jobs.add","params":{"url":"https://example.com/file.bin"}}'
+```
+
+`GET /health` returns `{"status":"ok"}`. The API has no TLS; keep it on loopback
+or tunnel it through Tor/a reverse proxy if remote access is needed.
 
 ## Security
 

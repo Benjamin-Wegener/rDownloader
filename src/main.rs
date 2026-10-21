@@ -16,15 +16,20 @@ mod tracker;
 mod ui;
 
 use anyhow::{Context, Result};
+use async_trait::async_trait;
 use clap::{CommandFactory, FromArgMatches, Parser};
+use std::collections::HashMap;
+use std::net::SocketAddr;
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 use tokio::sync::{mpsc, oneshot};
+use tokio::task::AbortHandle;
 use tracing::{error, info, warn};
 use tracing_subscriber::EnvFilter;
 
 use crate::contract::JobEvent;
 use crate::download::{run_job, DownloadJob, JobProgress, JobStatus};
+use crate::net::rpc::{self, JobControl};
 use crate::plugin::{DirectDownloadPlugin, ExampleRedirectHosterPlugin, PluginRegistry};
 use crate::tor::TorManager;
 use crate::tracker::{RestoreAction, TrackEntry, Tracker};
@@ -49,6 +54,9 @@ struct Cli {
     headless: bool,
 
     #[arg(long)]
+    daemon: bool,
+
+    #[arg(long)]
     no_tor: bool,
 }
 
@@ -61,6 +69,7 @@ fn cli_command() -> clap::Command {
         .mut_arg("parts", |a| a.help(t!("cli.arg.parts")))
         .mut_arg("output", |a| a.help(t!("cli.arg.output")))
         .mut_arg("headless", |a| a.help(t!("cli.arg.headless")))
+        .mut_arg("daemon", |a| a.help(t!("cli.arg.daemon")))
         .mut_arg("no_tor", |a| a.help(t!("cli.arg.no_tor")))
 }
 
@@ -137,6 +146,20 @@ async fn main() -> Result<()> {
     // Shared job progress store for TUI + engine
     let jobs_progress: Arc<Mutex<Vec<JobProgress>>> = Arc::new(Mutex::new(Vec::new()));
 
+    // Headless control API: no TUI, jobs are added and controlled over RPC.
+    if cli.daemon {
+        let control = DaemonControl {
+            registry,
+            tor,
+            tracker,
+            jobs: jobs_progress,
+            dl_dir,
+            max_parts: cfg.max_parts,
+            handles: Mutex::new(HashMap::new()),
+        };
+        return run_daemon(control, cfg).await;
+    }
+
     // If a CLI URL is given → direct download (headless or with the TUI in the background)
     if let Some(url_str) = &cli.url {
         let url = url::Url::parse(url_str).context(t!("ui.status.invalid_url"))?;
@@ -179,7 +202,7 @@ async fn main() -> Result<()> {
             }
         } else {
             // With TUI: job in the background, the TUI shows progress
-            start_job_background(
+            let _handle = start_job_background(
                 job,
                 tor.clone(),
                 progress.clone(),
@@ -217,6 +240,209 @@ async fn main() -> Result<()> {
     }
 }
 
+/// State behind the headless RPC API.
+struct DaemonControl {
+    registry: PluginRegistry,
+    tor: Option<Arc<TorManager>>,
+    tracker: Tracker,
+    jobs: Arc<Mutex<Vec<JobProgress>>>,
+    dl_dir: PathBuf,
+    max_parts: usize,
+    handles: Mutex<HashMap<uuid::Uuid, AbortHandle>>,
+}
+
+impl DaemonControl {
+    fn set_status(&self, id: uuid::Uuid, status: JobStatus) -> Result<(), String> {
+        let mut jobs = self.jobs.lock().unwrap();
+        let job = jobs
+            .iter_mut()
+            .find(|job| job.id == id)
+            .ok_or_else(|| t!("rpc.error.job_not_found", id = id))?;
+        job.status = status;
+        Ok(())
+    }
+}
+
+#[async_trait]
+impl JobControl for DaemonControl {
+    fn list_jobs(&self) -> Vec<JobProgress> {
+        self.jobs.lock().unwrap().clone()
+    }
+
+    fn job(&self, id: uuid::Uuid) -> Option<JobProgress> {
+        self.jobs
+            .lock()
+            .unwrap()
+            .iter()
+            .find(|job| job.id == id)
+            .cloned()
+    }
+
+    async fn add_job(&self, url_str: &str) -> Result<uuid::Uuid, String> {
+        let tor = self
+            .tor
+            .clone()
+            .ok_or_else(|| t!("main.error.tor_unavailable"))?;
+        let url = url::Url::parse(url_str).map_err(|_| t!("ui.status.invalid_url"))?;
+        let plugin = self
+            .registry
+            .find_for_url(&url)
+            .ok_or_else(|| t!("ui.status.no_plugin", url = url_str))?;
+        let resolved = plugin.resolve(url).await.map_err(|e| format!("{e:#}"))?;
+        let filename = resolved
+            .filename
+            .clone()
+            .unwrap_or_else(|| "download.bin".into());
+        let output = self.dl_dir.join(&filename);
+        let job = DownloadJob::new(resolved.url, output, self.max_parts);
+        let id = job.id;
+        let progress = Arc::new(tokio::sync::Mutex::new(JobProgress {
+            id,
+            url: job.url.to_string(),
+            filename,
+            total_bytes: 0,
+            bytes_done: 0,
+            parts: vec![],
+            status: JobStatus::Queued,
+        }));
+        let handle = start_job_background(
+            job,
+            Some(tor),
+            progress,
+            self.tracker.clone(),
+            mpsc::unbounded_channel().0,
+            self.jobs.clone(),
+        );
+        self.handles
+            .lock()
+            .unwrap()
+            .insert(id, handle.abort_handle());
+        Ok(id)
+    }
+
+    fn pause_job(&self, id: uuid::Uuid) -> Result<(), String> {
+        let snapshot = self
+            .job(id)
+            .ok_or_else(|| t!("rpc.error.job_not_found", id = id))?;
+        if snapshot.status == JobStatus::Paused {
+            return Ok(());
+        }
+        if !matches!(
+            snapshot.status,
+            JobStatus::Queued | JobStatus::Resolving | JobStatus::Downloading | JobStatus::Merging
+        ) {
+            return Err(t!("rpc.error.job_not_running"));
+        }
+        if let Some(entry) = self.tracker.list().into_iter().find(|entry| entry.id == id) {
+            let _ = self
+                .tracker
+                .update_from_progress(&snapshot, &entry.output, entry.tor_parts);
+        }
+        if let Some(handle) = self.handles.lock().unwrap().remove(&id) {
+            handle.abort();
+        }
+        self.set_status(id, JobStatus::Paused)?;
+        let _ = self.tracker.set_status(id, JobStatus::Paused);
+        Ok(())
+    }
+
+    fn resume_job(&self, id: uuid::Uuid) -> Result<(), String> {
+        let current = self
+            .job(id)
+            .ok_or_else(|| t!("rpc.error.job_not_found", id = id))?;
+        if current.status != JobStatus::Paused {
+            return Err(t!("rpc.error.job_not_paused"));
+        }
+        let tor = self
+            .tor
+            .clone()
+            .ok_or_else(|| t!("main.error.tor_unavailable"))?;
+        let entry = self
+            .tracker
+            .list()
+            .into_iter()
+            .find(|entry| entry.id == id)
+            .ok_or_else(|| t!("rpc.error.job_not_found", id = id))?;
+        let job = entry.to_download_job().map_err(|e| format!("{e:#}"))?;
+        let progress = Arc::new(tokio::sync::Mutex::new(JobProgress {
+            id,
+            url: entry.url,
+            filename: entry.filename,
+            total_bytes: entry.total_bytes,
+            bytes_done: entry.bytes_done,
+            parts: vec![],
+            status: JobStatus::Queued,
+        }));
+        let handle = start_job_background(
+            job,
+            Some(tor),
+            progress,
+            self.tracker.clone(),
+            mpsc::unbounded_channel().0,
+            self.jobs.clone(),
+        );
+        self.handles
+            .lock()
+            .unwrap()
+            .insert(id, handle.abort_handle());
+        self.set_status(id, JobStatus::Downloading)?;
+        let _ = self.tracker.set_status(id, JobStatus::Downloading);
+        Ok(())
+    }
+
+    fn cancel_job(&self, id: uuid::Uuid) -> Result<(), String> {
+        if let Some(handle) = self.handles.lock().unwrap().remove(&id) {
+            handle.abort();
+        }
+        self.set_status(id, JobStatus::Cancelled)?;
+        let _ = self.tracker.set_status(id, JobStatus::Cancelled);
+        Ok(())
+    }
+
+    fn remove_job(&self, id: uuid::Uuid) -> Result<(), String> {
+        if let Some(handle) = self.handles.lock().unwrap().remove(&id) {
+            handle.abort();
+        }
+        {
+            let mut jobs = self.jobs.lock().unwrap();
+            let before = jobs.len();
+            jobs.retain(|job| job.id != id);
+            if jobs.len() == before {
+                return Err(t!("rpc.error.job_not_found", id = id));
+            }
+        }
+        let _ = self.tracker.remove(id);
+        Ok(())
+    }
+}
+
+async fn run_daemon(control: DaemonControl, cfg: &config::Config) -> Result<()> {
+    let restored = restore_session(&control.tracker, control.tor.clone(), control.jobs.clone());
+    let restored_count = restored.len();
+    for (id, handle) in restored {
+        control
+            .handles
+            .lock()
+            .unwrap()
+            .insert(id, handle.abort_handle());
+    }
+    if restored_count > 0 {
+        info!("Restored {restored_count} download(s) from the previous session");
+    }
+    let addr: SocketAddr = cfg
+        .rpc_listen
+        .parse()
+        .with_context(|| t!("main.error.rpc_bind", addr = &cfg.rpc_listen))?;
+    if cfg.rpc_token.is_none() && !addr.ip().is_loopback() {
+        anyhow::bail!(t!("main.error.rpc_public_without_token"));
+    }
+    info!(
+        "Headless daemon started with {} job(s) in the queue",
+        control.jobs.lock().unwrap().len()
+    );
+    rpc::serve(addr, cfg.rpc_token.clone(), Arc::new(control)).await
+}
+
 #[allow(clippy::too_many_arguments)]
 async fn run_tui(
     ui_cmd_tx: mpsc::UnboundedSender<UiCommand>,
@@ -235,9 +461,9 @@ async fn run_tui(
 
     // Continue the downloads of the previous session.
     let restored = restore_session(&tracker, tor.clone(), jobs_progress.clone());
-    if restored > 0 {
+    if !restored.is_empty() {
         let mut a = app.lock().unwrap();
-        a.status_msg = t!("ui.status.session_restored", count = restored);
+        a.status_msg = t!("ui.status.session_restored", count = restored.len());
     }
 
     // UI command handler: enqueue new downloads
@@ -279,7 +505,7 @@ async fn run_tui(
                                         parts: vec![],
                                         status: JobStatus::Queued,
                                     }));
-                                    start_job_background(
+                                    let _handle = start_job_background(
                                         job,
                                         tor_c.clone(),
                                         progress.clone(),
@@ -370,6 +596,22 @@ async fn run_tui(
     Ok(())
 }
 
+/// Aborts the wrapped task when dropped, so aborting a download also stops
+/// its progress forwarder.
+struct AbortOnDrop(tokio::task::JoinHandle<()>);
+
+impl AbortOnDrop {
+    fn abort(&self) {
+        self.0.abort();
+    }
+}
+
+impl Drop for AbortOnDrop {
+    fn drop(&mut self) {
+        self.0.abort();
+    }
+}
+
 fn start_job_background(
     job: DownloadJob,
     tor: Option<Arc<TorManager>>,
@@ -377,7 +619,7 @@ fn start_job_background(
     tracker: Tracker,
     _job_tx: mpsc::UnboundedSender<(DownloadJob, oneshot::Sender<Result<()>>)>,
     jobs_progress: Arc<Mutex<Vec<JobProgress>>>,
-) {
+) -> tokio::task::JoinHandle<()> {
     let output = job.output.clone();
     let parts = job.max_parts;
     // Register the job with the tracker before the transfer starts: a session
@@ -401,7 +643,7 @@ fn start_job_background(
             let tracker = tracker.clone();
             let jobs_progress = jobs_progress.clone();
             let output = output.to_string_lossy().to_string();
-            tokio::spawn(async move {
+            AbortOnDrop(tokio::spawn(async move {
                 let mut tick: u32 = 0;
                 loop {
                     tokio::time::sleep(std::time::Duration::from_millis(500)).await;
@@ -428,7 +670,7 @@ fn start_job_background(
                         break;
                     }
                 }
-            })
+            }))
         };
 
         // Jobs wait here (status stays "queued") until the scheduler has a free slot
@@ -480,7 +722,7 @@ fn start_job_background(
             }
             Err(e) => error!("Job failed: {e:#}"),
         }
-    });
+    })
 }
 
 /// Continues the downloads that were open when the app last stopped.
@@ -492,9 +734,9 @@ fn restore_session(
     tracker: &Tracker,
     tor: Option<Arc<TorManager>>,
     jobs_progress: Arc<Mutex<Vec<JobProgress>>>,
-) -> usize {
+) -> Vec<(uuid::Uuid, tokio::task::JoinHandle<()>)> {
     let entries = tracker.open_entries();
-    let mut restored = 0usize;
+    let mut restored = Vec::new();
 
     for entry in entries {
         match entry.restore_action(tor.is_some()) {
@@ -525,7 +767,7 @@ fn restore_session(
                     parts: vec![],
                     status: JobStatus::Queued,
                 }));
-                start_job_background(
+                let handle = start_job_background(
                     job,
                     tor.clone(),
                     progress,
@@ -533,7 +775,7 @@ fn restore_session(
                     mpsc::unbounded_channel().0,
                     jobs_progress.clone(),
                 );
-                restored += 1;
+                restored.push((entry.id, handle));
             }
         }
     }
@@ -596,7 +838,7 @@ mod tests {
         let jobs: Arc<Mutex<Vec<JobProgress>>> = Arc::new(Mutex::new(Vec::new()));
         // Without a transport nothing is continued, but the download shows up.
         let restored = restore_session(&tracker, None, jobs.clone());
-        assert_eq!(restored, 0);
+        assert!(restored.is_empty());
 
         let list = jobs.lock().unwrap();
         assert_eq!(list.len(), 1);
@@ -623,7 +865,7 @@ mod tests {
 
         let jobs: Arc<Mutex<Vec<JobProgress>>> = Arc::new(Mutex::new(Vec::new()));
         let restored = restore_session(&tracker, None, jobs.clone());
-        assert_eq!(restored, 0);
+        assert!(restored.is_empty());
         assert!(jobs.lock().unwrap().is_empty());
 
         // The entry is closed now, so it is not restored again.
@@ -647,7 +889,7 @@ mod tests {
 
         let jobs: Arc<Mutex<Vec<JobProgress>>> = Arc::new(Mutex::new(Vec::new()));
         let restored = restore_session(&tracker, None, jobs.clone());
-        assert_eq!(restored, 0);
+        assert!(restored.is_empty());
         assert!(jobs.lock().unwrap().is_empty());
 
         let _ = std::fs::remove_dir_all(dir);

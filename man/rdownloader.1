@@ -21,6 +21,11 @@ Target file or directory.
 .B \-\-headless
 No terminal UI; log progress to the terminal.
 .TP
+.B \-\-daemon
+No terminal UI. Serve the JSON-RPC/REST control API on
+.B rpc_listen
+(default 127.0.0.1:8765) instead.
+.TP
 .BR \-t ", " \-\-tor\-clients " \fIN\fR"
 Deprecated and ignored. A single Tor client isolates every part.
 .TP
@@ -64,7 +69,8 @@ for example
 on Linux and
 .I ~/Library/Application Support/rdownloader/config.toml
 on macOS. Created on first start. Keys:
-.BR max_parts ", " max_retries ", " max_speed_kib " (KiB/s, 0 = unlimited), " bridges ", " download_dir ", " temp_dir ", " tor_data_dir ", " user_agent ", " connect_timeout_secs ", " read_timeout_secs ", " log_level .
+.BR max_parts ", " max_retries ", " max_speed_kib " (KiB/s, 0 = unlimited), " bridges ", " download_dir ", " temp_dir ", " tor_data_dir ", " user_agent ", " connect_timeout_secs ", " read_timeout_secs ", " log_level ", " rpc_listen ", " rpc_token .
+.TP
 .TP
 .I downloads.json
 Download history and session state, in the platform data directory under
@@ -78,6 +84,24 @@ Log filter; overrides
 .TP
 .B RDOWNLOADER_LANG
 Interface language code, when a catalog for it is loaded.
+.SH HEADLESS API
+With
+.B \-\-daemon
+the queue is available over HTTP:
+.B GET /api/jobs
+lists jobs,
+.B POST /api/jobs
+adds one from a JSON body such as
+.BR {\"url\":\ \"https://example.com/file.bin\"} ,
+.BR POST " /api/jobs/" id "/pause|resume|cancel"
+controls a job, and
+.BR DELETE " /api/jobs/" id
+removes it. JSON-RPC 2.0 is served at
+.BR POST " /rpc" .
+.B GET /health
+reports readiness. Without
+.B rpc_token
+the server only binds to loopback.
 .SH SECURITY
 Anonymity depends on Tor. Plain http URLs are visible to the exit relay; prefer https.
 Local state files are not encrypted. See

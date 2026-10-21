@@ -73,6 +73,15 @@ pub struct Config {
     /// Tor logging level (error/warn/info/debug/trace)
     #[serde(default = "default_log_level")]
     pub log_level: String,
+
+    /// Listen address of the headless JSON-RPC/REST server
+    #[serde(default = "default_rpc_listen")]
+    pub rpc_listen: String,
+
+    /// Optional bearer token for the RPC server. Without a token the server
+    /// must stay bound to loopback.
+    #[serde(default)]
+    pub rpc_token: Option<String>,
 }
 
 fn default_tor_clients() -> usize {
@@ -102,6 +111,9 @@ fn default_retries() -> u32 {
 fn default_log_level() -> String {
     "info".into()
 }
+fn default_rpc_listen() -> String {
+    "127.0.0.1:8765".into()
+}
 
 impl Default for Config {
     fn default() -> Self {
@@ -122,6 +134,8 @@ impl Default for Config {
             max_speed_kib: 0,
             max_retries: default_retries(),
             log_level: default_log_level(),
+            rpc_listen: default_rpc_listen(),
+            rpc_token: None,
         }
     }
 }
@@ -129,12 +143,13 @@ impl Default for Config {
 impl Config {
     pub fn describe(&self) -> String {
         format!(
-            "tor_clients={}, bridges={}, max_parts={}, retries={}, log={}",
+            "tor_clients={}, bridges={}, max_parts={}, retries={}, log={}, rpc={}",
             self.tor_clients,
             self.bridges.len(),
             self.max_parts,
             self.max_retries,
-            self.log_level
+            self.log_level,
+            self.rpc_listen
         )
     }
 

@@ -49,6 +49,7 @@ Statements marked *(verified)* are enforced by code or tests in this repository;
 - **Clipboard import** reads the clipboard through `pbpaste` / `wl-paste` / `xclip` / `xsel`; whatever is on the clipboard is parsed for links (only `http`/`https`).
 - **Captcha**: interactive solving shows the challenge in the terminal; no automatic solving or third-party solver is used.
 - **Bridges**: configured bridge lines are passed to Arti; their trustworthiness is the user's responsibility.
+- **Local control API**: `--daemon` serves JSON-RPC/REST without TLS. Anything that can reach the port can control the download queue. Binding to a non-loopback address requires `rpc_token`, but the token travels in clear text; use a tunnel or reverse proxy with TLS for remote access.
 - **Timing and size**: part sizes and timing can fingerprint a download for an observer who sees both ends.
 - **No update mechanism yet**: install updates yourself; there is no signature verification for releases until release builds exist.
 

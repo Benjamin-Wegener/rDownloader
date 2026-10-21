@@ -39,6 +39,10 @@ const EN: &[(&str, &str)] = &[
         "Disable Tor completely (testing only - unsafe!)",
     ),
     (
+        "cli.arg.daemon",
+        "Headless mode: serve the JSON-RPC/REST control API instead of the TUI",
+    ),
+    (
         "ui.tab.downloads",
         "Downloads",
     ),
@@ -391,6 +395,24 @@ const EN: &[(&str, &str)] = &[
         "Headless without Tor is not supported yet",
     ),
     ("main.error.tor_unavailable", "Tor not available"),
+    (
+        "main.error.rpc_bind",
+        "RPC server cannot listen on {addr}",
+    ),
+    (
+        "main.error.rpc_public_without_token",
+        "Refusing to expose the RPC server on a non-loopback address without rpc_token",
+    ),
+    ("rpc.error.invalid_request", "Invalid request"),
+    ("rpc.error.invalid_params", "Invalid params"),
+    ("rpc.error.invalid_job_id", "Invalid job id: {id}"),
+    ("rpc.error.job_not_found", "Job not found: {id}"),
+    ("rpc.error.job_not_paused", "Job is not paused"),
+    ("rpc.error.job_not_running", "Job is not running"),
+    ("rpc.error.unknown_method", "Unknown method: {method}"),
+    ("rpc.error.not_found_path", "Unknown endpoint"),
+    ("rpc.error.body_too_large", "Request body too large"),
+    ("rpc.error.unauthorized", "Unauthorized"),
 ];
 
 struct State {
