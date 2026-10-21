@@ -26,6 +26,9 @@ use tokio::sync::oneshot;
 
 mod detail;
 mod import;
+mod linkgrabber;
+
+pub use linkgrabber::GrabberEvent;
 
 use crate::config;
 use crate::contract::{JobEvent, JobId};
@@ -35,6 +38,7 @@ use crate::t;
 use crate::tor::TorHealth;
 use crate::tracker::export::{self, ExportFormat};
 use crate::tracker::history::HistoryItem;
+use linkgrabber::{GrabberRow, LinkGrabber, LinkSource, Package};
 
 #[derive(Clone, Copy, PartialEq, Debug)]
 pub enum AppTab {
@@ -49,6 +53,10 @@ pub enum AppTab {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum UiCommand {
     AddUrl(String),
+    /// Adds several URLs at once (the confirmed links of the link grabber).
+    AddUrls(Vec<String>),
+    /// Crawls a page with a crawler plugin and feeds the links to the grabber.
+    CrawlPage(String),
     PauseJob(uuid::Uuid),
     ResumeJob(uuid::Uuid),
     CancelJob(uuid::Uuid),
@@ -61,6 +69,12 @@ pub enum UiCommand {
 pub enum InputPrompt {
     AddUrl,
     ImportFile,
+    /// Collects a single URL in the link grabber.
+    GrabUrl,
+    /// Collects the links of a file in the link grabber.
+    GrabImport,
+    /// Crawls a page and collects the links it finds.
+    CrawlPage,
     Captcha {
         challenge: CaptchaChallenge,
         reply_tx: oneshot::Sender<String>,
@@ -84,6 +98,12 @@ pub struct App {
     pub status_msg: String,
     pub cmd_tx: tokio::sync::mpsc::UnboundedSender<UiCommand>,
     pub job_event_rx: tokio::sync::mpsc::UnboundedReceiver<JobEvent>,
+    /// The links collected in the link grabber (staging area of the queue).
+    pub grabber: LinkGrabber,
+    /// Results of the crawler plugins for the link grabber.
+    pub grabber_event_rx: tokio::sync::mpsc::UnboundedReceiver<GrabberEvent>,
+    /// Selection of the link grabber list.
+    pub grabber_state: ListState,
     /// Whether the detail panel of the selected job is shown.
     pub detail_open: bool,
     /// Latest Tor readiness snapshot (`None` without Tor).
@@ -95,6 +115,7 @@ impl App {
     pub fn new(
         cmd_tx: tokio::sync::mpsc::UnboundedSender<UiCommand>,
         job_event_rx: tokio::sync::mpsc::UnboundedReceiver<JobEvent>,
+        grabber_event_rx: tokio::sync::mpsc::UnboundedReceiver<GrabberEvent>,
     ) -> Self {
         Self {
             tab: AppTab::Downloads,
@@ -110,6 +131,9 @@ impl App {
             status_msg: t!("ui.status.help"),
             cmd_tx,
             job_event_rx,
+            grabber: LinkGrabber::new(),
+            grabber_event_rx,
+            grabber_state: ListState::default(),
             detail_open: false,
             tor_health: None,
             speeds: detail::SpeedTracker::default(),
@@ -148,6 +172,146 @@ impl App {
         };
     }
 
+    /// Collects links in the link grabber and reports the result in the status line.
+    fn collect_links(&mut self, source: LinkSource, urls: Vec<url::Url>) {
+        let added = self.grabber.add_links(source, urls);
+        self.status_msg = if added.added == 0 {
+            t!("ui.linkgrabber.duplicate_only")
+        } else {
+            t!(
+                "ui.linkgrabber.added",
+                count = added.added,
+                skipped = added.duplicates
+            )
+        };
+    }
+
+    /// The row the cursor is on in the link grabber list.
+    fn current_grabber_row(&self) -> Option<GrabberRow> {
+        let index = self.grabber_state.selected()?;
+        self.grabber.rows().get(index).copied()
+    }
+
+    /// The link the cursor is on (the first link of the package if the cursor
+    /// is on a package header).
+    fn current_grabber_link(&self) -> Option<&linkgrabber::LinkCandidate> {
+        match self.current_grabber_row()? {
+            GrabberRow::Link(i) => self.grabber.link(i),
+            GrabberRow::Package(p) => {
+                let first = *self.grabber.packages().get(p)?.links.first()?;
+                self.grabber.link(first)
+            }
+        }
+    }
+
+    /// Marks the link under the cursor or unmarks it.
+    fn toggle_grabber_link(&mut self) {
+        let Some(GrabberRow::Link(i)) = self.current_grabber_row() else {
+            return;
+        };
+        self.grabber.toggle_link(i);
+        self.status_msg = self.grabber_counts_msg();
+    }
+
+    /// Marks all links of the package under the cursor or unmarks them.
+    fn toggle_grabber_package(&mut self) {
+        let Some(GrabberRow::Package(p)) = self.current_grabber_row() else {
+            return;
+        };
+        self.grabber.toggle_package(p);
+        self.status_msg = self.grabber_counts_msg();
+    }
+
+    /// Marks every link or unmarks all of them.
+    fn toggle_grabber_all(&mut self) {
+        let all = self.grabber.links().iter().all(|l| l.selected);
+        self.grabber.select_all(!all);
+        self.status_msg = self.grabber_counts_msg();
+    }
+
+    /// Excludes the host of the link under the cursor (or includes it again).
+    fn toggle_grabber_host_filter(&mut self) {
+        let Some(host) = self.current_grabber_link().map(|l| l.host.clone()) else {
+            return;
+        };
+        let excluded = self.grabber.filter_mut().toggle_host(&host);
+        self.status_msg = t!(
+            "ui.linkgrabber.filter_host",
+            host = host,
+            state = filter_state(excluded)
+        );
+    }
+
+    /// Excludes the file type of the link under the cursor (or includes it again).
+    fn toggle_grabber_type_filter(&mut self) {
+        let Some(extension) = self.current_grabber_link().map(|l| l.extension.clone()) else {
+            return;
+        };
+        if extension.is_empty() {
+            self.status_msg = t!("ui.linkgrabber.filter_no_type");
+            return;
+        }
+        let excluded = self.grabber.filter_mut().toggle_extension(&extension);
+        self.status_msg = t!(
+            "ui.linkgrabber.filter_type",
+            extension = extension,
+            state = filter_state(excluded)
+        );
+    }
+
+    /// Removes the link or the package under the cursor.
+    fn remove_grabber_entry(&mut self) {
+        let row = self.current_grabber_row();
+        let index = self.grabber_state.selected().unwrap_or(0);
+        match row {
+            Some(GrabberRow::Link(i)) => {
+                if let Some(link) = self.grabber.remove_link(i) {
+                    self.status_msg = t!("ui.linkgrabber.removed", file = link.filename);
+                }
+            }
+            Some(GrabberRow::Package(p)) => {
+                if let Some(package) = self.grabber.remove_package(p) {
+                    self.status_msg = t!(
+                        "ui.linkgrabber.package_removed",
+                        name = package_label(&package)
+                    );
+                }
+            }
+            None => {}
+        }
+        // The cursor stays on the list (the row under it moved up).
+        let rows = self.grabber.rows().len();
+        self.grabber_state.select(if rows == 0 {
+            None
+        } else {
+            Some(index.min(rows - 1))
+        });
+    }
+
+    /// Transfers the marked links into the download queue.
+    fn confirm_grabber(&mut self) {
+        let urls = self.grabber.take_selected();
+        if urls.is_empty() {
+            self.status_msg = t!("ui.linkgrabber.nothing_selected");
+            return;
+        }
+        let count = urls.len();
+        let urls: Vec<String> = urls.into_iter().map(|u| u.to_string()).collect();
+        let _ = self.cmd_tx.send(UiCommand::AddUrls(urls));
+        self.status_msg = t!("ui.linkgrabber.transferred", count = count);
+    }
+
+    /// The counters of the link grabber (marked links, filtered links).
+    fn grabber_counts_msg(&self) -> String {
+        let counts = self.grabber.counts();
+        t!(
+            "ui.linkgrabber.counts",
+            selected = counts.selected,
+            total = counts.total,
+            filtered = counts.filtered
+        )
+    }
+
     fn next_tab(&mut self) {
         self.tab = match self.tab {
             AppTab::Downloads => AppTab::History,
@@ -170,30 +334,57 @@ impl App {
 
     /// Moves the selection of the visible list one entry up.
     fn select_previous(&mut self) {
-        if self.tab == AppTab::History {
-            let i = self.history_state.selected().unwrap_or(0);
-            if i > 0 {
-                self.history_state.select(Some(i - 1));
+        match self.tab {
+            AppTab::History => {
+                let i = self.history_state.selected().unwrap_or(0);
+                if i > 0 {
+                    self.history_state.select(Some(i - 1));
+                }
             }
-        } else {
-            let i = self.list_state.selected().unwrap_or(0);
-            if i > 0 {
-                self.list_state.select(Some(i - 1));
+            AppTab::LinkGrabber => {
+                let i = self.grabber_state.selected().unwrap_or(0);
+                if i > 0 {
+                    self.grabber_state.select(Some(i - 1));
+                }
+            }
+            _ => {
+                let i = self.list_state.selected().unwrap_or(0);
+                if i > 0 {
+                    self.list_state.select(Some(i - 1));
+                }
             }
         }
     }
 
     /// Moves the selection of the visible list one entry down.
     fn select_next(&mut self) {
-        if self.tab == AppTab::History {
-            let i = self.history_state.selected().unwrap_or(0);
-            if i + 1 < self.history.len() {
-                self.history_state.select(Some(i + 1));
+        match self.tab {
+            AppTab::History => {
+                let i = self.history_state.selected().unwrap_or(0);
+                if i + 1 < self.history.len() {
+                    self.history_state.select(Some(i + 1));
+                }
             }
-        } else {
-            let i = self.list_state.selected().unwrap_or(0);
-            if i + 1 < self.jobs.len() {
-                self.list_state.select(Some(i + 1));
+            AppTab::LinkGrabber => {
+                let rows = self.grabber.rows().len();
+                match self.grabber_state.selected() {
+                    None => {
+                        if rows > 0 {
+                            self.grabber_state.select(Some(0));
+                        }
+                    }
+                    Some(i) => {
+                        if i + 1 < rows {
+                            self.grabber_state.select(Some(i + 1));
+                        }
+                    }
+                }
+            }
+            _ => {
+                let i = self.list_state.selected().unwrap_or(0);
+                if i + 1 < self.jobs.len() {
+                    self.list_state.select(Some(i + 1));
+                }
             }
         }
     }
@@ -260,6 +451,36 @@ impl App {
                                 self.enqueue_import(result);
                             }
                         }
+                        InputPrompt::GrabUrl => {
+                            if !text.is_empty() {
+                                match url::Url::parse(&text) {
+                                    Ok(url) => self.collect_links(LinkSource::Manual, vec![url]),
+                                    Err(_) => self.status_msg = t!("ui.status.invalid_url"),
+                                }
+                            }
+                        }
+                        InputPrompt::GrabImport => {
+                            if !text.is_empty() {
+                                let path = import::expand_home(&text);
+                                match import::import_file(&path) {
+                                    Ok(imp) => {
+                                        let source =
+                                            LinkSource::File(path.to_string_lossy().into());
+                                        self.collect_links(source, imp.urls);
+                                    }
+                                    Err(e) => {
+                                        self.status_msg =
+                                            t!("ui.status.import_failed", error = format!("{e:#}"));
+                                    }
+                                }
+                            }
+                        }
+                        InputPrompt::CrawlPage => {
+                            if !text.is_empty() {
+                                let _ = self.cmd_tx.send(UiCommand::CrawlPage(text.clone()));
+                                self.status_msg = t!("ui.linkgrabber.crawl_started", page = text);
+                            }
+                        }
                         InputPrompt::Captcha {
                             challenge,
                             reply_tx,
@@ -277,6 +498,11 @@ impl App {
                 }
                 _ => {}
             }
+            return;
+        }
+        // The link grabber has its own keys; the global ones (quit, tabs,
+        // cursor) keep working.
+        if self.tab == AppTab::LinkGrabber && self.handle_grabber_key(code) {
             return;
         }
         match code {
@@ -363,6 +589,73 @@ impl App {
         }
     }
 
+    /// Handles the keys of the link grabber tab.
+    ///
+    /// Returns `true` if the key was used by the grabber.
+    fn handle_grabber_key(&mut self, code: KeyCode) -> bool {
+        match code {
+            KeyCode::Char('a') => {
+                self.input_mode = true;
+                self.input_buffer.clear();
+                self.input_prompt = InputPrompt::GrabUrl;
+                true
+            }
+            KeyCode::Char('i') => {
+                self.input_mode = true;
+                self.input_buffer.clear();
+                self.input_prompt = InputPrompt::GrabImport;
+                true
+            }
+            KeyCode::Char('v') => {
+                match import::read_clipboard() {
+                    Ok(text) => {
+                        let imp = import::parse_urls(&text);
+                        self.collect_links(LinkSource::Clipboard, imp.urls);
+                    }
+                    Err(e) => {
+                        self.status_msg = t!("ui.status.import_failed", error = format!("{e:#}"));
+                    }
+                }
+                true
+            }
+            KeyCode::Char('c') => {
+                self.input_mode = true;
+                self.input_buffer.clear();
+                self.input_prompt = InputPrompt::CrawlPage;
+                true
+            }
+            KeyCode::Char(' ') => {
+                self.toggle_grabber_link();
+                true
+            }
+            KeyCode::Char('p') => {
+                self.toggle_grabber_package();
+                true
+            }
+            KeyCode::Char('A') => {
+                self.toggle_grabber_all();
+                true
+            }
+            KeyCode::Char('f') => {
+                self.toggle_grabber_host_filter();
+                true
+            }
+            KeyCode::Char('F') => {
+                self.toggle_grabber_type_filter();
+                true
+            }
+            KeyCode::Char('x') => {
+                self.remove_grabber_entry();
+                true
+            }
+            KeyCode::Enter => {
+                self.confirm_grabber();
+                true
+            }
+            _ => false,
+        }
+    }
+
     /// Applies a contract-B `JobEvent` to the app state (live queue update).
     pub fn apply_event(&mut self, event: JobEvent) {
         match event {
@@ -411,6 +704,27 @@ impl App {
         }
     }
 
+    /// Applies a crawler result to the link grabber.
+    pub fn apply_grabber_event(&mut self, event: GrabberEvent) {
+        match event {
+            GrabberEvent::LinksFound { page, links } => {
+                let added = self.grabber.add_crawled(&page, links);
+                self.status_msg = t!(
+                    "ui.linkgrabber.crawl_done",
+                    count = added.added,
+                    page = page.to_string()
+                );
+            }
+            GrabberEvent::CrawlFailed { page, error } => {
+                self.status_msg = t!(
+                    "ui.linkgrabber.crawl_failed",
+                    error = error,
+                    page = page.to_string()
+                );
+            }
+        }
+    }
+
     /// Feeds the current progress of all jobs into the speed estimator.
     pub fn sample_speeds(&mut self, now: Instant) {
         for j in &self.jobs {
@@ -453,6 +767,10 @@ pub fn run(app: SharedApp) -> Result<()> {
             // Live updates via contract B: apply job events to the queue state immediately.
             while let Ok(event) = a.job_event_rx.try_recv() {
                 a.apply_event(event);
+            }
+            // Results of the crawler plugins for the link grabber.
+            while let Ok(event) = a.grabber_event_rx.try_recv() {
+                a.apply_grabber_event(event);
             }
             a.sample_speeds(Instant::now());
         }
@@ -515,7 +833,7 @@ fn draw(f: &mut Frame, app: &App) {
     match app.tab {
         AppTab::Downloads => draw_downloads(f, chunks[1], app),
         AppTab::History => draw_history(f, chunks[1], app),
-        AppTab::LinkGrabber => draw_linkgrabber(f, chunks[1]),
+        AppTab::LinkGrabber => draw_linkgrabber(f, chunks[1], app),
         AppTab::Plugins => draw_plugins(f, chunks[1]),
         AppTab::Settings => draw_settings(f, chunks[1]),
     }
@@ -537,6 +855,33 @@ fn draw(f: &mut Frame, app: &App) {
                         Block::default()
                             .borders(Borders::ALL)
                             .title(t!("ui.import.title")),
+                    )
+                    .style(Style::default().fg(Color::Green))
+            }
+            InputPrompt::GrabUrl => {
+                Paragraph::new(t!("ui.linkgrabber.input_url", buffer = app.input_buffer))
+                    .block(
+                        Block::default()
+                            .borders(Borders::ALL)
+                            .title(t!("ui.linkgrabber.title")),
+                    )
+                    .style(Style::default().fg(Color::Green))
+            }
+            InputPrompt::GrabImport => {
+                Paragraph::new(t!("ui.linkgrabber.input_import", buffer = app.input_buffer))
+                    .block(
+                        Block::default()
+                            .borders(Borders::ALL)
+                            .title(t!("ui.linkgrabber.title")),
+                    )
+                    .style(Style::default().fg(Color::Green))
+            }
+            InputPrompt::CrawlPage => {
+                Paragraph::new(t!("ui.linkgrabber.input_crawl", buffer = app.input_buffer))
+                    .block(
+                        Block::default()
+                            .borders(Borders::ALL)
+                            .title(t!("ui.linkgrabber.title")),
                     )
                     .style(Style::default().fg(Color::Green))
             }
@@ -741,17 +1086,6 @@ fn draw_history(f: &mut Frame, area: Rect, app: &App) {
     f.render_widget(hint, inner[1]);
 }
 
-fn draw_linkgrabber(f: &mut Frame, area: Rect) {
-    let p = Paragraph::new(t!("ui.linkgrabber.body"))
-        .block(
-            Block::default()
-                .borders(Borders::ALL)
-                .title(t!("ui.linkgrabber.title")),
-        )
-        .wrap(Wrap { trim: true });
-    f.render_widget(p, area);
-}
-
 fn draw_plugins(f: &mut Frame, area: Rect) {
     let items: Vec<ListItem> = vec![ListItem::new(Line::from(vec![
         Span::styled("[direct] ", Style::default().fg(Color::Cyan)),
@@ -790,6 +1124,144 @@ fn draw_settings(f: &mut Frame, area: Rect) {
     f.render_widget(p, area);
 }
 
+/// Link grabber: the collected links, their packages and the filters.
+fn draw_linkgrabber(f: &mut Frame, area: Rect, app: &App) {
+    let inner = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints([Constraint::Min(3), Constraint::Length(4)])
+        .split(area);
+
+    if app.grabber.is_empty() {
+        let p = Paragraph::new(t!("ui.linkgrabber.empty"))
+            .block(
+                Block::default()
+                    .borders(Borders::ALL)
+                    .title(t!("ui.linkgrabber.title")),
+            )
+            .wrap(Wrap { trim: true });
+        f.render_widget(p, inner[0]);
+    } else {
+        let items: Vec<ListItem> = app
+            .grabber
+            .rows()
+            .iter()
+            .map(|row| match row {
+                GrabberRow::Package(i) => {
+                    let package = &app.grabber.packages()[*i];
+                    let marked = package
+                        .links
+                        .iter()
+                        .filter(|&&l| app.grabber.link(l).is_some_and(|c| c.selected))
+                        .count();
+                    ListItem::new(Line::from(vec![
+                        Span::styled(
+                            format!("▸ {}", package_label(package)),
+                            Style::default()
+                                .fg(Color::Cyan)
+                                .add_modifier(Modifier::BOLD),
+                        ),
+                        Span::styled(
+                            format!("  {}", t!("ui.linkgrabber.package_count", count = marked)),
+                            Style::default().fg(Color::DarkGray),
+                        ),
+                    ]))
+                }
+                GrabberRow::Link(i) => {
+                    let link = &app.grabber.links()[*i];
+                    let filtered = app.grabber.filter().is_excluded(link);
+                    let color = if filtered {
+                        Color::DarkGray
+                    } else {
+                        Color::White
+                    };
+                    let mark = if link.selected { 'x' } else { ' ' };
+                    let mark_color = if link.selected {
+                        Color::Green
+                    } else {
+                        Color::DarkGray
+                    };
+                    let size = match link.size {
+                        Some(bytes) => fmt_bytes(bytes),
+                        None => t!("ui.linkgrabber.size_unknown").to_string(),
+                    };
+                    ListItem::new(Line::from(vec![
+                        Span::styled(format!("  [{mark}] "), Style::default().fg(mark_color)),
+                        Span::styled(pad(&link.filename, 26), Style::default().fg(color)),
+                        Span::styled(
+                            pad(&link.extension, 6),
+                            Style::default().fg(Color::DarkGray),
+                        ),
+                        Span::styled(pad(&link.host, 20), Style::default().fg(color)),
+                        Span::styled(size, Style::default().fg(Color::DarkGray)),
+                    ]))
+                }
+            })
+            .collect();
+
+        let list = List::new(items)
+            .block(
+                Block::default()
+                    .borders(Borders::ALL)
+                    .title(t!("ui.linkgrabber.title")),
+            )
+            .highlight_style(Style::default().bg(Color::DarkGray))
+            .highlight_symbol(">> ");
+        f.render_stateful_widget(list, inner[0], &mut app.grabber_state.clone());
+    }
+
+    let counts = app.grabber.counts();
+    let hint = Paragraph::new(vec![
+        Line::from(t!("ui.linkgrabber.hint")),
+        Line::from(t!(
+            "ui.linkgrabber.counts",
+            selected = counts.selected,
+            total = counts.total,
+            filtered = counts.filtered
+        )),
+    ])
+    .block(
+        Block::default()
+            .borders(Borders::ALL)
+            .title(t!("ui.linkgrabber.title")),
+    )
+    .wrap(Wrap { trim: true });
+    f.render_widget(hint, inner[1]);
+}
+
+/// The header of a package in the link grabber list.
+fn package_label(package: &Package) -> String {
+    match &package.source {
+        LinkSource::Manual => t!("ui.linkgrabber.package_manual"),
+        LinkSource::Clipboard => t!("ui.linkgrabber.package_clipboard"),
+        LinkSource::File(path) => {
+            let name = std::path::Path::new(path)
+                .file_name()
+                .map(|n| n.to_string_lossy().to_string())
+                .unwrap_or_else(|| path.clone());
+            t!("ui.linkgrabber.package_file", name = name)
+        }
+        LinkSource::Crawl(page) => t!("ui.linkgrabber.package_crawl", page = page.clone()),
+    }
+}
+
+/// The state of a filter (excluded or included again).
+fn filter_state(excluded: bool) -> String {
+    if excluded {
+        t!("ui.linkgrabber.filter_excluded")
+    } else {
+        t!("ui.linkgrabber.filter_included")
+    }
+}
+
+/// Shortens a text to `width` characters and pads it with spaces.
+fn pad(text: &str, width: usize) -> String {
+    let mut out: String = text.chars().take(width).collect();
+    while out.chars().count() < width {
+        out.push(' ');
+    }
+    out
+}
+
 pub(crate) fn fmt_bytes(b: u64) -> String {
     const KB: f64 = 1024.0;
     const MB: f64 = KB * 1024.0;
@@ -817,7 +1289,8 @@ mod tests {
     fn apply_event_resolved_progress_finished() {
         let (_cmd_tx, _cmd_rx) = mpsc::unbounded_channel::<UiCommand>();
         let (_evt_tx, _evt_rx) = mpsc::unbounded_channel::<JobEvent>();
-        let mut app = App::new(_cmd_tx, _evt_rx);
+        let (_grab_tx, _grab_rx) = mpsc::unbounded_channel::<GrabberEvent>();
+        let mut app = App::new(_cmd_tx, _evt_rx, _grab_rx);
         let id = Uuid::new_v4();
 
         app.apply_event(JobEvent::Status {
@@ -852,7 +1325,8 @@ mod tests {
     fn apply_event_unknown_progress_is_ignored() {
         let (_cmd_tx, _cmd_rx) = mpsc::unbounded_channel::<UiCommand>();
         let (_evt_tx, _evt_rx) = mpsc::unbounded_channel::<JobEvent>();
-        let mut app = App::new(_cmd_tx, _evt_rx);
+        let (_grab_tx, _grab_rx) = mpsc::unbounded_channel::<GrabberEvent>();
+        let mut app = App::new(_cmd_tx, _evt_rx, _grab_rx);
         let id = Uuid::new_v4();
         app.apply_event(JobEvent::Progress {
             id,
@@ -865,11 +1339,12 @@ mod tests {
     #[tokio::test]
     async fn fakejob_live_updates_reach_queue() {
         let (evt_tx, evt_rx) = mpsc::unbounded_channel::<JobEvent>();
+        let (_grab_tx, _grab_rx) = mpsc::unbounded_channel::<GrabberEvent>();
         let (_cmd_tx, _cmd_rx) = mpsc::unbounded_channel::<UiCommand>();
         let job = FakeJob::new("dl.bin", 60, 20);
         let id = job.id;
         job.spawn(evt_tx);
-        let mut app = App::new(_cmd_tx, evt_rx);
+        let mut app = App::new(_cmd_tx, evt_rx, _grab_rx);
         tokio::time::sleep(std::time::Duration::from_millis(100)).await;
         while let Ok(ev) = app.job_event_rx.try_recv() {
             app.apply_event(ev);
@@ -887,11 +1362,12 @@ mod tests {
     #[tokio::test]
     async fn fakejob_cancel_reaches_queue() {
         let (evt_tx, evt_rx) = mpsc::unbounded_channel::<JobEvent>();
+        let (_grab_tx, _grab_rx) = mpsc::unbounded_channel::<GrabberEvent>();
         let (_cmd_tx, _cmd_rx) = mpsc::unbounded_channel::<UiCommand>();
         let job = FakeJob::new("dl.bin", 1_000_000, 1);
         let id = job.id;
         let cmd_tx = job.spawn(evt_tx);
-        let mut app = App::new(_cmd_tx, evt_rx);
+        let mut app = App::new(_cmd_tx, evt_rx, _grab_rx);
         cmd_tx.send(JobCommand::Cancel).unwrap();
         tokio::time::sleep(std::time::Duration::from_millis(100)).await;
         while let Ok(ev) = app.job_event_rx.try_recv() {
@@ -909,7 +1385,8 @@ mod tests {
     fn handle_key_pause_resume_cancel_remove() {
         let (cmd_tx, mut cmd_rx) = mpsc::unbounded_channel::<UiCommand>();
         let (_evt_tx, evt_rx) = mpsc::unbounded_channel::<JobEvent>();
-        let mut app = App::new(cmd_tx, evt_rx);
+        let (_grab_tx, _grab_rx) = mpsc::unbounded_channel::<GrabberEvent>();
+        let mut app = App::new(cmd_tx, evt_rx, _grab_rx);
         let id1 = Uuid::new_v4();
         let id2 = Uuid::new_v4();
 
@@ -959,7 +1436,8 @@ mod tests {
     async fn interactive_captcha_prompt_in_tui() {
         let (cmd_tx, _cmd_rx) = mpsc::unbounded_channel::<UiCommand>();
         let (_evt_tx, evt_rx) = mpsc::unbounded_channel::<JobEvent>();
-        let mut app = App::new(cmd_tx, evt_rx);
+        let (_grab_tx, _grab_rx) = mpsc::unbounded_channel::<GrabberEvent>();
+        let mut app = App::new(cmd_tx, evt_rx, _grab_rx);
 
         let challenge = CaptchaChallenge::new_text("dl.example.com", "Calculate 5 * 5");
         let (reply_tx, reply_rx) = oneshot::channel();
@@ -983,7 +1461,8 @@ mod tests {
     fn batch_import_sends_one_command_per_link() {
         let (cmd_tx, mut cmd_rx) = mpsc::unbounded_channel::<UiCommand>();
         let (_evt_tx, evt_rx) = mpsc::unbounded_channel::<JobEvent>();
-        let mut app = App::new(cmd_tx, evt_rx);
+        let (_grab_tx, _grab_rx) = mpsc::unbounded_channel::<GrabberEvent>();
+        let mut app = App::new(cmd_tx, evt_rx, _grab_rx);
 
         app.enqueue_import(Ok(import::parse_urls(
             "http://a.test/1\nhttp://a.test/2\nftp://x/y\n",
@@ -1010,7 +1489,8 @@ mod tests {
     fn import_key_opens_file_prompt() {
         let (cmd_tx, _cmd_rx) = mpsc::unbounded_channel::<UiCommand>();
         let (_evt_tx, evt_rx) = mpsc::unbounded_channel::<JobEvent>();
-        let mut app = App::new(cmd_tx, evt_rx);
+        let (_grab_tx, _grab_rx) = mpsc::unbounded_channel::<GrabberEvent>();
+        let mut app = App::new(cmd_tx, evt_rx, _grab_rx);
         app.handle_key(KeyCode::Char('i'));
         assert!(app.input_mode);
         assert!(matches!(app.input_prompt, InputPrompt::ImportFile));
@@ -1038,7 +1518,8 @@ mod tests {
     fn history_tab_exports_and_removes_entries() {
         let (cmd_tx, mut cmd_rx) = mpsc::unbounded_channel::<UiCommand>();
         let (_evt_tx, evt_rx) = mpsc::unbounded_channel::<JobEvent>();
-        let mut app = App::new(cmd_tx, evt_rx);
+        let (_grab_tx, _grab_rx) = mpsc::unbounded_channel::<GrabberEvent>();
+        let mut app = App::new(cmd_tx, evt_rx, _grab_rx);
         let dir = std::env::temp_dir().join(format!("rdl-ui-history-{}", Uuid::new_v4()));
         app.export_dir = dir.clone();
         let item = history_item("a.bin");
@@ -1066,7 +1547,8 @@ mod tests {
     fn export_keys_only_work_in_the_history_tab() {
         let (cmd_tx, _cmd_rx) = mpsc::unbounded_channel::<UiCommand>();
         let (_evt_tx, evt_rx) = mpsc::unbounded_channel::<JobEvent>();
-        let mut app = App::new(cmd_tx, evt_rx);
+        let (_grab_tx, _grab_rx) = mpsc::unbounded_channel::<GrabberEvent>();
+        let mut app = App::new(cmd_tx, evt_rx, _grab_rx);
         let dir = std::env::temp_dir().join(format!("rdl-ui-history-{}", Uuid::new_v4()));
         app.export_dir = dir.clone();
         app.history = vec![history_item("a.bin")];
@@ -1083,7 +1565,8 @@ mod tests {
     fn tab_order_includes_the_history() {
         let (cmd_tx, _cmd_rx) = mpsc::unbounded_channel::<UiCommand>();
         let (_evt_tx, evt_rx) = mpsc::unbounded_channel::<JobEvent>();
-        let mut app = App::new(cmd_tx, evt_rx);
+        let (_grab_tx, _grab_rx) = mpsc::unbounded_channel::<GrabberEvent>();
+        let mut app = App::new(cmd_tx, evt_rx, _grab_rx);
         assert_eq!(app.tab, AppTab::Downloads);
         app.handle_key(KeyCode::Tab);
         assert_eq!(app.tab, AppTab::History);
@@ -1091,5 +1574,189 @@ mod tests {
         assert_eq!(app.tab, AppTab::LinkGrabber);
         app.handle_key(KeyCode::BackTab);
         assert_eq!(app.tab, AppTab::History);
+    }
+
+    /// An app in the link grabber tab.
+    fn grabber_app() -> (App, mpsc::UnboundedReceiver<UiCommand>) {
+        let (cmd_tx, cmd_rx) = mpsc::unbounded_channel::<UiCommand>();
+        let (_evt_tx, evt_rx) = mpsc::unbounded_channel::<JobEvent>();
+        let (_grab_tx, _grab_rx) = mpsc::unbounded_channel::<GrabberEvent>();
+        let mut app = App::new(cmd_tx, evt_rx, _grab_rx);
+        app.tab = AppTab::LinkGrabber;
+        (app, cmd_rx)
+    }
+
+    fn grab_url(s: &str) -> url::Url {
+        url::Url::parse(s).unwrap()
+    }
+
+    #[test]
+    fn link_grabber_collects_a_url_and_transfers_it_to_the_queue() {
+        let (mut app, mut cmd_rx) = grabber_app();
+
+        // 'a' opens the prompt of the link grabber.
+        app.handle_key(KeyCode::Char('a'));
+        assert!(app.input_mode);
+        assert!(matches!(app.input_prompt, InputPrompt::GrabUrl));
+        for c in "http://a.test/1.bin".chars() {
+            app.handle_key(KeyCode::Char(c));
+        }
+        app.handle_key(KeyCode::Enter);
+        assert!(!app.input_mode);
+        assert_eq!(app.grabber.links().len(), 1);
+        assert_eq!(app.grabber.links()[0].filename, "1.bin");
+        assert_eq!(app.grabber.links()[0].extension, "bin");
+
+        // The link is collected, but nothing is downloaded yet.
+        assert!(cmd_rx.try_recv().is_err());
+
+        // Enter confirms and transfers the marked links.
+        app.handle_key(KeyCode::Enter);
+        assert_eq!(
+            cmd_rx.try_recv().unwrap(),
+            UiCommand::AddUrls(vec!["http://a.test/1.bin".into()])
+        );
+        assert!(app.grabber.is_empty());
+    }
+
+    #[test]
+    fn link_grabber_filters_by_host_and_file_type() {
+        let (mut app, _cmd_rx) = grabber_app();
+        app.grabber.add_links(
+            LinkSource::Manual,
+            [
+                grab_url("http://a.test/1.bin"),
+                grab_url("http://a.test/2.html"),
+            ],
+        );
+        // Rows: package header, first link, second link.
+        app.grabber_state.select(Some(2));
+
+        // 'f' excludes the host of the link under the cursor.
+        app.handle_key(KeyCode::Char('f'));
+        assert!(app.grabber.filter().excludes_host("a.test"));
+        assert_eq!(app.grabber.counts().filtered, 2);
+        assert_eq!(app.grabber.counts().selected, 0);
+
+        // 'f' again includes it.
+        app.handle_key(KeyCode::Char('f'));
+        assert!(!app.grabber.filter().excludes_host("a.test"));
+        assert_eq!(app.grabber.counts().filtered, 0);
+
+        // 'F' excludes the file type of the link under the cursor.
+        app.handle_key(KeyCode::Char('F'));
+        assert!(app.grabber.filter().excludes_extension("html"));
+        assert_eq!(app.grabber.counts().filtered, 1);
+        assert_eq!(app.grabber.counts().selected, 1);
+    }
+
+    #[test]
+    fn link_grabber_marks_links_and_packages() {
+        let (mut app, _cmd_rx) = grabber_app();
+        app.grabber.add_links(
+            LinkSource::Manual,
+            [
+                grab_url("http://a.test/1.bin"),
+                grab_url("http://a.test/2.bin"),
+            ],
+        );
+
+        // Space unmarks the link under the cursor.
+        app.grabber_state.select(Some(1));
+        app.handle_key(KeyCode::Char(' '));
+        assert!(!app.grabber.links()[0].selected);
+        assert_eq!(app.grabber.counts().selected, 1);
+
+        // 'p' marks the whole package.
+        app.grabber_state.select(Some(0));
+        app.handle_key(KeyCode::Char('p'));
+        assert!(app.grabber.links().iter().all(|l| l.selected));
+
+        // 'A' unmarks everything.
+        app.handle_key(KeyCode::Char('A'));
+        assert!(app.grabber.links().iter().all(|l| !l.selected));
+    }
+
+    #[test]
+    fn link_grabber_removes_the_link_under_the_cursor() {
+        let (mut app, _cmd_rx) = grabber_app();
+        app.grabber.add_links(
+            LinkSource::Manual,
+            [
+                grab_url("http://a.test/1.bin"),
+                grab_url("http://a.test/2.bin"),
+            ],
+        );
+        app.grabber_state.select(Some(1));
+        app.handle_key(KeyCode::Char('x'));
+        assert_eq!(app.grabber.links().len(), 1);
+        assert_eq!(app.grabber.links()[0].filename, "2.bin");
+    }
+
+    #[test]
+    fn link_grabber_takes_the_links_of_a_crawled_page() {
+        use crate::plugin::crawler::CrawledLink;
+        let (mut app, _cmd_rx) = grabber_app();
+        let page = grab_url("http://a.test/page.html");
+        let links = vec![CrawledLink {
+            url: grab_url("http://a.test/f1.bin"),
+            title: Some("one".into()),
+        }];
+        app.apply_grabber_event(GrabberEvent::LinksFound {
+            page: page.clone(),
+            links,
+        });
+        assert_eq!(app.grabber.links().len(), 1);
+        assert_eq!(
+            app.grabber.packages()[0].source,
+            LinkSource::Crawl(page.to_string())
+        );
+    }
+
+    #[test]
+    fn link_grabber_does_not_disturb_the_download_tab() {
+        let (cmd_tx, mut cmd_rx) = mpsc::unbounded_channel::<UiCommand>();
+        let (_evt_tx, evt_rx) = mpsc::unbounded_channel::<JobEvent>();
+        let (_grab_tx, _grab_rx) = mpsc::unbounded_channel::<GrabberEvent>();
+        let mut app = App::new(cmd_tx, evt_rx, _grab_rx);
+        app.tab = AppTab::Downloads;
+
+        // 'a' in the download tab still queues the URL directly.
+        app.handle_key(KeyCode::Char('a'));
+        assert!(matches!(app.input_prompt, InputPrompt::AddUrl));
+        for c in "http://a.test/1.bin".chars() {
+            app.handle_key(KeyCode::Char(c));
+        }
+        app.handle_key(KeyCode::Enter);
+        assert_eq!(
+            cmd_rx.try_recv().unwrap(),
+            UiCommand::AddUrl("http://a.test/1.bin".into())
+        );
+        assert!(app.grabber.is_empty());
+    }
+
+    #[test]
+    fn link_grabber_tab_renders_the_collected_links() {
+        use ratatui::backend::TestBackend;
+
+        let (mut app, _cmd_rx) = grabber_app();
+        app.grabber.add_links(
+            LinkSource::Manual,
+            [
+                grab_url("http://a.test/1.bin"),
+                grab_url("http://a.test/2.html"),
+            ],
+        );
+        app.grabber_state.select(Some(1));
+
+        let backend = TestBackend::new(80, 24);
+        let mut terminal = ratatui::Terminal::new(backend).unwrap();
+        terminal.draw(|f| draw(f, &app)).unwrap();
+
+        let buffer = terminal.backend().buffer().clone();
+        let text: String = buffer.content().iter().map(|c| c.symbol()).collect();
+        assert!(text.contains("1.bin"), "link missing in the list: {text}");
+        assert!(text.contains("2.html"), "link missing in the list: {text}");
+        assert!(text.contains("a.test"), "host missing in the list: {text}");
     }
 }

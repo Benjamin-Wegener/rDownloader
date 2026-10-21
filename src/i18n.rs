@@ -180,8 +180,120 @@ const EN: &[(&str, &str)] = &[
         "LinkGrabber",
     ),
     (
-        "ui.linkgrabber.body",
-        "LinkGrabber:\n\n- i = import links from a text/M3U file\n- v = import links from the clipboard\n\nStill to come: crawler plugins and a preview before enqueue – see ROADMAP.md",
+        "ui.linkgrabber.empty",
+        "No links collected yet – press 'a' to add a URL, 'i' for a link list, 'v' for the clipboard or 'c' to crawl a page.",
+    ),
+    (
+        "ui.linkgrabber.hint",
+        "Space=Select · p=Package · A=All · f=Host filter · F=Type filter · x=Remove · Enter=Transfer to queue · a=Add · i=File · v=Clipboard · c=Crawl",
+    ),
+    (
+        "ui.linkgrabber.counts",
+        "{selected} of {total} link(s) selected · {filtered} filtered out",
+    ),
+    (
+        "ui.linkgrabber.package_manual",
+        "Manual links",
+    ),
+    (
+        "ui.linkgrabber.package_clipboard",
+        "Clipboard",
+    ),
+    (
+        "ui.linkgrabber.package_file",
+        "File: {name}",
+    ),
+    (
+        "ui.linkgrabber.package_crawl",
+        "Page: {page}",
+    ),
+    (
+        "ui.linkgrabber.package_count",
+        "{count} link(s) marked",
+    ),
+    (
+        "ui.linkgrabber.added",
+        "Collected {count} link(s), {skipped} already known",
+    ),
+    (
+        "ui.linkgrabber.duplicate_only",
+        "All links are already collected",
+    ),
+    (
+        "ui.linkgrabber.filter_host",
+        "Host filter: {host} is {state}",
+    ),
+    (
+        "ui.linkgrabber.filter_type",
+        "Type filter: {extension} is {state}",
+    ),
+    (
+        "ui.linkgrabber.filter_no_type",
+        "This link has no file type to filter",
+    ),
+    (
+        "ui.linkgrabber.filter_excluded",
+        "excluded",
+    ),
+    (
+        "ui.linkgrabber.filter_included",
+        "included",
+    ),
+    (
+        "ui.linkgrabber.nothing_selected",
+        "No link selected – nothing to transfer",
+    ),
+    (
+        "ui.linkgrabber.transferred",
+        "{count} link(s) transferred to the download queue",
+    ),
+    (
+        "ui.linkgrabber.removed",
+        "Removed from the link grabber: {file}",
+    ),
+    (
+        "ui.linkgrabber.package_removed",
+        "Package removed: {name}",
+    ),
+    (
+        "ui.linkgrabber.crawl_started",
+        "Crawling {page} ...",
+    ),
+    (
+        "ui.linkgrabber.crawl_done",
+        "Found {count} link(s) on {page}",
+    ),
+    (
+        "ui.linkgrabber.crawl_failed",
+        "Crawl of {page} failed: {error}",
+    ),
+    (
+        "ui.linkgrabber.no_crawler",
+        "No crawler plugin for {page}",
+    ),
+    (
+        "ui.linkgrabber.crawl_no_transport",
+        "Crawling needs a transport (Tor)",
+    ),
+    (
+        "ui.linkgrabber.input_url",
+        "URL to collect: {buffer}_",
+    ),
+    (
+        "ui.linkgrabber.input_import",
+        "Link list file to collect (~ allowed): {buffer}_",
+    ),
+    (
+        "ui.linkgrabber.input_crawl",
+        "Page to crawl: {buffer}_",
+    ),
+    (
+        "ui.linkgrabber.size_unknown",
+        "size unknown",
+    ),
+    (
+        "ui.status.enqueued_many",
+        "Queued {count} link(s) for download, {failed} failed",
     ),
     (
         "ui.plugins.title",

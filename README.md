@@ -20,6 +20,7 @@ no code was taken from it. JDownloader's Java plugins cannot be loaded.
 - Global speed limit (`max_speed_kib`)
 - Terminal UI: queue with live progress, per-job details (parts, speed, ETA, Tor state), pause / resume / cancel / remove
 - Batch import of links from a text or M3U file, or from the clipboard
+- Link grabber: collect links separately (manually, from a file, the clipboard or a crawled page), filter them by host and file type, then confirm them into the download queue
 - Session restore: unfinished downloads come back after a restart
 - Plugin types: hoster, crawler, account (cookie sessions) and interactive captcha
 - Tor bridges for censored networks
@@ -67,6 +68,16 @@ TUI keys:
 | `p` `r` `c` `d` | pause, resume, cancel, remove the selected download |
 | `Tab` / `Shift+Tab` | switch tab |
 | `q` | quit |
+
+LinkGrabber tab (the links are collected first and downloaded only after the confirmation):
+
+| Key | Action |
+| --- | --- |
+| `a` / `i` / `v` / `c` | collect a URL, a link list file, the clipboard, or crawl a page for links |
+| `Space` / `p` / `A` | mark the link, the whole package, or all links |
+| `f` / `F` | exclude the host or the file type of the selected link |
+| `x` | remove the selected link or package |
+| `Enter` | transfer the marked links into the download queue |
 
 ## Configuration
 

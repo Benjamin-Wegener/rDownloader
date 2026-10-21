@@ -20,7 +20,7 @@ use async_trait::async_trait;
 use clap::{CommandFactory, FromArgMatches, Parser};
 use std::collections::HashMap;
 use std::net::SocketAddr;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 use tokio::sync::{mpsc, oneshot};
 use tokio::task::AbortHandle;
@@ -33,11 +33,11 @@ use crate::net::rpc::{self, JobControl};
 use crate::net::TorTransport;
 use crate::plugin::{
     load_wasm_plugins, DenyHttpClient, DirectDownloadPlugin, ExampleRedirectHosterPlugin,
-    PluginRegistry, TransportHttpClient, WasmHttpClient, WasmRuntimeConfig,
+    HtmlLinkCrawlerPlugin, PluginRegistry, TransportHttpClient, WasmHttpClient, WasmRuntimeConfig,
 };
 use crate::tor::TorManager;
 use crate::tracker::{RestoreAction, TrackEntry, Tracker};
-use crate::ui::{App, SharedApp, UiCommand};
+use crate::ui::{App, GrabberEvent, SharedApp, UiCommand};
 
 #[derive(Parser, Debug)]
 #[command(name = "rdownloader", version)]
@@ -132,6 +132,8 @@ async fn main() -> Result<()> {
     let mut registry = PluginRegistry::new();
     registry.register(Arc::new(DirectDownloadPlugin));
     registry.register(Arc::new(ExampleRedirectHosterPlugin::new()));
+    // The link grabber crawls pages with the crawler plugins.
+    registry.register_crawler(Arc::new(HtmlLinkCrawlerPlugin));
 
     // Dynamically loaded WebAssembly plugins (sandboxed, permissions from sidecar).
     let wasm_http: Arc<dyn WasmHttpClient> = match &tor {
@@ -172,6 +174,8 @@ async fn main() -> Result<()> {
     let (job_tx, job_rx) = mpsc::unbounded_channel::<(DownloadJob, oneshot::Sender<Result<()>>)>();
     let (ui_cmd_tx, ui_cmd_rx) = mpsc::unbounded_channel::<UiCommand>();
     let (_job_event_tx, job_event_rx) = mpsc::unbounded_channel::<JobEvent>();
+    // Results of the crawler plugins for the link grabber.
+    let (grabber_event_tx, grabber_event_rx) = mpsc::unbounded_channel::<GrabberEvent>();
 
     // Shared job progress store for TUI + engine
     let jobs_progress: Arc<Mutex<Vec<JobProgress>>> = Arc::new(Mutex::new(Vec::new()));
@@ -252,6 +256,8 @@ async fn main() -> Result<()> {
                 ui_cmd_rx,
                 job_rx,
                 job_event_rx,
+                grabber_event_rx,
+                grabber_event_tx.clone(),
                 jobs_progress,
                 registry,
                 tracker,
@@ -267,6 +273,8 @@ async fn main() -> Result<()> {
             ui_cmd_rx,
             job_rx,
             job_event_rx,
+            grabber_event_rx,
+            grabber_event_tx.clone(),
             jobs_progress,
             registry,
             tracker,
@@ -486,18 +494,97 @@ async fn run_daemon(control: DaemonControl, cfg: &config::Config) -> Result<()> 
 }
 
 #[allow(clippy::too_many_arguments)]
+/// Why a URL could not be queued.
+enum EnqueueError {
+    /// The URL could not be parsed.
+    Invalid,
+    /// No plugin handles the URL.
+    NoPlugin,
+    /// The plugin could not resolve the link.
+    Resolve(String),
+}
+
+impl EnqueueError {
+    /// The message for the status line.
+    fn status_msg(&self) -> String {
+        match self {
+            EnqueueError::Invalid => t!("ui.status.invalid_url"),
+            EnqueueError::NoPlugin => t!("ui.status.no_plugin", url = "?"),
+            EnqueueError::Resolve(e) => t!("ui.status.resolve_error", e = e),
+        }
+    }
+}
+
+/// Resolves a URL with its plugin and starts the download.
+///
+/// Returns the file name of the download.
+#[allow(clippy::too_many_arguments)]
+async fn enqueue_url(
+    url_str: &str,
+    registry: &PluginRegistry,
+    tor: Option<Arc<TorManager>>,
+    tracker: &Tracker,
+    jobs_progress: &Arc<Mutex<Vec<JobProgress>>>,
+    dl_dir: &Path,
+    max_parts: usize,
+) -> Result<String, EnqueueError> {
+    let url = url::Url::parse(url_str).map_err(|_| EnqueueError::Invalid)?;
+    let plugin = registry.find_for_url(&url).ok_or(EnqueueError::NoPlugin)?;
+    let resolved = plugin
+        .resolve(url)
+        .await
+        .map_err(|e| EnqueueError::Resolve(format!("{e:#}")))?;
+    let proposed_name = resolved
+        .filename
+        .as_deref()
+        .unwrap_or(rdownloader::download::DEFAULT_FALLBACK_FILENAME);
+    let output = rdownloader::download::resolve_destination(dl_dir, proposed_name);
+    let filename = output
+        .file_name()
+        .and_then(|s| s.to_str())
+        .unwrap_or(rdownloader::download::DEFAULT_FALLBACK_FILENAME)
+        .to_string();
+    let job = DownloadJob::new(resolved.url, output.clone(), max_parts);
+    let progress = Arc::new(tokio::sync::Mutex::new(JobProgress {
+        id: job.id,
+        url: job.url.to_string(),
+        filename: filename.clone(),
+        total_bytes: 0,
+        bytes_done: 0,
+        parts: vec![],
+        status: JobStatus::Queued,
+    }));
+    let _handle = start_job_background(
+        job,
+        tor,
+        progress,
+        tracker.clone(),
+        // Mirror directly into jobs_progress
+        mpsc::unbounded_channel().0,
+        jobs_progress.clone(),
+    );
+    Ok(filename)
+}
+
+#[allow(clippy::too_many_arguments)]
 async fn run_tui(
     ui_cmd_tx: mpsc::UnboundedSender<UiCommand>,
     mut ui_cmd_rx: mpsc::UnboundedReceiver<UiCommand>,
     _job_rx: mpsc::UnboundedReceiver<(DownloadJob, oneshot::Sender<Result<()>>)>,
     job_event_rx: mpsc::UnboundedReceiver<JobEvent>,
+    grabber_event_rx: mpsc::UnboundedReceiver<GrabberEvent>,
+    grabber_event_tx: mpsc::UnboundedSender<GrabberEvent>,
     jobs_progress: Arc<Mutex<Vec<JobProgress>>>,
     registry: PluginRegistry,
     tracker: Tracker,
     tor: Option<Arc<TorManager>>,
     cfg: &config::Config,
 ) -> Result<()> {
-    let app: SharedApp = Arc::new(Mutex::new(App::new(ui_cmd_tx, job_event_rx)));
+    let app: SharedApp = Arc::new(Mutex::new(App::new(
+        ui_cmd_tx,
+        job_event_rx,
+        grabber_event_rx,
+    )));
     let app_for_ui = app.clone();
     let app_for_tui = app.clone();
 
@@ -519,64 +606,75 @@ async fn run_tui(
         while let Some(cmd) = ui_cmd_rx.recv().await {
             match cmd {
                 UiCommand::AddUrl(url_str) => {
-                    match url::Url::parse(&url_str) {
-                        Ok(url) => {
-                            let plugin = match registry_c.find_for_url(&url) {
-                                Some(p) => p,
-                                None => {
-                                    let mut a = app_for_ui.lock().unwrap();
-                                    a.status_msg = t!("ui.status.no_plugin", url = url);
-                                    continue;
-                                }
-                            };
-                            match plugin.resolve(url).await {
-                                Ok(resolved) => {
-                                    let proposed_name = resolved.filename.as_deref().unwrap_or(
-                                        rdownloader::download::DEFAULT_FALLBACK_FILENAME,
-                                    );
-                                    let output = rdownloader::download::resolve_destination(
-                                        &dl_dir,
-                                        proposed_name,
-                                    );
-                                    let filename = output
-                                        .file_name()
-                                        .and_then(|s| s.to_str())
-                                        .unwrap_or(rdownloader::download::DEFAULT_FALLBACK_FILENAME)
-                                        .to_string();
-                                    let job =
-                                        DownloadJob::new(resolved.url, output.clone(), max_parts);
-                                    let progress = Arc::new(tokio::sync::Mutex::new(JobProgress {
-                                        id: job.id,
-                                        url: job.url.to_string(),
-                                        filename: filename.clone(),
-                                        total_bytes: 0,
-                                        bytes_done: 0,
-                                        parts: vec![],
-                                        status: JobStatus::Queued,
-                                    }));
-                                    let _handle = start_job_background(
-                                        job,
-                                        tor_c.clone(),
-                                        progress.clone(),
-                                        tracker_c.clone(),
-                                        // Mirror directly into jobs_progress
-                                        mpsc::unbounded_channel().0,
-                                        jobs_progress_c.clone(),
-                                    );
-                                    let mut a = app_for_ui.lock().unwrap();
-                                    a.status_msg = t!("ui.status.started", file = filename);
-                                }
-                                Err(e) => {
-                                    let mut a = app_for_ui.lock().unwrap();
-                                    a.status_msg = t!("ui.status.resolve_error", e = e);
-                                }
-                            }
-                        }
-                        Err(_) => {
-                            let mut a = app_for_ui.lock().unwrap();
-                            a.status_msg = t!("ui.status.invalid_url");
+                    let result = enqueue_url(
+                        &url_str,
+                        &registry_c,
+                        tor_c.clone(),
+                        &tracker_c,
+                        &jobs_progress_c,
+                        &dl_dir,
+                        max_parts,
+                    )
+                    .await;
+                    let mut a = app_for_ui.lock().unwrap();
+                    a.status_msg = match result {
+                        Ok(filename) => t!("ui.status.started", file = filename),
+                        Err(e) => e.status_msg(),
+                    };
+                }
+                UiCommand::AddUrls(urls) => {
+                    // The confirmed links of the link grabber.
+                    let mut queued = 0usize;
+                    let mut failed = 0usize;
+                    for url_str in urls {
+                        let result = enqueue_url(
+                            &url_str,
+                            &registry_c,
+                            tor_c.clone(),
+                            &tracker_c,
+                            &jobs_progress_c,
+                            &dl_dir,
+                            max_parts,
+                        )
+                        .await;
+                        match result {
+                            Ok(_) => queued += 1,
+                            Err(_) => failed += 1,
                         }
                     }
+                    let mut a = app_for_ui.lock().unwrap();
+                    a.status_msg = t!("ui.status.enqueued_many", count = queued, failed = failed);
+                }
+                UiCommand::CrawlPage(page_str) => {
+                    let Some(tor) = tor_c.clone() else {
+                        let mut a = app_for_ui.lock().unwrap();
+                        a.status_msg = t!("ui.linkgrabber.crawl_no_transport");
+                        continue;
+                    };
+                    let Ok(url) = url::Url::parse(&page_str) else {
+                        let mut a = app_for_ui.lock().unwrap();
+                        a.status_msg = t!("ui.status.invalid_url");
+                        continue;
+                    };
+                    let Some(crawler) = registry_c.find_crawler_for_url(&url) else {
+                        let mut a = app_for_ui.lock().unwrap();
+                        a.status_msg = t!("ui.linkgrabber.no_crawler", page = url);
+                        continue;
+                    };
+                    // The crawl runs in the background; the result comes back
+                    // over the grabber event channel.
+                    let tx = grabber_event_tx.clone();
+                    tokio::spawn(async move {
+                        let transport = TorTransport::new(tor);
+                        let event = match crawler.crawl(&url, &transport).await {
+                            Ok(links) => GrabberEvent::LinksFound { page: url, links },
+                            Err(e) => GrabberEvent::CrawlFailed {
+                                page: url,
+                                error: format!("{e:#}"),
+                            },
+                        };
+                        let _ = tx.send(event);
+                    });
                 }
                 UiCommand::CancelJob(id) => {
                     let mut jp = jobs_progress_c.lock().unwrap();
