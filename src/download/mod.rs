@@ -23,11 +23,14 @@ use futures::StreamExt;
 pub mod checksum;
 pub mod extract;
 pub mod limiter;
+pub mod quarantine;
 pub mod resume;
 pub mod retry;
 pub mod sanitize;
 pub mod scheduler;
 pub mod space;
+#[allow(unused_imports)]
+pub use quarantine::{apply_quarantine, get_quarantine, QUARANTINE_ATTR_NAME};
 pub use resume::{PartOffset, ResumeState};
 pub use retry::RetryPolicy;
 #[allow(unused_imports)]
@@ -667,6 +670,9 @@ pub async fn run_job_with(
 
     // Clean up temp files
     let _ = fs::remove_dir_all(&temp_dir).await;
+
+    // Apply macOS Gatekeeper quarantine attribute (safe no-op on non-macOS)
+    let _ = quarantine::apply_quarantine(&job.output);
 
     let mut p = progress.lock().await;
     p.status = JobStatus::Done;
