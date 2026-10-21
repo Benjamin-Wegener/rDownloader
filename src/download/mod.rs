@@ -25,9 +25,12 @@ pub mod extract;
 pub mod limiter;
 pub mod resume;
 pub mod retry;
+pub mod sanitize;
 pub mod scheduler;
 pub use resume::{PartOffset, ResumeState};
 pub use retry::RetryPolicy;
+#[allow(unused_imports)]
+pub use sanitize::{resolve_destination, sanitize_filename, DEFAULT_FALLBACK_FILENAME};
 
 /// Progress of a single part.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]

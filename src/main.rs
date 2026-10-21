@@ -167,15 +167,22 @@ async fn main() -> Result<()> {
             .find_for_url(&url)
             .context(t!("ui.status.no_plugin", url = url_str))?;
         let resolved = plugin.resolve(url).await?;
-        let filename = resolved
+        let proposed_name = resolved
             .filename
-            .clone()
-            .unwrap_or_else(|| "download.bin".into());
+            .as_deref()
+            .unwrap_or(rdownloader::download::DEFAULT_FALLBACK_FILENAME);
         let output = match &cli.output {
-            Some(p) if p.is_dir() || !p.exists() && p.extension().is_none() => p.join(&filename),
+            Some(p) if p.is_dir() || !p.exists() && p.extension().is_none() => {
+                rdownloader::download::resolve_destination(p, proposed_name)
+            }
             Some(p) => p.clone(),
-            None => dl_dir.join(&filename),
+            None => rdownloader::download::resolve_destination(&dl_dir, proposed_name),
         };
+        let filename = output
+            .file_name()
+            .and_then(|s| s.to_str())
+            .unwrap_or(rdownloader::download::DEFAULT_FALLBACK_FILENAME)
+            .to_string();
         let parts = cli.parts.unwrap_or(cfg.max_parts).clamp(1, 10);
         let job = DownloadJob::new(resolved.url, output.clone(), parts);
 
@@ -289,11 +296,16 @@ impl JobControl for DaemonControl {
             .find_for_url(&url)
             .ok_or_else(|| t!("ui.status.no_plugin", url = url_str))?;
         let resolved = plugin.resolve(url).await.map_err(|e| format!("{e:#}"))?;
-        let filename = resolved
+        let proposed_name = resolved
             .filename
-            .clone()
-            .unwrap_or_else(|| "download.bin".into());
-        let output = self.dl_dir.join(&filename);
+            .as_deref()
+            .unwrap_or(rdownloader::download::DEFAULT_FALLBACK_FILENAME);
+        let output = rdownloader::download::resolve_destination(&self.dl_dir, proposed_name);
+        let filename = output
+            .file_name()
+            .and_then(|s| s.to_str())
+            .unwrap_or(rdownloader::download::DEFAULT_FALLBACK_FILENAME)
+            .to_string();
         let job = DownloadJob::new(resolved.url, output, self.max_parts);
         let id = job.id;
         let progress = Arc::new(tokio::sync::Mutex::new(JobProgress {
@@ -489,11 +501,18 @@ async fn run_tui(
                             };
                             match plugin.resolve(url).await {
                                 Ok(resolved) => {
-                                    let filename = resolved
-                                        .filename
-                                        .clone()
-                                        .unwrap_or_else(|| "download.bin".into());
-                                    let output = dl_dir.join(&filename);
+                                    let proposed_name = resolved.filename.as_deref().unwrap_or(
+                                        rdownloader::download::DEFAULT_FALLBACK_FILENAME,
+                                    );
+                                    let output = rdownloader::download::resolve_destination(
+                                        &dl_dir,
+                                        proposed_name,
+                                    );
+                                    let filename = output
+                                        .file_name()
+                                        .and_then(|s| s.to_str())
+                                        .unwrap_or(rdownloader::download::DEFAULT_FALLBACK_FILENAME)
+                                        .to_string();
                                     let job =
                                         DownloadJob::new(resolved.url, output.clone(), max_parts);
                                     let progress = Arc::new(tokio::sync::Mutex::new(JobProgress {
@@ -712,7 +731,12 @@ fn start_job_background(
                     .await;
                     match outcome {
                         Ok(Ok(Some(r))) => {
-                            info!("Extracted {} files ({} bytes) to {}", r.files, r.bytes, r.dest.display())
+                            info!(
+                                "Extracted {} files ({} bytes) to {}",
+                                r.files,
+                                r.bytes,
+                                r.dest.display()
+                            )
                         }
                         Ok(Ok(None)) => {}
                         Ok(Err(e)) => warn!("Extraction failed: {e:#}"),
