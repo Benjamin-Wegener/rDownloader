@@ -87,7 +87,12 @@ All keys are optional.
 What rdownloader protects, and what it does not, is described in [docs/threat-model.md](docs/threat-model.md).
 Plugin sandboxing is designed in [src/plugin/PERMISSIONS.md](src/plugin/PERMISSIONS.md).
 Read the limitations before relying on it for anonymity.
+Report vulnerabilities privately via GitHub, see [SECURITY.md](SECURITY.md).
 
 ## Contributing
 
 Work is organised through [AGENTS.md](AGENTS.md) (steps, areas, build environment). See [CONTRIBUTORS.md](CONTRIBUTORS.md).
+
+## License
+
+[MIT](LICENSE)

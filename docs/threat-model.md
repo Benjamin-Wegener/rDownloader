@@ -53,4 +53,4 @@ Statements marked *(verified)* are enforced by code or tests in this repository;
 
 ## Reporting
 
-Report vulnerabilities privately to the maintainer rather than in a public issue.
+Report vulnerabilities privately through GitHub (Security tab, "Report a vulnerability"); see [SECURITY.md](../SECURITY.md). Do not use public issues.

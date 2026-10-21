@@ -2,6 +2,7 @@
 name = "rdownloader"
 version = "0.1.0"
 edition = "2021"
+license = "MIT"
 description = "Clean-room Rust download manager with Tor (Arti), multi-part downloads, plugin system and TUI - inspired by JDownloader, no code taken."
 
 [dependencies]
