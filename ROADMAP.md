@@ -101,7 +101,7 @@ CI früh starten (parallel zu M1), Rest nach M2.
 - [ ] 🟢 Certificate-Pinning-Option
 
 **Automation, Limits & Post-Processing**
-- [ ] 🟠 **Auto-Extract Engine**: Automatisches Entpacken von Multi-Part-Archiven (`.rar`, `.zip`, `.7z`) nach Download & Hash-Verifikation
+- [x] 🟠 **Auto-Extract Engine**: Automatisches Entpacken von Multi-Part-Archiven (`.rar`, `.zip`, `.7z`) nach Download & Hash-Verifikation
 - [x] 🟠 **Job-Scheduler & Per-Host Limits**: Max. gleichzeitige Jobs und parallele Jobs pro Hoster (`max_concurrent_jobs`, `max_jobs_per_host`)
 - [ ] 🟢 Scheduler-Zeitfenster (Downloads nur zu bestimmten Uhrzeiten)
 - [ ] 🟢 Watch-Ordner · RSS-Reader · Desktop-Notifications
