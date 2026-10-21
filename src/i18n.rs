@@ -38,6 +38,94 @@ const EN: &[(&str, &str)] = &[
         "cli.arg.no_tor",
         "Disable Tor completely (testing only - unsafe!)",
     ),
+    (
+        "ui.tab.downloads",
+        "Downloads",
+    ),
+    (
+        "ui.tab.linkgrabber",
+        "LinkGrabber",
+    ),
+    (
+        "ui.tab.plugins",
+        "Plugins",
+    ),
+    (
+        "ui.tab.settings",
+        "Settings",
+    ),
+    (
+        "ui.status.help",
+        "rdownloader | q=Quit · a=Add URL · Tab=Switch · ↑↓=Select",
+    ),
+    (
+        "ui.status.queued_url",
+        "URL queued: {url}",
+    ),
+    (
+        "ui.status.cancel_requested",
+        "Cancel requested: {file}",
+    ),
+    (
+        "ui.status.no_plugin",
+        "No plugin for {url}",
+    ),
+    (
+        "ui.status.resolve_error",
+        "Resolve error: {e}",
+    ),
+    (
+        "ui.status.invalid_url",
+        "Invalid URL",
+    ),
+    (
+        "ui.status.input_url",
+        "Enter URL: {buffer}_",
+    ),
+    (
+        "ui.queue.empty",
+        "No downloads – press 'a' to add a URL.",
+    ),
+    (
+        "ui.queue.title",
+        "Download Queue",
+    ),
+    (
+        "ui.queue.failed",
+        " FAILED({e})",
+    ),
+    (
+        "ui.queue.done",
+        " DONE",
+    ),
+    (
+        "ui.progress.title",
+        "Progress",
+    ),
+    (
+        "ui.progress.label",
+        "{done} / {total} ({parts} parts)",
+    ),
+    (
+        "ui.linkgrabber.title",
+        "LinkGrabber",
+    ),
+    (
+        "ui.linkgrabber.body",
+        "LinkGrabber (roadmap phase):\n\n- Clipboard integration (auto-capture)\n- Batch import (text file, M3U, etc.)\n- Crawler plugins (find more links on a page)\n- Preview before enqueue\n\nNot yet implemented – see ROADMAP.md",
+    ),
+    (
+        "ui.plugins.title",
+        "Plugins (clean-room Rust, not JD .jar)",
+    ),
+    (
+        "ui.plugins.item",
+        "[direct] Direct Download v0.1.0 – fallback, accepts any URL",
+    ),
+    (
+        "ui.settings.title",
+        "Settings",
+    ),
 ];
 
 struct State {

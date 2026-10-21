@@ -23,6 +23,7 @@ use tokio::sync::{mpsc, oneshot};
 use tracing::{error, info, warn};
 use tracing_subscriber::EnvFilter;
 
+use crate::contract::JobEvent;
 use crate::download::{run_job, DownloadJob, JobProgress, JobStatus};
 use crate::plugin::{DirectDownloadPlugin, ExampleRedirectHosterPlugin, PluginRegistry};
 use crate::tor::TorManager;
@@ -74,8 +75,7 @@ async fn main() -> Result<()> {
     let cfg = config::init()?;
     tracing_subscriber::fmt()
         .with_env_filter(
-            EnvFilter::try_from_default_env()
-                .unwrap_or_else(|_| EnvFilter::new(&cfg.log_level)),
+            EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new(&cfg.log_level)),
         )
         .init();
 
@@ -118,6 +118,7 @@ async fn main() -> Result<()> {
     // Job-Queue + UI-Command-Channel
     let (job_tx, job_rx) = mpsc::unbounded_channel::<(DownloadJob, oneshot::Sender<Result<()>>)>();
     let (ui_cmd_tx, ui_cmd_rx) = mpsc::unbounded_channel::<UiCommand>();
+    let (_job_event_tx, job_event_rx) = mpsc::unbounded_channel::<JobEvent>();
 
     // Gemeinsamer Job-Progress-Store für TUI + Engine
     let jobs_progress: Arc<Mutex<Vec<JobProgress>>> = Arc::new(Mutex::new(Vec::new()));
@@ -164,12 +165,41 @@ async fn main() -> Result<()> {
             }
         } else {
             // Mit TUI: Job im Hintergrund, TUI zeigt Fortschritt
-            start_job_background(job, tor.clone(), progress.clone(), tracker.clone(), job_tx.clone(), jobs_progress.clone());
-            run_tui(ui_cmd_tx, ui_cmd_rx, job_rx, jobs_progress, registry, tracker, tor, cfg).await
+            start_job_background(
+                job,
+                tor.clone(),
+                progress.clone(),
+                tracker.clone(),
+                job_tx.clone(),
+                jobs_progress.clone(),
+            );
+            run_tui(
+                ui_cmd_tx,
+                ui_cmd_rx,
+                job_rx,
+                job_event_rx,
+                jobs_progress,
+                registry,
+                tracker,
+                tor,
+                cfg,
+            )
+            .await
         }
     } else {
         // Nur TUI
-        run_tui(ui_cmd_tx, ui_cmd_rx, job_rx, jobs_progress, registry, tracker, tor, cfg).await
+        run_tui(
+            ui_cmd_tx,
+            ui_cmd_rx,
+            job_rx,
+            job_event_rx,
+            jobs_progress,
+            registry,
+            tracker,
+            tor,
+            cfg,
+        )
+        .await
     }
 }
 
@@ -178,13 +208,14 @@ async fn run_tui(
     ui_cmd_tx: mpsc::UnboundedSender<UiCommand>,
     mut ui_cmd_rx: mpsc::UnboundedReceiver<UiCommand>,
     _job_rx: mpsc::UnboundedReceiver<(DownloadJob, oneshot::Sender<Result<()>>)>,
+    job_event_rx: mpsc::UnboundedReceiver<JobEvent>,
     jobs_progress: Arc<Mutex<Vec<JobProgress>>>,
     registry: PluginRegistry,
     tracker: Tracker,
     tor: Option<Arc<TorManager>>,
     cfg: &config::Config,
 ) -> Result<()> {
-    let app: SharedApp = Arc::new(Mutex::new(App::new(ui_cmd_tx)));
+    let app: SharedApp = Arc::new(Mutex::new(App::new(ui_cmd_tx, job_event_rx)));
     let app_for_ui = app.clone();
     let app_for_tui = app.clone();
 
@@ -216,7 +247,8 @@ async fn run_tui(
                                         .clone()
                                         .unwrap_or_else(|| "download.bin".into());
                                     let output = dl_dir.join(&filename);
-                                    let job = DownloadJob::new(resolved.url, output.clone(), max_parts);
+                                    let job =
+                                        DownloadJob::new(resolved.url, output.clone(), max_parts);
                                     let progress = Arc::new(tokio::sync::Mutex::new(JobProgress {
                                         id: job.id,
                                         url: job.url.to_string(),
