@@ -1,9 +1,9 @@
 # rdownloader status
 
-Generated 2026-10-22 at commit 4b45784 - regenerate with `scripts/status-md.sh`
+Generated 2026-10-22 at commit 6e1fc94 - regenerate with `scripts/status-md.sh`
 
-`[##################--]` **28/31** steps done (90%), 2 in progress, 1 open
-Roadmap items: 29 checked, 18 open
+`[##################--]` **29/31** steps done (94%), 1 in progress, 1 open
+Roadmap items: 30 checked, 17 open
 
 ## i18n (2/2)
 
@@ -36,13 +36,13 @@ Roadmap items: 29 checked, 18 open
 - [x] `plugins-4` Captcha-Plugin-Typ (interaktive Lösung in TUI)
 - [x] `plugins-5` Berechtigungsmodell (Design-Dokument)
 
-## infra (4/6)
+## infra (5/6)
 
 - [x] `infra-1` CI: GitHub Actions fmt, clippy -D warnings, test
 - [x] `infra-2` Test-Harness: lokaler HTTP-Server mit Range-Support + Abbruch-Simulation
 - [x] `infra-3` Integrationstest: Kill + Resume + Hash (Definition of Done M1)
 - [x] `infra-4` Cargo.toml-Aufräumen (ungenutzte Dependencies)
-- [~] `infra-5` Threat-Modell-Doku, README, Manpage - **in progress**
+- [x] `infra-5` Threat-Modell-Doku, README, Manpage
 - [ ] `infra-6` Release-Binaries (GitHub Releases)
 
 ## ui (5/6)
