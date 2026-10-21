@@ -56,7 +56,7 @@ const EN: &[(&str, &str)] = &[
     ),
     (
         "ui.status.help",
-        "rdownloader | q=Quit · a=Add · Enter=Details · p=Pause · r=Resume · c=Cancel · d=Remove · Tab=Switch · ↑↓=Select",
+        "rdownloader | q=Quit · a=Add · Enter=Details · i=Import file · v=Paste clipboard · p=Pause · r=Resume · c=Cancel · d=Remove · Tab=Switch · ↑↓=Select",
     ),
     (
         "ui.status.queued_url",
@@ -140,7 +140,7 @@ const EN: &[(&str, &str)] = &[
     ),
     (
         "ui.linkgrabber.body",
-        "LinkGrabber (roadmap phase):\n\n- Clipboard integration (auto-capture)\n- Batch import (text file, M3U, etc.)\n- Crawler plugins (find more links on a page)\n- Preview before enqueue\n\nNot yet implemented – see ROADMAP.md",
+        "LinkGrabber:\n\n- i = import links from a text/M3U file\n- v = import links from the clipboard\n\nStill to come: crawler plugins and a preview before enqueue – see ROADMAP.md",
     ),
     (
         "ui.plugins.title",
@@ -253,6 +253,26 @@ const EN: &[(&str, &str)] = &[
     (
         "ui.detail.hint",
         "Enter = toggle details",
+    ),
+    (
+        "ui.status.import_failed",
+        "Import failed: {error}",
+    ),
+    (
+        "ui.status.import_none",
+        "No http(s) links found to import",
+    ),
+    (
+        "ui.status.import_done",
+        "Imported {count} link(s), {skipped} skipped",
+    ),
+    (
+        "ui.status.input_import",
+        "Link list file (~ allowed): {buffer}_",
+    ),
+    (
+        "ui.import.title",
+        "Import links from file",
     ),
     (
         "ui.settings.title",

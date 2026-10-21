@@ -24,6 +24,7 @@ use std::time::Duration;
 use tokio::sync::oneshot;
 
 mod detail;
+mod import;
 
 use crate::config;
 use crate::contract::{JobEvent, JobId};
@@ -53,6 +54,7 @@ pub enum UiCommand {
 /// Active interactive prompt state in the UI.
 pub enum InputPrompt {
     AddUrl,
+    ImportFile,
     Captcha {
         challenge: CaptchaChallenge,
         reply_tx: oneshot::Sender<String>,
@@ -113,6 +115,20 @@ impl App {
         };
     }
 
+    /// Queues every URL of a batch import and reports the outcome in the status line.
+    fn enqueue_import(&mut self, result: anyhow::Result<import::Import>) {
+        self.status_msg = match result {
+            Err(e) => t!("ui.status.import_failed", error = e),
+            Ok(imp) if imp.urls.is_empty() => t!("ui.status.import_none"),
+            Ok(imp) => {
+                for url in &imp.urls {
+                    let _ = self.cmd_tx.send(UiCommand::AddUrl(url.to_string()));
+                }
+                t!("ui.status.import_done", count = imp.urls.len(), skipped = imp.skipped)
+            }
+        };
+    }
+
     fn next_tab(&mut self) {
         self.tab = match self.tab {
             AppTab::Downloads => AppTab::LinkGrabber,
@@ -152,6 +168,12 @@ impl App {
                                 self.status_msg = t!("ui.status.queued_url", url = text);
                             }
                         }
+                        InputPrompt::ImportFile => {
+                            if !text.is_empty() {
+                                let result = import::import_file(&import::expand_home(&text));
+                                self.enqueue_import(result);
+                            }
+                        }
                         InputPrompt::Captcha {
                             challenge,
                             reply_tx,
@@ -177,6 +199,15 @@ impl App {
                 self.input_mode = true;
                 self.input_buffer.clear();
                 self.input_prompt = InputPrompt::AddUrl;
+            }
+            KeyCode::Char('i') => {
+                self.input_mode = true;
+                self.input_buffer.clear();
+                self.input_prompt = InputPrompt::ImportFile;
+            }
+            KeyCode::Char('v') => {
+                let result = import::read_clipboard().map(|text| import::parse_urls(&text));
+                self.enqueue_import(result);
             }
             KeyCode::Enter => self.detail_open = !self.detail_open,
             KeyCode::Tab => self.next_tab(),
@@ -401,6 +432,11 @@ fn draw(f: &mut Frame, app: &App) {
             InputPrompt::AddUrl => {
                 Paragraph::new(t!("ui.status.input_url", buffer = app.input_buffer))
                     .block(Block::default().borders(Borders::ALL).title("Add URL"))
+                    .style(Style::default().fg(Color::Green))
+            }
+            InputPrompt::ImportFile => {
+                Paragraph::new(t!("ui.status.input_import", buffer = app.input_buffer))
+                    .block(Block::default().borders(Borders::ALL).title(t!("ui.import.title")))
                     .style(Style::default().fg(Color::Green))
             }
             InputPrompt::Captcha { challenge, .. } => {
@@ -765,5 +801,34 @@ mod tests {
         let answer = reply_rx.await.expect("received captcha answer");
         assert_eq!(answer, "25");
         assert!(app.status_msg.contains("dl.example.com"));
+    }
+
+    #[test]
+    fn batch_import_sends_one_command_per_link() {
+        let (cmd_tx, mut cmd_rx) = mpsc::unbounded_channel::<UiCommand>();
+        let (_evt_tx, evt_rx) = mpsc::unbounded_channel::<JobEvent>();
+        let mut app = App::new(cmd_tx, evt_rx);
+
+        app.enqueue_import(Ok(import::parse_urls("http://a.test/1\nhttp://a.test/2\nftp://x/y\n")));
+        assert_eq!(cmd_rx.try_recv().unwrap(), UiCommand::AddUrl("http://a.test/1".into()));
+        assert_eq!(cmd_rx.try_recv().unwrap(), UiCommand::AddUrl("http://a.test/2".into()));
+        assert!(cmd_rx.try_recv().is_err());
+        assert!(app.status_msg.contains('2'));
+
+        app.enqueue_import(Ok(import::parse_urls("nothing here")));
+        assert!(cmd_rx.try_recv().is_err());
+
+        app.enqueue_import(Err(anyhow::anyhow!("boom")));
+        assert!(app.status_msg.contains("boom"));
+    }
+
+    #[test]
+    fn import_key_opens_file_prompt() {
+        let (cmd_tx, _cmd_rx) = mpsc::unbounded_channel::<UiCommand>();
+        let (_evt_tx, evt_rx) = mpsc::unbounded_channel::<JobEvent>();
+        let mut app = App::new(cmd_tx, evt_rx);
+        app.handle_key(KeyCode::Char('i'));
+        assert!(app.input_mode);
+        assert!(matches!(app.input_prompt, InputPrompt::ImportFile));
     }
 }
