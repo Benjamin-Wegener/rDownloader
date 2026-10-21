@@ -5,30 +5,38 @@ edition = "2021"
 description = "Clean-room Rust Download-Manager mit Tor (Arti), Multi-Part, Plugin-System & TUI – inspiriert von JDownloader, kein Code übernommen."
 
 [dependencies]
-# Tor (offizielle Rust-Implementierung des Tor-Projekts)
+# Tor (official Rust implementation of the Tor project)
 arti-client = { version = "0.46", features = ["tokio", "bridge-client"] }
 tor-rtcompat = "0.46"
-tokio = { version = "1", features = ["full"] }
+# Only the features the app actually uses (no process/signal/io-std).
+tokio = { version = "1", features = [
+    "fs",
+    "io-util",
+    "macros",
+    "net",
+    "rt-multi-thread",
+    "sync",
+    "time",
+] }
 
-# Async HTTP + TLS (für Downloads)
-reqwest = { version = "0.12", features = ["rustls-tls", "stream", "socks"], default-features = false }
-futures = "0.3"
+# Async streams and buffers
+futures = { version = "0.3", default-features = false, features = ["std"] }
 bytes = "1"
 
-# HTTP/1.1 über Arti-Stream + TLS (net-1)
+# HTTP/1.1 over the Arti stream + TLS (net-1)
 hyper = { version = "1", features = ["client", "http1"] }
 hyper-util = { version = "0.1", features = ["tokio"] }
 http-body-util = "0.1"
 tokio-rustls = { version = "0.26", default-features = false, features = ["ring", "tls12"] }
 webpki-roots = "1"
 
-# Serialization / Config / Tracking
+# Serialization / config / tracking
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 toml = "0.8"
 dirs = "5"
 
-# TUI (JDownloader-ähnliche Oberfläche im Terminal)
+# TUI (JDownloader-like interface in the terminal)
 ratatui = "0.28"
 crossterm = "0.28"
 
@@ -37,14 +45,12 @@ clap = { version = "4", features = ["derive"] }
 
 # Utils
 anyhow = "1"
-thiserror = "1"
 async-trait = "0.1"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 url = { version = "2", features = ["serde"] }
 uuid = { version = "1", features = ["v4", "serde"] }
 chrono = { version = "0.4", features = ["serde"] }
-indicatif = "0.17"
 
 # Checksums (verification of finished downloads)
 sha2 = "0.10"
@@ -52,6 +58,7 @@ sha1 = "0.10"
 md-5 = "0.10"
 
 [dev-dependencies]
+# The unit tests in src/net/mod.rs run a local hyper server.
 hyper = { version = "1", features = ["server"] }
 
 [profile.release]

@@ -115,6 +115,8 @@ CI früh starten (parallel zu M1), Rest nach M2.
 ## Aufräumen in `Cargo.toml`
 Beim Abschluss von M1 prüfen und entfernen, was ungenutzt ist (z. B. `tor-circmgr`, `tor-dirmgr`, `tor-rtcompat` falls nicht direkt importiert, `reqwest/socks`, `indicatif` neben ratatui). Kürzere Build-Zeit und kleinere Angriffsfläche.
 
+Erledigt (infra-4): `reqwest` (inkl. `socks`), `indicatif` und `thiserror` entfernt, `tokio` auf die tatsächlich genutzten Features reduziert, `futures` ohne `executor`. `hyper` bleibt dev-Dependency (Server-Feature für die Unit-Tests in `src/net/mod.rs`), `tor-rtcompat` wird direkt importiert, `tor-circmgr`/`tor-dirmgr` kommen transitiv über `arti-client`. Dependency-Baum: 602 → 579 Pakete.
+
 ## Bekannte Limitationen (ehrlich)
 - JDs `.jar`-Plugins lassen sich clean-room **nicht** laden (Java + proprietäre API).
 - Manche Hoster brauchen JS zum Link-Auflösen – ohne Browser-Engine nicht sauber lösbar; Workaround: vorberechnete Endpunkte oder manuelle Eingabe.
