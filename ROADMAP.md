@@ -57,7 +57,7 @@ Reihenfolge ist Abhängigkeitsreihenfolge – von oben nach unten.
 **Definition of Done M1:** 1-GB-Testdatei über Tor, Prozess mitten im Download killen, neu starten → Download setzt fort, Hash stimmt. Als Integrationstest automatisiert.
 
 ## Querschnitt: Englisch + Übersetzbarkeit
-- [ ] 🟠 `src/i18n.rs`: String-Katalog (Standard `en`, Schlüssel + benannte Platzhalter), später Sprachpakete (i18n-1)
+- [x] 🟠 `src/i18n.rs`: String-Katalog (Standard `en`, Schlüssel + benannte Platzhalter), später Sprachpakete (i18n-1)
 - [ ] 🟠 Bestehende deutsche Texte in Code, Hilfe und UI auf Englisch umstellen (i18n-2)
 
 ## M2 – Bedienbare TUI 🟨 🟠

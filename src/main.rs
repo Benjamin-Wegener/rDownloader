@@ -8,6 +8,7 @@
 mod config;
 mod contract;
 mod download;
+mod i18n;
 pub mod net;
 mod plugin;
 mod tor;
@@ -15,7 +16,7 @@ mod tracker;
 mod ui;
 
 use anyhow::{Context, Result};
-use clap::Parser;
+use clap::{CommandFactory, FromArgMatches, Parser};
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 use tokio::sync::{mpsc, oneshot};
@@ -29,35 +30,45 @@ use crate::tracker::Tracker;
 use crate::ui::{App, SharedApp, UiCommand};
 
 #[derive(Parser, Debug)]
-#[command(name = "rdownloader", version, about = "Clean-room Rust Download-Manager mit Tor (Arti) & Multi-Part")]
+#[command(name = "rdownloader", version)]
 struct Cli {
-    /// URL zum Download (optional – ohne URL startet die TUI)
+    /// Help texts come from the i18n catalog (see `cli_command`).
     url: Option<String>,
 
-    /// Anzahl paralleler Tor-Clients (1..=10, überschreibt Config)
     #[arg(short = 't', long)]
     tor_clients: Option<usize>,
 
-    /// Anzahl Parts pro Download (1..=10)
     #[arg(short = 'p', long)]
     parts: Option<usize>,
 
-    /// Zielpfad (Datei oder Verzeichnis)
     #[arg(short = 'o', long)]
     output: Option<PathBuf>,
 
-    /// Nur CLI-Modus (kein TUI), fortlaufend loggen
     #[arg(long)]
     headless: bool,
 
-    /// Tor komplett deaktivieren (nur für Tests – unsicher!)
     #[arg(long)]
     no_tor: bool,
 }
 
+/// Builds the clap command with all help texts taken from the i18n catalog.
+fn cli_command() -> clap::Command {
+    Cli::command()
+        .about(t!("cli.about"))
+        .mut_arg("url", |a| a.help(t!("cli.arg.url")))
+        .mut_arg("tor_clients", |a| a.help(t!("cli.arg.tor_clients")))
+        .mut_arg("parts", |a| a.help(t!("cli.arg.parts")))
+        .mut_arg("output", |a| a.help(t!("cli.arg.output")))
+        .mut_arg("headless", |a| a.help(t!("cli.arg.headless")))
+        .mut_arg("no_tor", |a| a.help(t!("cli.arg.no_tor")))
+}
+
 #[tokio::main]
 async fn main() -> Result<()> {
-    let cli = Cli::parse();
+    if let Ok(lang) = std::env::var("RDOWNLOADER_LANG") {
+        i18n::set_language(&lang);
+    }
+    let cli = Cli::from_arg_matches(&cli_command().get_matches())?;
 
     // Config laden
     let cfg = config::init()?;
