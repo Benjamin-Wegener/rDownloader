@@ -27,10 +27,13 @@ pub mod resume;
 pub mod retry;
 pub mod sanitize;
 pub mod scheduler;
+pub mod space;
 pub use resume::{PartOffset, ResumeState};
 pub use retry::RetryPolicy;
 #[allow(unused_imports)]
 pub use sanitize::{resolve_destination, sanitize_filename, DEFAULT_FALLBACK_FILENAME};
+#[allow(unused_imports)]
+pub use space::{ensure_sufficient_space, preallocate_file, query_available_space, DiskSpace};
 
 /// Progress of a single part.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -360,10 +363,27 @@ fn find_subsequence(haystack: &[u8], needle: &[u8]) -> Option<usize> {
 }
 
 /// Merges all part files into the final output file.
-async fn merge_parts(parts: &[PathBuf], output: &Path) -> Result<()> {
-    let mut out = File::create(output)
-        .await
+async fn merge_parts(parts: &[PathBuf], output: &Path, expected_total: u64) -> Result<()> {
+    // If output file parent does not exist, create it
+    if let Some(parent) = output.parent() {
+        if !parent.as_os_str().is_empty() {
+            fs::create_dir_all(parent).await?;
+        }
+    }
+
+    let std_file = std::fs::OpenOptions::new()
+        .write(true)
+        .create(true)
+        .truncate(true)
+        .open(output)
         .with_context(|| t!("download.error.create_output", path = format!("{output:?}")))?;
+
+    // Preallocate destination file space
+    if expected_total > 0 {
+        let _ = preallocate_file(&std_file, expected_total);
+    }
+
+    let mut out = File::from_std(std_file);
     let mut buf = vec![0u8; 64 * 1024];
     for part in parts {
         let mut f = File::open(part)
@@ -395,6 +415,10 @@ pub async fn run_job(
 
     let info = resolve_size(tor.clone(), &job.url).await?;
     let total = info.total;
+
+    // Check available disk space before starting
+    ensure_sufficient_space(&job.output, total)?;
+
     let plan = plan_parts(total, job.max_parts, job.part_size, info.accepts_ranges);
     let parts_count = plan.len();
     if !info.accepts_ranges {
@@ -636,7 +660,7 @@ pub async fn run_job(
         p.status = JobStatus::Merging;
     }
 
-    merge_parts(&part_paths, &job.output).await?;
+    merge_parts(&part_paths, &job.output, total).await?;
 
     if let Some(expected) = &job.checksum {
         if let Err(e) = checksum::verify_file(&job.output, expected).await {

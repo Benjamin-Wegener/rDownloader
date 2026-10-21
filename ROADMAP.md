@@ -112,7 +112,7 @@ Abgleich mit aria2, JDownloader, yt-dlp und der Arti-Dokumentation. Reihenfolge 
 **Sicherheit**
 - [x] 🔴 **Zentraler Dateinamen-Bereiniger** für alle Quellen: Namen aus Plugins, `.dlc`/`.metalink` und URL werden ungeprüft an den Download-Ordner gehängt (`main.rs`, `dl_dir.join(&filename)`); nur `Content-Disposition` wird bereinigt. Dazu Windows-Reservenamen und automatisches Umbenennen bei Kollision (core-9)
 - [ ] 🟠 macOS-Quarantäne-Attribut `com.apple.quarantine` auf fertige Downloads, damit Gatekeeper sie prüft (core-11)
-- [ ] 🟠 Freien Speicher vor dem Start prüfen und Zieldatei vorab reservieren (core-10)
+- [x] 🟠 Freien Speicher vor dem Start prüfen und Zieldatei vorab reservieren (core-10)
 
 **Tor**
 - [x] 🟠 `.onion`-URLs: Arti-Feature `onion-service-client` aktiv, mit Live-Test gegen einen echten Onion-Dienst (net-8)

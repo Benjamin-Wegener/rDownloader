@@ -46,6 +46,7 @@ clap = { version = "4", features = ["derive"] }
 
 # Utils
 anyhow = "1"
+libc = "0.2"
 # Error types of the plugin permission model (src/plugin/permissions.rs).
 thiserror = "1"
 # Sandboxed WebAssembly plugin runtime (plugins-7).
