@@ -76,6 +76,7 @@ pub trait DownloadPlugin: Send + Sync {
 }
 
 /// Statische Registry aller geladenen Plugins.
+#[derive(Clone)]
 pub struct PluginRegistry {
     plugins: HashMap<String, Arc<dyn DownloadPlugin>>,
 }
@@ -142,7 +143,7 @@ impl DownloadPlugin for DirectDownloadPlugin {
     async fn resolve(&self, url: Url) -> Result<ResolvedLink> {
         let filename = url
             .path_segments()
-            .and_then(|s| s.last())
+            .and_then(|mut s| s.next_back())
             .map(|s| s.to_string())
             .unwrap_or_else(|| "download.bin".into());
         Ok(ResolvedLink {

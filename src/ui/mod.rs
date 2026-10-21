@@ -248,11 +248,7 @@ fn draw_downloads(f: &mut Frame, area: Rect, app: &App) {
                 JobStatus::Downloading | JobStatus::Resolving | JobStatus::Merging => Color::Yellow,
                 _ => Color::Gray,
             };
-            let pct = if j.total_bytes > 0 {
-                (j.bytes_done * 100) / j.total_bytes
-            } else {
-                0
-            };
+            let pct = (j.bytes_done * 100).checked_div(j.total_bytes).unwrap_or(0);
             let status_str = match &j.status {
                 JobStatus::Failed(e) => format!(" FAILED({e})"),
                 JobStatus::Done => " DONE".to_string(),

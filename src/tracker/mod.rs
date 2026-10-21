@@ -43,6 +43,7 @@ impl TrackEntry {
 }
 
 /// Thread-sicherer, persistierender Tracker.
+#[derive(Clone)]
 pub struct Tracker {
     path: PathBuf,
     entries: Arc<Mutex<Vec<TrackEntry>>>,

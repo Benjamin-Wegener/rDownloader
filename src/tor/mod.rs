@@ -4,10 +4,12 @@
 //! Baut pro Download-Part einen eigenen Tor-Circuit via isolierte Clients.
 
 use anyhow::{Context, Result};
-use arti_client::{TorClient, TorClientConfig};
+use arti_client::config::TorClientConfigBuilder;
+use arti_client::TorClient;
 use std::path::PathBuf;
 use std::sync::Arc;
 use tokio::io::{AsyncRead, AsyncWrite};
+use tor_rtcompat::PreferredRuntime;
 use tracing::info;
 
 /// Wrapper für AsyncRead + AsyncWrite, weil `arti_client`'s DataStream beides ist
@@ -17,7 +19,7 @@ impl<T> AsyncReadWrite for T where T: AsyncRead + AsyncWrite + Send + Unpin {}
 
 /// Hält mehrere unabhängige Tor-Clients (je mit eigenem Data-Directory = eigener Circuit-Pool).
 pub struct TorManager {
-    clients: Vec<Arc<TorClient>>,
+    clients: Vec<Arc<TorClient<PreferredRuntime>>>,
 }
 
 impl TorManager {
@@ -30,25 +32,25 @@ impl TorManager {
                 .with_context(|| format!("Tor-Data-Dir anlegen: {dir:?}"))?;
 
             // TorClientConfig mit eigenem state/cache Dir pro Instanz
-            let config = TorClientConfig::builder()
-                .state_dir(dir.join("state").into())
-                .cache_dir(dir.join("cache").into())
-                .build()
-                .map_err(|e| anyhow::anyhow!("TorClientConfig bauen: {e}"))?;
+            let config =
+                TorClientConfigBuilder::from_directories(dir.join("state"), dir.join("cache"))
+                    .build()
+                    .map_err(|e| anyhow::anyhow!("TorClientConfig bauen: {e}"))?;
 
             info!("Tor-Client {i}: bootstrap ({dir:?}) …");
-            let client = TorClient::builder(config)
+            let client = TorClient::builder()
+                .config(config)
                 .create_bootstrapped()
                 .await
                 .map_err(|e| anyhow::anyhow!("Tor-Client {i} bootstrap: {e}"))?;
 
             info!("Tor-Client {i}: bootstrapped OK");
-            clients.push(Arc::new(client));
+            clients.push(client);
         }
         Ok(Self { clients })
     }
 
-    pub fn client(&self, index: usize) -> Result<Arc<TorClient>> {
+    pub fn client(&self, index: usize) -> Result<Arc<TorClient<PreferredRuntime>>> {
         self.clients
             .get(index % self.clients.len())
             .cloned()

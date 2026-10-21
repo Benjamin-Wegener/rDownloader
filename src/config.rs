@@ -74,6 +74,13 @@ impl Default for Config {
 }
 
 impl Config {
+    pub fn describe(&self) -> String {
+        format!(
+            "tor_clients={}, max_parts={}, retries={}, log={}",
+            self.tor_clients, self.max_parts, self.max_retries, self.log_level
+        )
+    }
+
     pub fn config_path() -> PathBuf {
         dirs::config_dir()
             .unwrap_or_else(|| PathBuf::from("."))

@@ -2,14 +2,18 @@
 //!
 //! Inspiriert von JDownloader (Konzept/UX), kein Code übernommen.
 
+// Das Gerüst wächst schrittweise; ungenutzter Code ist bis dahin erwartet.
+#![allow(dead_code)]
+
 mod config;
+mod contract;
 mod download;
 mod plugin;
 mod tor;
 mod tracker;
 mod ui;
 
-use anyhow::Result;
+use anyhow::{Context, Result};
 use clap::Parser;
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
@@ -18,9 +22,9 @@ use tracing::{error, info, warn};
 use tracing_subscriber::EnvFilter;
 
 use crate::download::{run_job, DownloadJob, JobProgress, JobStatus};
-use crate::plugin::{DirectDownloadPlugin, DownloadPlugin, PluginRegistry};
+use crate::plugin::{DirectDownloadPlugin, PluginRegistry};
 use crate::tor::TorManager;
-use crate::tracker::{TrackEntry, Tracker};
+use crate::tracker::Tracker;
 use crate::ui::{App, SharedApp, UiCommand};
 
 #[derive(Parser, Debug)]
@@ -99,8 +103,8 @@ async fn main() -> Result<()> {
     std::fs::create_dir_all(&dl_dir)?;
 
     // Job-Queue + UI-Command-Channel
-    let (job_tx, mut job_rx) = mpsc::unbounded_channel::<(DownloadJob, oneshot::Sender<Result<()>>)>();
-    let (ui_cmd_tx, mut ui_cmd_rx) = mpsc::unbounded_channel::<UiCommand>();
+    let (job_tx, job_rx) = mpsc::unbounded_channel::<(DownloadJob, oneshot::Sender<Result<()>>)>();
+    let (ui_cmd_tx, ui_cmd_rx) = mpsc::unbounded_channel::<UiCommand>();
 
     // Gemeinsamer Job-Progress-Store für TUI + Engine
     let jobs_progress: Arc<Mutex<Vec<JobProgress>>> = Arc::new(Mutex::new(Vec::new()));
@@ -147,7 +151,7 @@ async fn main() -> Result<()> {
             }
         } else {
             // Mit TUI: Job im Hintergrund, TUI zeigt Fortschritt
-            start_job_background(job, tor, progress.clone(), tracker.clone(), job_tx.clone(), jobs_progress.clone());
+            start_job_background(job, tor.clone(), progress.clone(), tracker.clone(), job_tx.clone(), jobs_progress.clone());
             run_tui(ui_cmd_tx, ui_cmd_rx, job_rx, jobs_progress, registry, tracker, tor, cfg).await
         }
     } else {
@@ -160,7 +164,7 @@ async fn main() -> Result<()> {
 async fn run_tui(
     ui_cmd_tx: mpsc::UnboundedSender<UiCommand>,
     mut ui_cmd_rx: mpsc::UnboundedReceiver<UiCommand>,
-    mut job_rx: mpsc::UnboundedReceiver<(DownloadJob, oneshot::Sender<Result<()>>)>,
+    _job_rx: mpsc::UnboundedReceiver<(DownloadJob, oneshot::Sender<Result<()>>)>,
     jobs_progress: Arc<Mutex<Vec<JobProgress>>>,
     registry: PluginRegistry,
     tracker: Tracker,
@@ -169,6 +173,7 @@ async fn run_tui(
 ) -> Result<()> {
     let app: SharedApp = Arc::new(Mutex::new(App::new(ui_cmd_tx)));
     let app_for_ui = app.clone();
+    let app_for_tui = app.clone();
 
     // UI-Command-Handler: neue Downloads enqueue
     let tor_c = tor.clone();
@@ -177,7 +182,6 @@ async fn run_tui(
     let jobs_progress_c = jobs_progress.clone();
     let dl_dir = cfg.download_dir();
     let max_parts = cfg.max_parts;
-    let cfg_c = cfg.clone();
     tokio::spawn(async move {
         while let Some(cmd) = ui_cmd_rx.recv().await {
             match cmd {
@@ -215,13 +219,7 @@ async fn run_tui(
                                         progress.clone(),
                                         tracker_c.clone(),
                                         // Direkt in jobs_progress spiegeln
-                                        {
-                                            // Wir nutzen eine eigene Channel-Brücke
-                                            let (tx, _rx) = mpsc::unbounded_channel();
-                                            let _ = tx;
-                                            // Stattdessen: progress in jobs_progress_c sichtbar machen via Polling
-                                            ()
-                                        },
+                                        mpsc::unbounded_channel().0,
                                         jobs_progress_c.clone(),
                                     );
                                     let mut a = app_for_ui.lock().unwrap();
@@ -263,7 +261,7 @@ async fn run_tui(
     // TUI auf dem Haupt-Thread (blocking)
     // crossterm braucht den Main-Thread auf macOS
     tokio::task::spawn_blocking(move || {
-        let _ = ui::run(app_for_ui);
+        let _ = ui::run(app_for_tui);
     })
     .await?;
 
@@ -283,8 +281,8 @@ fn start_job_background(
     tokio::spawn(async move {
         // In jobs_progress eintragen
         {
-            let mut jp = jobs_progress.lock().unwrap();
             let p = progress.lock().await;
+            let mut jp = jobs_progress.lock().unwrap();
             jp.retain(|x| x.id != p.id);
             jp.push(p.clone());
         }

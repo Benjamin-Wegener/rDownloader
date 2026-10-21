@@ -5,22 +5,20 @@
 //! die am Ende zusammengeführt werden.
 
 use anyhow::{Context, Result};
-use bytes::Bytes;
-use futures::StreamExt;
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
 use tokio::fs::{self, File, OpenOptions};
-use tokio::io::{AsyncReadExt, AsyncSeekExt, AsyncWriteExt, SeekFrom};
+use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::sync::Mutex;
-use tracing::{error, info, warn};
+use tracing::{error, info};
 use uuid::Uuid;
 
 use crate::tor::TorManager;
 
 /// Fortschritt eines einzelnen Parts.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct PartProgress {
     pub index: usize,
     pub bytes_done: u64,
@@ -236,12 +234,12 @@ pub async fn run_job(
     let part_size = if let Some(ps) = job.part_size {
         ps
     } else if total > 0 {
-        (total + parts_count as u64 - 1) / parts_count as u64
+        total.div_ceil(parts_count as u64)
     } else {
         0
     };
 
-    let temp_dir = crate::config::config().temp_dir.join(format!("job-{}", job.id));
+    let temp_dir = crate::config::config().temp_dir().join(format!("job-{}", job.id));
     fs::create_dir_all(&temp_dir).await?;
 
     let bytes_done = Arc::new(AtomicU64::new(0));
@@ -291,7 +289,6 @@ pub async fn run_job(
     let reporter = {
         let progress = progress.clone();
         let bytes_done = bytes_done.clone();
-        let total = total;
         tokio::spawn(async move {
             loop {
                 tokio::time::sleep(std::time::Duration::from_millis(500)).await;

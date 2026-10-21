@@ -27,6 +27,14 @@ Der Hauptordner bleibt dabei **unverändert** – gearbeitet wird in einem Workt
 - Review-Wunsch oder Blocker an andere Bereiche: `HANDOFF.md` (append-only), Format `[von → an] Anliegen – Status`.
 - Das Skript prüft, dass der Hauptordner sauber ist. Dort nie direkt arbeiten.
 
+## Build-Umgebung (macOS ohne Xcode/CLT)
+Auf diesem Rechner gibt es keine Xcode Command Line Tools, nur ein macOS-SDK und Homebrew-LLVM. Vor jedem `cargo`-Aufruf (auch fmt, clippy, test):
+```
+source scripts/env-macos.sh
+```
+Das Skript setzt SDKROOT (`~/.local/share/SDKs/MacOSX26.0.sdk`), clang/lld aus `/opt/brew` und die Rust-Linker-Flags. Der Sandbox-Modus der Shell muss dafür ggf. abgeschaltet sein (Zugriff auf `/opt/brew` und `~/.local`).
+`cargo fmt` nur auf eigene Dateien anwenden (`rustfmt --edition 2021 <datei>`), sonst werden fremde Bereiche umformatiert und es gibt Merge-Konflikte.
+
 ## Hilfsbefehle
 ```
 scripts/agent.sh status        # Queue mit Zuständen (offen / IN ARBEIT / ERLEDIGT)
