@@ -364,6 +364,55 @@ mod tests {
     }
 
     #[test]
+    fn sources_do_not_use_local_dns_resolution() {
+        // Names must reach the exit node via the Tor stream. Anything that
+        // resolves locally (default HTTP clients, system resolver APIs) is a
+        // DNS leak. Tokens are assembled so this test does not match itself.
+        const FORBIDDEN: &[&str] = &[
+            concat!("req", "west"),
+            concat!("lookup", "_host"),
+            concat!("to_socket", "_addrs"),
+            concat!("ToSocket", "Addrs"),
+            concat!("getaddr", "info"),
+        ];
+
+        fn visit(dir: &std::path::Path, files: &mut Vec<std::path::PathBuf>) {
+            for entry in std::fs::read_dir(dir).expect("read source directory") {
+                let path = entry.expect("dir entry").path();
+                if path.is_dir() {
+                    visit(&path, files);
+                } else if path.extension().is_some_and(|ext| ext == "rs") {
+                    files.push(path);
+                }
+            }
+        }
+
+        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src");
+        let mut files = Vec::new();
+        visit(&root, &mut files);
+
+        let mut offenders = Vec::new();
+        for path in files {
+            let text = std::fs::read_to_string(&path).expect("read source file");
+            for (line_no, line) in text.lines().enumerate() {
+                if line.trim_start().starts_with("//") {
+                    continue;
+                }
+                for needle in FORBIDDEN {
+                    if line.contains(needle) {
+                        offenders.push(format!("{}:{} ({needle})", path.display(), line_no + 1));
+                    }
+                }
+            }
+        }
+
+        assert!(
+            offenders.is_empty(),
+            "local DNS resolution outside Tor found in: {offenders:#?}"
+        );
+    }
+
+    #[test]
     fn webpki_roots_are_loaded() {
         assert!(!root_store().is_empty());
     }

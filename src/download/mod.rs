@@ -16,6 +16,7 @@ use tracing::{error, info};
 use uuid::Uuid;
 
 use crate::contract::{ByteRange, Transport};
+use crate::net::TorTransport;
 use crate::tor::TorManager;
 
 pub mod checksum;
@@ -91,59 +92,19 @@ impl DownloadJob {
     }
 }
 
-/// Resolve Content-Length via einen Tor-Circuit + HEAD-Request.
-async fn resolve_size(tor: &TorManager, url: &url::Url) -> Result<ServerInfo> {
-    // Für echte Tor-Nutzung bauen wir einen HTTP-Stream über Tor und machen dort
-    // einen manuellen HEAD-Request. Hier vereinfacht: reqwest mit socks-ähnlichem
-    // Routing via TorManager.connect() als Rohstream → zu aufwändig für HEAD.
-    // Pragmatisch: reqwest ohne Proxy für Größe (nur Metadata, kein Payload),
-    // aber strikt optional: Falls gewünscht, über Tor. Für saubere Anonymität
-    // auch über Tor: wir nutzen den Tor-Stream + manuelles HTTP/1.1.
-    let stream = tor
-        .connect(url.host_str().unwrap_or("localhost"), 80)
-        .await?;
-    // TODO: Manueller HTTP/1.1 HEAD über den Tor-Stream (AsyncRead/Write).
-    // Für MVP nutzen wir reqwest (ohne Proxy) nur zur Größe-Ermittlung.
-    drop(stream);
-
-    let client = reqwest::Client::builder()
-        .timeout(std::time::Duration::from_secs(30))
-        .build()?;
-    let resp = client
-        .head(url.as_str())
-        .send()
-        .await
-        .context("HEAD-Request")?;
-    if !resp.status().is_success() {
-        anyhow::bail!("HEAD fehlgeschlagen: {}", resp.status());
-    }
-    let len = resp
-        .headers()
-        .get(reqwest::header::CONTENT_LENGTH)
-        .and_then(|v| v.to_str().ok())
-        .and_then(|s| s.parse::<u64>().ok())
-        .context("Content-Length fehlt")?;
-    let accepts_ranges = resp
-        .headers()
-        .get(reqwest::header::ACCEPT_RANGES)
-        .and_then(|v| v.to_str().ok())
-        .is_some_and(accepts_ranges_value);
-    let etag = resp
-        .headers()
-        .get(reqwest::header::ETAG)
-        .and_then(|v| v.to_str().ok())
-        .map(|s| s.to_string());
-    let last_modified = resp
-        .headers()
-        .get(reqwest::header::LAST_MODIFIED)
-        .and_then(|v| v.to_str().ok())
-        .map(|s| s.to_string());
-
+/// Resolves size and validators with a HEAD request sent through Tor.
+///
+/// Nothing is resolved locally: the host name is handed to Arti and resolved
+/// by the exit node, so this path cannot leak DNS.
+async fn resolve_size(tor: Arc<TorManager>, url: &url::Url) -> Result<ServerInfo> {
+    let transport = TorTransport::new(tor);
+    let head = transport.head(url, 0).await?;
+    let total = head.total_size.context("Content-Length fehlt")?;
     Ok(ServerInfo {
-        total: len,
-        accepts_ranges,
-        etag,
-        last_modified,
+        total,
+        accepts_ranges: head.accepts_ranges,
+        etag: head.etag,
+        last_modified: head.last_modified,
     })
 }
 
@@ -416,7 +377,7 @@ pub async fn run_job(
         p.status = JobStatus::Resolving;
     }
 
-    let info = resolve_size(&tor, &job.url).await?;
+    let info = resolve_size(tor.clone(), &job.url).await?;
     let total = info.total;
     let plan = plan_parts(total, job.max_parts, job.part_size, info.accepts_ranges);
     let parts_count = plan.len();

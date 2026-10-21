@@ -90,9 +90,11 @@ CI früh starten (parallel zu M1), Rest nach M2.
 ## M5 – Härtung & Extras (parallel, nicht blockierend) 🟢
 **Sicherheit/Privacy**
 - [ ] 🟠 Threat-Modell-Doku: was Tor schützt / was nicht (Fingerprints, Endpoints, Exit-Sicht bei HTTP)
-- [ ] 🟠 DNS-Leak-Prüfung (alle Auflösungen über Tor, auch in Plugins)
+- [x] 🟠 DNS-Leak-Prüfung (alle Auflösungen über Tor, auch in Plugins) – Größen-HEAD läuft jetzt über `TorTransport`, Guard-Test verbietet lokale Resolver/HTTP-Clients im Quellcode
 - [ ] 🟠 Keine Telemetrie – als Test/Grep-Check in CI absichern
 - [ ] 🟢 Bridges / Pluggable Transports (obfs4, snowflake)
+  - [x] Direkte Bridge-Lines (Config-Feld `bridges`, in Arti geladen; `Bridge `-Präfix optional)
+  - [ ] Pluggable Transports (obfs4, snowflake) – braucht `pt-client`-Feature plus externe PT-Binaries
 - [ ] 🟢 Erkennung eines laufenden System-`tor` (Ports nutzen statt eigene Clients)
 - [ ] 🟢 Certificate-Pinning-Option
 

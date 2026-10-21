@@ -7,8 +7,8 @@
 //! when they carry the same isolation id. This keeps part isolation without
 //! paying for one client (and one data directory) per part.
 
-use anyhow::{Context, Result};
-use arti_client::config::TorClientConfigBuilder;
+use anyhow::{bail, Context, Result};
+use arti_client::config::{BridgeConfigBuilder, TorClientConfigBuilder};
 use arti_client::status::BootstrapStatus;
 use arti_client::{IsolationToken, StreamPrefs, TorClient};
 use std::collections::HashMap;
@@ -66,16 +66,21 @@ pub struct TorManager {
 
 impl TorManager {
     /// Bootstraps a single Tor client with state and cache below `data_dir`.
-    pub async fn bootstrap(data_dir: PathBuf) -> Result<Self> {
+    ///
+    /// `bridges` holds optional bridge lines; an empty list uses the regular
+    /// Tor network.
+    pub async fn bootstrap(data_dir: PathBuf, bridges: &[String]) -> Result<Self> {
         std::fs::create_dir_all(&data_dir)
             .with_context(|| format!("Creating Tor data directory: {data_dir:?}"))?;
 
-        let config = TorClientConfigBuilder::from_directories(
+        let mut builder = TorClientConfigBuilder::from_directories(
             data_dir.join("state"),
             data_dir.join("cache"),
-        )
-        .build()
-        .map_err(|e| anyhow::anyhow!("Building TorClientConfig: {e}"))?;
+        );
+        apply_bridges(&mut builder, bridges)?;
+        let config = builder
+            .build()
+            .map_err(|e| anyhow::anyhow!("Building TorClientConfig: {e}"))?;
 
         info!("Bootstrapping Tor client ({data_dir:?}) ...");
         let client = TorClient::builder()
@@ -153,6 +158,39 @@ impl TorManager {
     }
 }
 
+/// Adds configured bridge lines to the Tor client config.
+fn apply_bridges(builder: &mut TorClientConfigBuilder, bridges: &[String]) -> Result<()> {
+    for (index, raw) in bridges.iter().enumerate() {
+        let line = raw.trim();
+        if line.is_empty() {
+            continue;
+        }
+        let bridge = parse_bridge_line(line, index + 1)?;
+        builder.bridges().bridges().push(bridge);
+    }
+    Ok(())
+}
+
+/// Parses one bridge line, accepting an optional leading `Bridge ` keyword.
+fn parse_bridge_line(raw: &str, number: usize) -> Result<BridgeConfigBuilder> {
+    let line = raw.strip_prefix("Bridge ").unwrap_or(raw).trim();
+    let bridge: BridgeConfigBuilder = line
+        .parse()
+        .with_context(|| format!("Invalid bridge line #{number}: {line:?}"))?;
+    if let Some(transport) = bridge.get_transport() {
+        if !transport.is_empty() && transport != "-" && !transport.eq_ignore_ascii_case("bridge") {
+            bail!(
+                "Bridge line #{number} uses pluggable transport {transport:?}, which needs an \
+                 external PT binary; only direct bridges are supported"
+            );
+        }
+    }
+    bridge
+        .build()
+        .map_err(|e| anyhow::anyhow!("Invalid bridge line #{number}: {e}"))?;
+    Ok(bridge)
+}
+
 /// Stable [`IsolationToken`] per numeric isolation id.
 ///
 /// The same id always maps to the same token (so reconnects of a part may reuse
@@ -192,6 +230,31 @@ mod tests {
         let c = tokens.token(2);
         assert_eq!(a, b);
         assert_ne!(a, c);
+    }
+
+    const DIRECT_BRIDGE: &str =
+        "192.0.2.10:443 0123456789ABCDEF0123456789ABCDEF01234567";
+
+    #[test]
+    fn parses_direct_bridge_lines_with_optional_prefix() {
+        assert!(parse_bridge_line(DIRECT_BRIDGE, 1).is_ok());
+        assert!(parse_bridge_line(&format!("Bridge {DIRECT_BRIDGE}"), 1).is_ok());
+    }
+
+    #[test]
+    fn rejects_invalid_bridge_lines_with_line_numbers() {
+        let error = parse_bridge_line("not a bridge", 3).unwrap_err().to_string();
+        assert!(error.contains("bridge line #3"), "{error}");
+    }
+
+    #[test]
+    fn rejects_pluggable_transport_bridges() {
+        let line = "obfs4 192.0.2.10:443 0123456789ABCDEF0123456789ABCDEF01234567 cert=abc";
+        let error = format!("{:#}", parse_bridge_line(line, 2).unwrap_err());
+        assert!(
+            error.to_lowercase().contains("pluggable transport"),
+            "{error}"
+        );
     }
 
     #[test]

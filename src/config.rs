@@ -20,6 +20,11 @@ pub struct Config {
     #[serde(default)]
     pub tor_data_dir: Option<PathBuf>,
 
+    /// Bridge lines to reach the Tor network through censored networks.
+    /// Each entry is one bridge line (a leading `Bridge ` prefix is accepted).
+    #[serde(default)]
+    pub bridges: Vec<String>,
+
     /// Temp-Verzeichnis für Teildateien
     #[serde(default)]
     pub temp_dir: Option<PathBuf>,
@@ -67,6 +72,7 @@ impl Default for Config {
             tor_clients: default_tor_clients(),
             max_parts: default_max_parts(),
             tor_data_dir: None,
+            bridges: Vec::new(),
             temp_dir: None,
             download_dir: None,
             user_agent: default_ua(),
@@ -82,8 +88,12 @@ impl Default for Config {
 impl Config {
     pub fn describe(&self) -> String {
         format!(
-            "tor_clients={}, max_parts={}, retries={}, log={}",
-            self.tor_clients, self.max_parts, self.max_retries, self.log_level
+            "tor_clients={}, bridges={}, max_parts={}, retries={}, log={}",
+            self.tor_clients,
+            self.bridges.len(),
+            self.max_parts,
+            self.max_retries,
+            self.log_level
         )
     }
 

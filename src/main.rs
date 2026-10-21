@@ -95,7 +95,7 @@ async fn main() -> Result<()> {
             );
         }
         info!("Bootstrapping Tor client (Arti) ...");
-        match TorManager::bootstrap(cfg.tor_data_dir()).await {
+        match TorManager::bootstrap(cfg.tor_data_dir(), &cfg.bridges).await {
             Ok(tm) => {
                 let health = tm.health();
                 info!(

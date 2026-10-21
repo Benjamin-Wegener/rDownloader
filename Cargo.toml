@@ -6,7 +6,7 @@ description = "Clean-room Rust Download-Manager mit Tor (Arti), Multi-Part, Plug
 
 [dependencies]
 # Tor (offizielle Rust-Implementierung des Tor-Projekts)
-arti-client = { version = "0.46", features = ["tokio"] }
+arti-client = { version = "0.46", features = ["tokio", "bridge-client"] }
 tor-rtcompat = "0.46"
 tokio = { version = "1", features = ["full"] }
 
