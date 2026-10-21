@@ -15,6 +15,7 @@ use tokio::sync::Mutex;
 use tracing::{error, info};
 use uuid::Uuid;
 
+use crate::contract::{ByteRange, Transport};
 use crate::tor::TorManager;
 
 /// Fortschritt eines einzelnen Parts.
@@ -79,14 +80,16 @@ impl DownloadJob {
 }
 
 /// Resolve Content-Length via einen Tor-Circuit + HEAD-Request.
-async fn resolve_size(tor: &TorManager, idx: usize, url: &url::Url) -> Result<u64> {
+async fn resolve_size(tor: &TorManager, idx: usize, url: &url::Url) -> Result<ServerInfo> {
     // Für echte Tor-Nutzung bauen wir einen HTTP-Stream über Tor und machen dort
     // einen manuellen HEAD-Request. Hier vereinfacht: reqwest mit socks-ähnlichem
     // Routing via TorManager.connect() als Rohstream → zu aufwändig für HEAD.
     // Pragmatisch: reqwest ohne Proxy für Größe (nur Metadata, kein Payload),
     // aber strikt optional: Falls gewünscht, über Tor. Für saubere Anonymität
     // auch über Tor: wir nutzen den Tor-Stream + manuelles HTTP/1.1.
-    let stream = tor.connect(idx, url.host_str().unwrap_or("localhost"), 80).await?;
+    let stream = tor
+        .connect(idx, url.host_str().unwrap_or("localhost"), 80)
+        .await?;
     // TODO: Manueller HTTP/1.1 HEAD über den Tor-Stream (AsyncRead/Write).
     // Für MVP nutzen wir reqwest (ohne Proxy) nur zur Größe-Ermittlung.
     drop(stream);
@@ -108,7 +111,94 @@ async fn resolve_size(tor: &TorManager, idx: usize, url: &url::Url) -> Result<u6
         .and_then(|v| v.to_str().ok())
         .and_then(|s| s.parse::<u64>().ok())
         .context("Content-Length fehlt")?;
-    Ok(len)
+    let accepts_ranges = resp
+        .headers()
+        .get(reqwest::header::ACCEPT_RANGES)
+        .and_then(|v| v.to_str().ok())
+        .is_some_and(accepts_ranges_value);
+    Ok(ServerInfo {
+        total: len,
+        accepts_ranges,
+    })
+}
+
+/// Was der Server über die Ressource verrät.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct ServerInfo {
+    total: u64,
+    accepts_ranges: bool,
+}
+
+/// `Accept-Ranges: bytes` heißt ja; `none` oder alles andere heißt nein.
+fn accepts_ranges_value(v: &str) -> bool {
+    v.split(',').any(|t| t.trim().eq_ignore_ascii_case("bytes"))
+}
+
+/// Prüft per Test-GET `bytes=0-0`, ob der Server Ranges wirklich bedient
+/// (HEAD-Header allein sind unzuverlässig): nur `206` mit Teillänge 1 zählt.
+pub async fn probe_range_support(
+    transport: &dyn Transport,
+    url: &url::Url,
+    isolation: u64,
+) -> Result<bool> {
+    let resp = transport
+        .get(
+            url,
+            Some(ByteRange {
+                start: 0,
+                end: Some(0),
+            }),
+            isolation,
+        )
+        .await?;
+    Ok(resp.head.status == 206 && resp.head.content_length == Some(1))
+}
+
+/// Byte-Bereich eines Parts (inklusive Grenzen).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct PartPlan {
+    index: usize,
+    start: u64,
+    end: u64,
+}
+
+impl PartPlan {
+    fn len(&self) -> u64 {
+        self.end - self.start + 1
+    }
+}
+
+/// Teilt `total` Bytes auf. Ohne Range-Support oder bei unbekannter Größe
+/// gibt es genau einen Part über die ganze Datei (Single-Connection-Fallback).
+fn plan_parts(
+    total: u64,
+    max_parts: usize,
+    part_size: Option<u64>,
+    supports_ranges: bool,
+) -> Vec<PartPlan> {
+    if total == 0 {
+        return vec![];
+    }
+    if !supports_ranges {
+        return vec![PartPlan {
+            index: 0,
+            start: 0,
+            end: total - 1,
+        }];
+    }
+    let count = (max_parts.clamp(1, 10) as u64).min(total);
+    let size = part_size
+        .filter(|&ps| ps > 0)
+        .unwrap_or_else(|| total.div_ceil(count));
+    (0..)
+        .map(|i| (i, i as u64 * size))
+        .take_while(|&(_, start)| start < total)
+        .map(|(index, start)| PartPlan {
+            index,
+            start,
+            end: (start + size - 1).min(total - 1),
+        })
+        .collect()
 }
 
 /// Lädt einen Part (Byte-Range) über Tor herunter und schreibt nach `dest`.
@@ -117,8 +207,7 @@ async fn download_part(
     part_idx: usize,
     url: url::Url,
     dest: PathBuf,
-    range_start: u64,
-    range_end: u64, // inklusiv
+    range: Option<(u64, u64)>, // inklusiv; None = ganze Datei ohne Range-Header
     bytes_done: Arc<AtomicU64>,
 ) -> Result<()> {
     let host = url.host_str().context("Kein Host in URL")?.to_string();
@@ -128,9 +217,16 @@ async fn download_part(
     let mut stream = tor.connect(part_idx, &host, port).await?;
 
     // Einfacher HTTP/1.1 GET mit Range-Header über den Tor-Stream
-    let path = if url.path().is_empty() { "/" } else { url.path() };
+    let path = if url.path().is_empty() {
+        "/"
+    } else {
+        url.path()
+    };
+    let range_header = range
+        .map(|(start, end)| format!("Range: bytes={start}-{end}\r\n"))
+        .unwrap_or_default();
     let req = format!(
-        "GET {path} HTTP/1.1\r\nHost: {host}\r\nRange: bytes={range_start}-{range_end}\r\nConnection: close\r\nUser-Agent: rdownloader/0.1\r\n\r\n"
+        "GET {path} HTTP/1.1\r\nHost: {host}\r\n{range_header}Connection: close\r\nUser-Agent: rdownloader/0.1\r\n\r\n"
     );
     use tokio::io::{AsyncReadExt as _, AsyncWriteExt as _};
     stream.write_all(req.as_bytes()).await?;
@@ -156,7 +252,13 @@ async fn download_part(
 
     let header = String::from_utf8_lossy(&buf[..header_end]).to_string();
     let status_line = header.lines().next().unwrap_or("");
-    if !(status_line.contains(" 200 ") || status_line.contains(" 206 ")) {
+    let ok_status = if range.is_some() {
+        // Ein 200 auf eine Range-Anfrage hieße: Server ignoriert Range → Part wäre die ganze Datei.
+        status_line.contains(" 206 ")
+    } else {
+        status_line.contains(" 200 ")
+    };
+    if !ok_status {
         anyhow::bail!("Unerwarteter Status: {status_line}");
     }
 
@@ -225,37 +327,27 @@ pub async fn run_job(
         p.status = JobStatus::Resolving;
     }
 
-    let total = resolve_size(&tor, 0, &job.url).await?;
-    let parts_count = if total > 0 {
-        job.max_parts.min(total as usize)
-    } else {
-        1
-    };
-    let part_size = if let Some(ps) = job.part_size {
-        ps
-    } else if total > 0 {
-        total.div_ceil(parts_count as u64)
-    } else {
-        0
-    };
+    let info = resolve_size(&tor, 0, &job.url).await?;
+    let total = info.total;
+    let plan = plan_parts(total, job.max_parts, job.part_size, info.accepts_ranges);
+    let parts_count = plan.len();
+    if !info.accepts_ranges {
+        info!("Server ohne Accept-Ranges – Single-Connection-Download");
+    }
 
-    let temp_dir = crate::config::config().temp_dir().join(format!("job-{}", job.id));
+    let temp_dir = crate::config::config()
+        .temp_dir()
+        .join(format!("job-{}", job.id));
     fs::create_dir_all(&temp_dir).await?;
 
     let bytes_done = Arc::new(AtomicU64::new(0));
     let mut part_paths = Vec::new();
     let mut handles = Vec::new();
 
-    for i in 0..parts_count {
-        let start = i as u64 * part_size;
-        let end = if i == parts_count - 1 {
-            total.saturating_sub(1)
-        } else {
-            (start + part_size - 1).min(total.saturating_sub(1))
-        };
-        if total > 0 && start > end {
-            break;
-        }
+    for part in &plan {
+        let (i, start, end) = (part.index, part.start, part.end);
+        // Ein einzelner Part über die ganze Datei braucht keinen Range-Header.
+        let range = (info.accepts_ranges && parts_count > 1).then_some((start, end));
         let dest = temp_dir.join(format!("part-{i:03}"));
         part_paths.push(dest.clone());
         let tor_c = tor.clone();
@@ -264,7 +356,7 @@ pub async fn run_job(
         let cancel_c = cancel.clone();
         let handle = tokio::spawn(async move {
             tokio::select! {
-                res = download_part(tor_c, i, url, dest, start, end, bd) => res,
+                res = download_part(tor_c, i, url, dest, range, bd) => res,
                 _ = cancel_c.notified() => Err(anyhow::anyhow!("Part {i} abgebrochen")),
             }
         });
@@ -275,11 +367,12 @@ pub async fn run_job(
         let mut p = progress.lock().await;
         p.status = JobStatus::Downloading;
         p.total_bytes = total;
-        p.parts = (0..parts_count)
-            .map(|i| PartProgress {
-                index: i,
+        p.parts = plan
+            .iter()
+            .map(|part| PartProgress {
+                index: part.index,
                 bytes_done: 0,
-                total: if i == parts_count - 1 { total - i as u64 * part_size } else { part_size },
+                total: part.len(),
                 status: PartStatus::Downloading,
             })
             .collect();
@@ -349,4 +442,79 @@ pub async fn run_job(
     p.bytes_done = total;
     info!("Download fertig: {}", job.output.display());
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::contract::{MockResource, MockTransport};
+
+    #[test]
+    fn accept_ranges_header() {
+        assert!(accepts_ranges_value("bytes"));
+        assert!(accepts_ranges_value("Bytes"));
+        assert!(!accepts_ranges_value("none"));
+        assert!(!accepts_ranges_value(""));
+    }
+
+    #[test]
+    fn plan_teilt_lueckenlos() {
+        let plan = plan_parts(10, 3, None, true);
+        let ranges: Vec<_> = plan.iter().map(|p| (p.start, p.end)).collect();
+        assert_eq!(ranges, vec![(0, 3), (4, 7), (8, 9)]);
+        assert_eq!(plan.iter().map(PartPlan::len).sum::<u64>(), 10);
+    }
+
+    #[test]
+    fn plan_nie_mehr_parts_als_bytes() {
+        assert_eq!(plan_parts(2, 10, None, true).len(), 2);
+    }
+
+    #[test]
+    fn plan_ohne_ranges_ist_single_connection() {
+        assert_eq!(
+            plan_parts(1000, 8, None, false),
+            vec![PartPlan {
+                index: 0,
+                start: 0,
+                end: 999
+            }]
+        );
+    }
+
+    #[test]
+    fn plan_leere_datei_hat_keine_parts() {
+        assert!(plan_parts(0, 4, None, true).is_empty());
+    }
+
+    #[test]
+    fn plan_respektiert_part_size() {
+        let plan = plan_parts(10, 10, Some(4), true);
+        assert_eq!(plan.len(), 3);
+        assert_eq!(
+            plan[2],
+            PartPlan {
+                index: 2,
+                start: 8,
+                end: 9
+            }
+        );
+    }
+
+    #[tokio::test]
+    async fn probe_erkennt_range_support() {
+        let t = MockTransport::new()
+            .with_resource("http://x.test/r", MockResource::new(&b"abcdef"[..]));
+        let url = url::Url::parse("http://x.test/r").unwrap();
+        assert!(probe_range_support(&t, &url, 0).await.unwrap());
+    }
+
+    #[tokio::test]
+    async fn probe_erkennt_fehlenden_range_support() {
+        let mut res = MockResource::new(&b"abcdef"[..]);
+        res.accepts_ranges = false;
+        let t = MockTransport::new().with_resource("http://x.test/n", res);
+        let url = url::Url::parse("http://x.test/n").unwrap();
+        assert!(!probe_range_support(&t, &url, 0).await.unwrap());
+    }
 }

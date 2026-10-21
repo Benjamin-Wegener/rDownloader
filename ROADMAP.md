@@ -45,7 +45,7 @@ Reihenfolge ist Abhängigkeitsreihenfolge – von oben nach unten.
    - [ ] HEAD/GET komplett über Tor-Stream inkl. TLS für `https` (Arti liefert nur rohe TCP-Streams → TLS-Layer nötig)
    - [ ] Redirects, Chunked-Encoding und `Content-Disposition`-Dateiname korrekt behandeln
    - [ ] Eigener Header-Parser (`find_subsequence`) entfällt dadurch
-2. 🔴 **Range-Support-Prüfung** (`Accept-Ranges`, Test-GET `bytes=0-0`) → Fallback Single-Connection
+2. ✅ **Range-Support-Prüfung** (`Accept-Ranges`, Test-GET `bytes=0-0`) → Fallback Single-Connection
 3. 🔴 **Retries mit Backoff pro Part** (Part-Fehler darf nicht den ganzen Job killen)
 4. 🔴 **Resume**: Part-Fortschritt persistieren (Offset je Part, ETag/Last-Modified zur Validierung)
 5. 🟠 **Stream-Isolation pro Part** sicherstellen (kein Circuit-Sharing)
