@@ -288,8 +288,29 @@ async fn run_tui(
                         }
                     }
                 }
-                UiCommand::CancelJob(_id) => {
-                    // TODO: Cancel-Signal an Job
+                UiCommand::CancelJob(id) => {
+                    let mut jp = jobs_progress_c.lock().unwrap();
+                    if let Some(j) = jp.iter_mut().find(|j| j.id == id) {
+                        j.status = JobStatus::Cancelled;
+                    }
+                }
+                UiCommand::PauseJob(id) => {
+                    let mut jp = jobs_progress_c.lock().unwrap();
+                    if let Some(j) = jp.iter_mut().find(|j| j.id == id) {
+                        j.status = JobStatus::Paused;
+                    }
+                }
+                UiCommand::ResumeJob(id) => {
+                    let mut jp = jobs_progress_c.lock().unwrap();
+                    if let Some(j) = jp.iter_mut().find(|j| j.id == id) {
+                        if matches!(j.status, JobStatus::Paused) {
+                            j.status = JobStatus::Downloading;
+                        }
+                    }
+                }
+                UiCommand::RemoveJob(id) => {
+                    let mut jp = jobs_progress_c.lock().unwrap();
+                    jp.retain(|j| j.id != id);
                 }
             }
         }

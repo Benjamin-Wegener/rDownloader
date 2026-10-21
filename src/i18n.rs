@@ -56,11 +56,23 @@ const EN: &[(&str, &str)] = &[
     ),
     (
         "ui.status.help",
-        "rdownloader | q=Quit · a=Add URL · Tab=Switch · ↑↓=Select",
+        "rdownloader | q=Quit · a=Add · p=Pause · r=Resume · c=Cancel · d=Remove · Tab=Switch · ↑↓=Select",
     ),
     (
         "ui.status.queued_url",
         "URL queued: {url}",
+    ),
+    (
+        "ui.status.pause_requested",
+        "Pause requested: {file}",
+    ),
+    (
+        "ui.status.resume_requested",
+        "Resume requested: {file}",
+    ),
+    (
+        "ui.status.remove_requested",
+        "Removed: {file}",
     ),
     (
         "ui.status.cancel_requested",
@@ -97,6 +109,14 @@ const EN: &[(&str, &str)] = &[
     (
         "ui.queue.done",
         " DONE",
+    ),
+    (
+        "ui.queue.paused",
+        " PAUSED",
+    ),
+    (
+        "ui.queue.cancelled",
+        " CANCELLED",
     ),
     (
         "ui.progress.title",

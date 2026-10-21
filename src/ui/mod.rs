@@ -35,10 +35,13 @@ pub enum AppTab {
 }
 
 /// Befehl, den die UI an die Download-Engine senden kann.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum UiCommand {
     AddUrl(String),
+    PauseJob(uuid::Uuid),
+    ResumeJob(uuid::Uuid),
     CancelJob(uuid::Uuid),
+    RemoveJob(uuid::Uuid),
 }
 
 pub struct App {
@@ -135,12 +138,52 @@ impl App {
                     self.list_state.select(Some(i + 1));
                 }
             }
+            KeyCode::Char('p') => {
+                if let Some(i) = self.list_state.selected() {
+                    if let Some(j) = self.jobs.get_mut(i) {
+                        let id = j.id;
+                        let filename = j.filename.clone();
+                        j.status = JobStatus::Paused;
+                        let _ = self.cmd_tx.send(UiCommand::PauseJob(id));
+                        self.status_msg = t!("ui.status.pause_requested", file = filename);
+                    }
+                }
+            }
+            KeyCode::Char('r') => {
+                if let Some(i) = self.list_state.selected() {
+                    if let Some(j) = self.jobs.get_mut(i) {
+                        let id = j.id;
+                        let filename = j.filename.clone();
+                        if matches!(j.status, JobStatus::Paused) {
+                            j.status = JobStatus::Downloading;
+                        }
+                        let _ = self.cmd_tx.send(UiCommand::ResumeJob(id));
+                        self.status_msg = t!("ui.status.resume_requested", file = filename);
+                    }
+                }
+            }
+            KeyCode::Char('c') => {
+                if let Some(i) = self.list_state.selected() {
+                    if let Some(j) = self.jobs.get_mut(i) {
+                        let id = j.id;
+                        let filename = j.filename.clone();
+                        j.status = JobStatus::Cancelled;
+                        let _ = self.cmd_tx.send(UiCommand::CancelJob(id));
+                        self.status_msg = t!("ui.status.cancel_requested", file = filename);
+                    }
+                }
+            }
             KeyCode::Delete | KeyCode::Char('d') => {
                 if let Some(i) = self.list_state.selected() {
-                    if let Some(j) = self.jobs.get(i) {
-                        let id = j.id;
-                        let _ = self.cmd_tx.send(UiCommand::CancelJob(id));
-                        self.status_msg = t!("ui.status.cancel_requested", file = j.filename);
+                    if i < self.jobs.len() {
+                        let removed = self.jobs.remove(i);
+                        let _ = self.cmd_tx.send(UiCommand::RemoveJob(removed.id));
+                        self.status_msg = t!("ui.status.remove_requested", file = removed.filename);
+                        if self.jobs.is_empty() {
+                            self.list_state.select(None);
+                        } else if i >= self.jobs.len() {
+                            self.list_state.select(Some(self.jobs.len() - 1));
+                        }
                     }
                 }
             }
@@ -326,12 +369,16 @@ fn draw_downloads(f: &mut Frame, area: Rect, app: &App) {
                 JobStatus::Done => Color::Green,
                 JobStatus::Failed(_) => Color::Red,
                 JobStatus::Downloading | JobStatus::Resolving | JobStatus::Merging => Color::Yellow,
+                JobStatus::Paused => Color::Blue,
+                JobStatus::Cancelled => Color::DarkGray,
                 _ => Color::Gray,
             };
             let pct = (j.bytes_done * 100).checked_div(j.total_bytes).unwrap_or(0);
             let status_str = match &j.status {
                 JobStatus::Failed(e) => t!("ui.queue.failed", e = e),
                 JobStatus::Done => t!("ui.queue.done").to_string(),
+                JobStatus::Paused => t!("ui.queue.paused").to_string(),
+                JobStatus::Cancelled => t!("ui.queue.cancelled").to_string(),
                 _ => String::new(),
             };
             ListItem::new(Line::from(vec![
@@ -544,5 +591,55 @@ mod tests {
             .find(|j| j.id == id)
             .expect("job present in queue");
         assert!(matches!(j.status, JobStatus::Cancelled));
+    }
+
+    #[test]
+    fn handle_key_pause_resume_cancel_remove() {
+        let (cmd_tx, mut cmd_rx) = mpsc::unbounded_channel::<UiCommand>();
+        let (_evt_tx, evt_rx) = mpsc::unbounded_channel::<JobEvent>();
+        let mut app = App::new(cmd_tx, evt_rx);
+        let id1 = Uuid::new_v4();
+        let id2 = Uuid::new_v4();
+
+        app.jobs.push(JobProgress {
+            id: id1,
+            url: "http://example.com/file1".into(),
+            filename: "file1.bin".into(),
+            total_bytes: 100,
+            bytes_done: 20,
+            parts: vec![],
+            status: JobStatus::Downloading,
+        });
+        app.jobs.push(JobProgress {
+            id: id2,
+            url: "http://example.com/file2".into(),
+            filename: "file2.bin".into(),
+            total_bytes: 200,
+            bytes_done: 50,
+            parts: vec![],
+            status: JobStatus::Downloading,
+        });
+        app.list_state.select(Some(0));
+
+        // Test Pause 'p'
+        app.handle_key(KeyCode::Char('p'));
+        assert_eq!(app.jobs[0].status, JobStatus::Paused);
+        assert_eq!(cmd_rx.try_recv().unwrap(), UiCommand::PauseJob(id1));
+
+        // Test Resume 'r'
+        app.handle_key(KeyCode::Char('r'));
+        assert_eq!(app.jobs[0].status, JobStatus::Downloading);
+        assert_eq!(cmd_rx.try_recv().unwrap(), UiCommand::ResumeJob(id1));
+
+        // Test Cancel 'c'
+        app.handle_key(KeyCode::Char('c'));
+        assert_eq!(app.jobs[0].status, JobStatus::Cancelled);
+        assert_eq!(cmd_rx.try_recv().unwrap(), UiCommand::CancelJob(id1));
+
+        // Test Remove 'd'
+        app.handle_key(KeyCode::Char('d'));
+        assert_eq!(cmd_rx.try_recv().unwrap(), UiCommand::RemoveJob(id1));
+        assert_eq!(app.jobs.len(), 1);
+        assert_eq!(app.jobs[0].id, id2);
     }
 }

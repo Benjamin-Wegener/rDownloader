@@ -59,6 +59,7 @@ pub enum JobStatus {
     Queued,
     Resolving,
     Downloading,
+    Paused,
     Merging,
     Done,
     Failed(String),
