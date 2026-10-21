@@ -26,6 +26,7 @@ Der Hauptordner bleibt dabei **unverändert** – gearbeitet wird in einem Workt
 - Verträge (`src/contract.rs`, Schritt core-1) sind danach stabil. Änderungen daran brauchen einen `HANDOFF.md`-Eintrag und Absprache mit dem Nutzer.
 - Review-Wunsch oder Blocker an andere Bereiche: `HANDOFF.md` (append-only), Format `[von → an] Anliegen – Status`.
 - Das Skript prüft, dass der Hauptordner sauber ist. Dort nie direkt arbeiten.
+- `finish` aktualisiert `STATUS.md` automatisch (Skript `scripts/status-md.sh`) und committet es auf master.
 
 ## Sprache & Übersetzbarkeit (verbindlich für alle neuen Änderungen)
 - **Alles im Programm ist Englisch**: Quellcode (Bezeichner, Kommentare, Doc-Comments, Commit-Messages), `--help`/Clap-Texte, TUI-Oberfläche, Fehlermeldungen, Logs. Interne Orchestrierungs-Dateien (AGENTS.md, ROADMAP.md, QUEUE.tsv, HANDOFF.md) bleiben Deutsch.

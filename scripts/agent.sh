@@ -47,7 +47,11 @@ case "${1:-}" in
     git -C "$wt" rebase master
     git -C "$main" merge --ff-only "step/$id"
     git -C "$main" worktree remove --force "$wt"; git -C "$main" branch -q -d "step/$id"
-    touch "$state/done/$id"; rm -rf "$state/claims/$id" "$state/areas/$area"; echo "erledigt: $id" ;;
+    touch "$state/done/$id"; rm -rf "$state/claims/$id" "$state/areas/$area"; echo "erledigt: $id"
+    # STATUS.md aktuell halten (unter dem Merge-Lock, damit nichts dazwischenkommt)
+    if "$main/scripts/status-md.sh" "$main/STATUS.md" >/dev/null 2>&1 && ! git -C "$main" diff --quiet -- STATUS.md; then
+      git -C "$main" add STATUS.md && git -C "$main" commit -q -m "status: $id done" -- STATUS.md
+    fi ;;
   abort)
     id=$2; area=$(rows | awk -F'\t' -v i="$id" '$1==i{print $2}')
     git -C "$main" worktree remove --force "$main/../rdl-$id" 2>/dev/null || true; git -C "$main" branch -q -D "step/$id" 2>/dev/null || true
