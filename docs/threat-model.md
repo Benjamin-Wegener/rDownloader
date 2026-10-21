@@ -34,6 +34,7 @@ Statements marked *(verified)* are enforced by code or tests in this repository;
   - Crawled pages are limited to 2 MiB; batch import files to 4 MiB and 10 000 links.
   - Redirects are followed up to a fixed limit.
   - Resume only continues when ETag / Last-Modified still match.
+- **Archive extraction** (`auto_extract`, off by default): entry names are validated (no absolute paths, no `..`), symlinks in archives are never created, existing files are never overwritten, archive permissions are ignored, and entry count and unpacked size are capped (64 GiB, 100 000 entries) *(verified by tests with a path-traversal ZIP and a size-limit bomb)*. RAR is unpacked by an external tool (`unrar`, `7zz`/`7z` or `bsdtar`); its result is checked afterwards, but the size cap can only be enforced after the tool has finished.
 - **Integrity**: when a hash is known (SHA-256 recommended), the finished file is verified and deleted on mismatch *(verified)*. Without a hash, integrity relies on TLS only.
 - **Credentials**: `Secret` and cookie values are redacted in `Debug` output and are not serialisable, so they do not reach logs or the tracker file by accident *(verified)*. Cookies are only attached to requests for the matching domain.
 - **Plugins**: a permission model (network allow-list per plugin, file system limits, credential scoping) is specified in `src/plugin/PERMISSIONS.md`. Plugins are static Rust code today, so they are trusted code; the model matters once dynamic (WASM) plugins exist.

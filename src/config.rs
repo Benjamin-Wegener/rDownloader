@@ -53,6 +53,15 @@ pub struct Config {
     #[serde(default = "default_max_jobs_per_host")]
     pub max_jobs_per_host: usize,
 
+    /// Unpack finished archives (.zip, .7z, .rar) into a folder next to them.
+    /// Off by default: archives from the network are untrusted input.
+    #[serde(default)]
+    pub auto_extract: bool,
+
+    /// Delete the archive files after a successful extraction.
+    #[serde(default)]
+    pub extract_delete_archives: bool,
+
     /// Global download speed limit in KiB/s (0 = unlimited)
     #[serde(default)]
     pub max_speed_kib: u64,
@@ -108,6 +117,8 @@ impl Default for Config {
             read_timeout_secs: default_read_timeout(),
             max_concurrent_jobs: default_max_concurrent_jobs(),
             max_jobs_per_host: default_max_jobs_per_host(),
+            auto_extract: false,
+            extract_delete_archives: false,
             max_speed_kib: 0,
             max_retries: default_retries(),
             log_level: default_log_level(),

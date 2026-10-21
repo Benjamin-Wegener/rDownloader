@@ -75,6 +75,8 @@ All keys are optional.
 | `max_parts` | `10` | parts per download |
 | `max_retries` | `3` | retries per part |
 | `max_speed_kib` | `0` | global speed limit in KiB/s, `0` = unlimited |
+| `max_concurrent_jobs`, `max_jobs_per_host` | `3`, `2` | jobs running at once, overall and per host (`0` = unlimited) |
+| `auto_extract`, `extract_delete_archives` | `false` | unpack finished `.zip` / `.7z` / `.rar` (also multi-part) next to the download, optionally delete the archives afterwards |
 | `bridges` | `[]` | Tor bridge lines |
 | `download_dir`, `temp_dir`, `tor_data_dir` | platform defaults | where files and Tor state live |
 | `user_agent`, `connect_timeout_secs`, `read_timeout_secs` | | HTTP behaviour |

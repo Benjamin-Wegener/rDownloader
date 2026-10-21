@@ -459,7 +459,25 @@ fn start_job_background(
         }
 
         match res {
-            Ok(()) => info!("Job done: {}", job.output.display()),
+            Ok(()) => {
+                info!("Job done: {}", job.output.display());
+                let cfg = config::config();
+                if cfg.auto_extract {
+                    let (path, delete) = (job.output.clone(), cfg.extract_delete_archives);
+                    let outcome = tokio::task::spawn_blocking(move || {
+                        download::extract::auto_extract(&path, Default::default(), delete)
+                    })
+                    .await;
+                    match outcome {
+                        Ok(Ok(Some(r))) => {
+                            info!("Extracted {} files ({} bytes) to {}", r.files, r.bytes, r.dest.display())
+                        }
+                        Ok(Ok(None)) => {}
+                        Ok(Err(e)) => warn!("Extraction failed: {e:#}"),
+                        Err(e) => warn!("Extraction task failed: {e}"),
+                    }
+                }
+            }
             Err(e) => error!("Job failed: {e:#}"),
         }
     });

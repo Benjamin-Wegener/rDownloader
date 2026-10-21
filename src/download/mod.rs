@@ -21,6 +21,7 @@ use crate::t;
 use crate::tor::TorManager;
 
 pub mod checksum;
+pub mod extract;
 pub mod limiter;
 pub mod resume;
 pub mod retry;
