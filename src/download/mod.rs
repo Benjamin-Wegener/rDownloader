@@ -19,6 +19,7 @@ use crate::contract::{ByteRange, Transport};
 use crate::tor::TorManager;
 
 pub mod checksum;
+pub mod limiter;
 pub mod resume;
 pub mod retry;
 pub use resume::{PartOffset, ResumeState};
@@ -357,6 +358,7 @@ async fn download_part(
         let body_start = &buf[header_end..];
         file.write_all(body_start).await?;
         let len = body_start.len() as u64;
+        limiter::global().acquire(len).await;
         bytes_done.fetch_add(len, Ordering::Relaxed);
         *part_bytes_done += len;
     }
@@ -368,6 +370,7 @@ async fn download_part(
         }
         file.write_all(&tmp[..n]).await?;
         let len = n as u64;
+        limiter::global().acquire(len).await;
         bytes_done.fetch_add(len, Ordering::Relaxed);
         *part_bytes_done += len;
     }

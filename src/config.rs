@@ -40,6 +40,10 @@ pub struct Config {
     #[serde(default = "default_read_timeout")]
     pub read_timeout_secs: u64,
 
+    /// Global download speed limit in KiB/s (0 = unlimited)
+    #[serde(default)]
+    pub max_speed_kib: u64,
+
     /// Max. Retries pro Part
     #[serde(default = "default_retries")]
     pub max_retries: u32,
@@ -68,6 +72,7 @@ impl Default for Config {
             user_agent: default_ua(),
             connect_timeout_secs: default_timeout(),
             read_timeout_secs: default_read_timeout(),
+            max_speed_kib: 0,
             max_retries: default_retries(),
             log_level: default_log_level(),
         }
