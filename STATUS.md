@@ -1,11 +1,11 @@
 # rdownloader status
 
-Generated 2026-10-22 at commit 0456921 - regenerate with `scripts/status-md.sh`
+Generated 2026-10-22 at commit 4bcb76c - regenerate with `scripts/status-md.sh`
 
-`[#################---]` **42/48** steps done (88%), 1 in progress, 5 open
-Roadmap items: 49 checked, 21 open
+`[##################--]` **43/48** steps done (90%), 0 in progress, 5 open
+Roadmap items: 50 checked, 20 open
 
-## core (10/14)
+## core (11/14)
 
 - [x] `core-9` Zentraler Dateinamen-Bereiniger fuer alle Quellen (Plugin/Container/URL): kein Pfad-Ausbruch, Windows-Reservenamen, Kollision -> automatisch umbenennen
 - [x] `core-1` src/contract.rs: Verträge A (Transport) + B (JobEvent/JobCommand), MockTransport, FakeJob
@@ -17,7 +17,7 @@ Roadmap items: 49 checked, 21 open
 - [x] `core-7` Job-Scheduler & Per-Host-Limits (parallele Jobs, Hoster-Drosselung)
 - [x] `core-8` Auto-Extract-Engine fuer Multi-Part-Archive (.rar, .zip, .7z)
 - [x] `core-10` Freier-Speicher-Pruefung vor dem Start + Vorab-Reservierung der Zieldatei
-- [~] `core-11` macOS-Quarantaene-Attribut (com.apple.quarantine) auf fertige Downloads setzen - **in progress**
+- [x] `core-11` macOS-Quarantaene-Attribut (com.apple.quarantine) auf fertige Downloads setzen
 - [ ] `core-12` Langsame Verbindungen kappen (lowest-speed-limit) + bedingtes Laden (If-Modified-Since)
 - [ ] `core-13` Mirrors (mehrere URLs pro Datei, Auswahl nach Geschwindigkeit) + Metalink-Block-Pruefsummen
 - [ ] `core-14` Ereignis-Hooks (Start/Fertig/Fehler -> eigener Befehl) und Desktop-Benachrichtigung
