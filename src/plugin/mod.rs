@@ -14,6 +14,7 @@ use url::Url;
 
 pub mod account;
 pub mod captcha;
+pub mod container;
 pub mod crawler;
 pub mod example_redirect;
 pub mod permissions;
@@ -27,6 +28,11 @@ pub use account::{
 pub use captcha::{
     CaptchaChallenge, CaptchaManager, CaptchaPlugin, CaptchaSolution, CaptchaSolver,
     ChallengePayload, InteractiveCaptchaSolver, MathCaptchaPlugin,
+};
+#[allow(unused_imports)]
+pub use container::{
+    extract_ccf, extract_dlc, import_container_file, parse_metalink, parse_plain_text,
+    ContainerContent, ContainerFormat, ContainerItem,
 };
 #[allow(unused_imports)]
 pub use crawler::{CrawledLink, CrawlerPlugin, HtmlLinkCrawlerPlugin};

@@ -59,8 +59,11 @@ pub fn import_file(path: &Path) -> Result<Import> {
             meta.len()
         );
     }
-    let bytes = std::fs::read(path).with_context(|| format!("cannot read {}", path.display()))?;
-    Ok(parse_urls(&String::from_utf8_lossy(&bytes)))
+    let container = crate::plugin::container::import_container_file(path)?;
+    Ok(Import {
+        urls: container.urls(),
+        skipped: container.skipped,
+    })
 }
 
 /// Reads the system clipboard through the platform's command line tool
