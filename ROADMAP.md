@@ -115,8 +115,8 @@ Abgleich mit aria2, JDownloader, yt-dlp und der Arti-Dokumentation. Reihenfolge 
 - [ ] 🟠 Freien Speicher vor dem Start prüfen und Zieldatei vorab reservieren (core-10)
 
 **Tor**
-- [ ] 🟠 `.onion`-URLs: Arti-Feature `onion-service-client` aktivieren und testen (net-8)
-- [ ] 🟢 Vanguards (Schutz gegen Guard-Entdeckung) aktivieren (net-8)
+- [x] 🟠 `.onion`-URLs: Arti-Feature `onion-service-client` aktiv, mit Live-Test gegen einen echten Onion-Dienst (net-8)
+- [x] 🟢 Vanguards (Schutz gegen Guard-Entdeckung): Arti-Feature `vanguards` aktiviert; Modus ist Arti-Standard (net-8)
 
 **Download-Kern**
 - [ ] 🟠 Langsame Verbindungen kappen und neu aufbauen (`lowest-speed-limit`-Prinzip), bei Tor besonders nützlich (core-12)

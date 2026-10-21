@@ -23,6 +23,7 @@ no code was taken from it. JDownloader's Java plugins cannot be loaded.
 - Session restore: unfinished downloads come back after a restart
 - Plugin types: hoster, crawler, account (cookie sessions) and interactive captcha
 - Tor bridges for censored networks
+- `.onion` addresses (onion services) work like any other URL; plain `http://` is fine there because the connection is end-to-end encrypted by Tor
 - Interface text comes from a string catalog (English built in, translations can be added without code changes)
 
 ## Build

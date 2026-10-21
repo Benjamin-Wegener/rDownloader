@@ -28,6 +28,7 @@ Statements marked *(verified)* are enforced by code or tests in this repository;
 
 - **IP address**: all download traffic uses an embedded Tor client; the HTTP client is built on Arti streams. There is no direct fallback; with `--no-tor` downloads do not run at all. *(verified: a test scans the sources for local DNS resolution outside Tor, so host names are never resolved locally.)*
 - **Linkability between parts**: every part requests its own isolation token, so parts do not share a circuit. After a failure the token is dropped and the retry uses a fresh circuit.
+- **Onion services**: `.onion` URLs are reached through Tor's onion-service client (no exit relay involved) and Arti's vanguard protection is compiled in. Certificates for `.onion` hosts are rarely valid, so use `http://` there; it is encrypted by the onion protocol itself. *(verified once by a live test, `tests/live_onion.rs`, run manually with `--ignored`)*
 - **Transport security**: `https` uses rustls with the WebPKI root set; certificates are validated. Plain `http` is allowed and is exposed to the exit relay: use `https` URLs.
 - **Hostile servers**:
   - `Content-Disposition` names are reduced to a safe base name, so a server cannot write outside the download directory *(verified by tests in `src/net/disposition.rs`)*.

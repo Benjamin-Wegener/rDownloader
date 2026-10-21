@@ -123,6 +123,16 @@ impl TlsConnector {
     }
 }
 
+/// Whether `host` is a Tor onion service address (`*.onion`).
+///
+/// Onion traffic never leaves the Tor network: there is no exit relay, and the
+/// connection is end-to-end encrypted, so plain `http://` to an onion address
+/// is as private as TLS to a normal site.
+pub fn is_onion_host(host: &str) -> bool {
+    let host = host.trim_end_matches('.').to_ascii_lowercase();
+    host.strip_suffix(".onion").is_some_and(|name| !name.is_empty())
+}
+
 /// Connection target of a URL: port and whether TLS is needed.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct ConnectPlan {
@@ -517,5 +527,21 @@ mod tests {
             .to_bytes();
         assert_eq!(&body[..], b"hello");
         server.await.expect("server task");
+    }
+
+    #[test]
+    fn onion_hosts_are_recognised() {
+        assert!(is_onion_host("duckduckgogg42xjoc72x3sjasowoarfbgcmvfimaftt6twagswzczad.onion"));
+        assert!(is_onion_host("Sub.Example.ONION."));
+        assert!(!is_onion_host("example.com"));
+        assert!(!is_onion_host("notonion"));
+        assert!(!is_onion_host(".onion"));
+        assert!(!is_onion_host("onion.example.com"));
+    }
+
+    #[test]
+    fn plain_http_to_onion_needs_no_tls() {
+        let url = Url::parse("http://duckduckgogg42xjoc72x3sjasowoarfbgcmvfimaftt6twagswzczad.onion/").unwrap();
+        assert_eq!(connect_plan(&url).unwrap(), ConnectPlan { port: 80, tls: false });
     }
 }
