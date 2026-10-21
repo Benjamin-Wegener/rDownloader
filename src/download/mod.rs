@@ -18,6 +18,7 @@ use uuid::Uuid;
 use crate::contract::{ByteRange, Transport};
 use crate::tor::TorManager;
 
+pub mod checksum;
 pub mod resume;
 pub mod retry;
 pub use resume::{PartOffset, ResumeState};
@@ -71,6 +72,8 @@ pub struct DownloadJob {
     pub output: PathBuf,
     pub max_parts: usize,
     pub part_size: Option<u64>, // None = auto (gesamt/max_parts)
+    /// Expected hash of the finished file; verified after merging when set.
+    pub checksum: Option<checksum::Checksum>,
 }
 
 impl DownloadJob {
@@ -81,6 +84,7 @@ impl DownloadJob {
             output,
             max_parts: max_parts.clamp(1, 10),
             part_size: None,
+            checksum: None,
         }
     }
 }
@@ -620,6 +624,17 @@ pub async fn run_job(
     }
 
     merge_parts(&part_paths, &job.output).await?;
+
+    if let Some(expected) = &job.checksum {
+        if let Err(e) = checksum::verify_file(&job.output, expected).await {
+            // A corrupt file must not look like a finished download.
+            let _ = fs::remove_file(&job.output).await;
+            let mut p = progress.lock().await;
+            p.status = JobStatus::Failed(e.to_string());
+            return Err(e);
+        }
+        info!("Checksum verified: {expected}");
+    }
 
     // Temp aufräumen
     let _ = fs::remove_dir_all(&temp_dir).await;

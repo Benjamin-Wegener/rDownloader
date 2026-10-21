@@ -46,6 +46,11 @@ uuid = { version = "1", features = ["v4", "serde"] }
 chrono = { version = "0.4", features = ["serde"] }
 indicatif = "0.17"
 
+# Checksums (verification of finished downloads)
+sha2 = "0.10"
+sha1 = "0.10"
+md-5 = "0.10"
+
 [dev-dependencies]
 hyper = { version = "1", features = ["server"] }
 

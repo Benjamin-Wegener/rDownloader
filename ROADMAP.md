@@ -51,7 +51,7 @@ Reihenfolge ist Abhängigkeitsreihenfolge – von oben nach unten.
 5. 🟠 **Stream-Isolation pro Part** sicherstellen (kein Circuit-Sharing)
    - [ ] Prüfen, ob ein einzelner `TorClient` + `isolated_client()` pro Part statt 10 getrennter Clients reicht – spart 9× Bootstrap und Data-Dirs
 6. 🟠 **Health-Check / Auto-Reconnect** bei Circuit-Failure (baut auf Retry auf)
-7. 🟠 Checksummen-Verifikation (nur wenn Server/Plugin Hash liefert)
+7. ✅ Checksummen-Verifikation (nur wenn Server/Plugin Hash liefert)
 8. 🟢 Bandbreiten-Limit (globales Token-Bucket)
 
 **Definition of Done M1:** 1-GB-Testdatei über Tor, Prozess mitten im Download killen, neu starten → Download setzt fort, Hash stimmt. Als Integrationstest automatisiert.
