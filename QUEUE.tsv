@@ -5,7 +5,7 @@ net-1	net	TLS über Arti-Stream (https-Connector, vertragsfrei)	-
 plugins-1	plugins	Beispiel-Hoster-Plugin (Redirect-Auflösung)	-
 infra-1	infra	CI: GitHub Actions fmt, clippy -D warnings, test	-
 core-2	core	M1.2 Range-Prüfung (Accept-Ranges) + Single-Connection-Fallback	core-1
-ui-1	ui	Queue-Rendering gegen FakeJob (Live-Updates über Vertrag B)	core-1
+ui-1	ui	Queue-Rendering gegen FakeJob (Live-Updates über Vertrag B)	core-1,i18n-1
 net-2	net	TorTransport implementiert Vertrag A	core-1,net-1
 infra-2	infra	Test-Harness: lokaler HTTP-Server mit Range-Support + Abbruch-Simulation	-
 core-3	core	M1.3 Retries mit Backoff pro Part	core-2
