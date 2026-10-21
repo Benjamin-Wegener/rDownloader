@@ -15,6 +15,7 @@ pub mod account;
 pub mod captcha;
 pub mod crawler;
 pub mod example_redirect;
+pub mod permissions;
 
 #[allow(unused_imports)] // public plugin API; wired into the link grabber later
 pub use account::{
@@ -29,6 +30,8 @@ pub use captcha::{
 #[allow(unused_imports)]
 pub use crawler::{CrawledLink, CrawlerPlugin, HtmlLinkCrawlerPlugin};
 pub use example_redirect::ExampleRedirectHosterPlugin;
+#[allow(unused_imports)]
+pub use permissions::{PermissionDenied, PluginPermissions};
 
 /// Metadaten eines Plugins.
 #[derive(Debug, Clone, Serialize, Deserialize)]
