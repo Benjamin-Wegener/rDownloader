@@ -1,9 +1,9 @@
 # rdownloader status
 
-Generated 2026-10-22 at commit 47133d3 - regenerate with `scripts/status-md.sh`
+Generated 2026-10-22 at commit acdcd2c - regenerate with `scripts/status-md.sh`
 
-`[#################---]` **32/37** steps done (86%), 3 in progress, 2 open
-Roadmap items: 36 checked, 17 open
+`[#################---]` **33/37** steps done (89%), 3 in progress, 1 open
+Roadmap items: 37 checked, 16 open
 
 ## i18n (2/2)
 
@@ -31,14 +31,14 @@ Roadmap items: 36 checked, 17 open
 - [x] `net-6` M5 DNS-Leak-Check, Bridges
 - [~] `net-7` Headless-Daemon & RPC-API (JSON-RPC/REST-Steuerung) - **in progress**
 
-## plugins (5/7)
+## plugins (6/7)
 
 - [x] `plugins-1` Beispiel-Hoster-Plugin (Redirect-Auflösung)
 - [x] `plugins-2` Crawler-Plugin-Typ
 - [x] `plugins-3` Account-Plugin-Typ
 - [x] `plugins-4` Captcha-Plugin-Typ (interaktive Lösung in TUI)
 - [x] `plugins-5` Berechtigungsmodell (Design-Dokument)
-- [~] `plugins-6` Container- & Listen-Import (.dlc, .ccf, Textlisten, .metalink) - **in progress**
+- [x] `plugins-6` Container- & Listen-Import (.dlc, .ccf, Textlisten, .metalink)
 - [ ] `plugins-7` WASM-Plugin-Laufzeit (Wasmtime-Sandbox unter Berechtigungsmodell)
 
 ## infra (6/6)
@@ -58,4 +58,4 @@ Roadmap items: 36 checked, 17 open
 - [x] `ui-4` Detail-Ansicht (Parts, Speed, ETA, Circuit)
 - [x] `ui-5` Batch-Import (Datei, Clipboard)
 - [x] `ui-6` History + Export (CSV/JSON)
-- [ ] `ui-7` LinkGrabber-Workflow: Entkoppeltes Sammeln, Filtern & Bestaetigen
+- [~] `ui-7` LinkGrabber-Workflow: Entkoppeltes Sammeln, Filtern & Bestaetigen - **in progress**
