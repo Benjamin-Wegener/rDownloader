@@ -527,9 +527,21 @@ pub async fn run_job(
                         let pb_arc = part_bytes.clone();
                         async move {
                             let mut pb = pb_arc.load(Ordering::Relaxed);
-                            let res =
-                                download_part(tor_c, isolation, url, dest, range, bd, &mut pb)
-                                    .await;
+                            let res = download_part(
+                                tor_c.clone(),
+                                isolation,
+                                url,
+                                dest,
+                                range,
+                                bd,
+                                &mut pb,
+                            )
+                            .await;
+                            if res.is_err() {
+                                // The circuit may have died mid-stream. Force a
+                                // fresh one for the retry that follows.
+                                tor_c.invalidate_isolation(isolation);
+                            }
                             pb_arc.store(pb, Ordering::Relaxed);
                             res
                         }

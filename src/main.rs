@@ -97,7 +97,15 @@ async fn main() -> Result<()> {
         info!("Bootstrapping Tor client (Arti) ...");
         match TorManager::bootstrap(cfg.tor_data_dir()).await {
             Ok(tm) => {
-                info!("Tor ready");
+                let health = tm.health();
+                info!(
+                    "Tor ready (bootstrap {}%, healthy={})",
+                    health.bootstrap_percent(),
+                    health.is_healthy()
+                );
+                if let Some(reason) = health.blockage() {
+                    warn!("Tor reports blockage: {reason}");
+                }
                 Some(Arc::new(tm))
             }
             Err(e) => {

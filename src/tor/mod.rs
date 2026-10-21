@@ -9,17 +9,54 @@
 
 use anyhow::{Context, Result};
 use arti_client::config::TorClientConfigBuilder;
+use arti_client::status::BootstrapStatus;
 use arti_client::{IsolationToken, StreamPrefs, TorClient};
 use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 use tokio::io::{AsyncRead, AsyncWrite};
 use tor_rtcompat::PreferredRuntime;
-use tracing::info;
+use tracing::{info, warn};
 
 /// Read + write byte stream, usable as a trait object.
 pub trait AsyncReadWrite: AsyncRead + AsyncWrite + Send + Unpin {}
 impl<T> AsyncReadWrite for T where T: AsyncRead + AsyncWrite + Send + Unpin {}
+
+/// Snapshot of the Tor client's readiness for traffic.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct TorHealth {
+    ready: bool,
+    bootstrap_percent: u8,
+    blockage: Option<String>,
+}
+
+impl TorHealth {
+    fn from_status(status: &BootstrapStatus) -> Self {
+        let percent = (status.as_frac() * 100.0).round().clamp(0.0, 100.0) as u8;
+        Self {
+            ready: status.ready_for_traffic(),
+            bootstrap_percent: percent,
+            blockage: status.blocked().map(|b| b.message().to_string()),
+        }
+    }
+
+    /// Whether the client can carry traffic right now.
+    pub fn is_healthy(&self) -> bool {
+        self.ready && self.blockage.is_none()
+    }
+
+    pub fn ready(&self) -> bool {
+        self.ready
+    }
+
+    pub fn bootstrap_percent(&self) -> u8 {
+        self.bootstrap_percent
+    }
+
+    pub fn blockage(&self) -> Option<&str> {
+        self.blockage.as_deref()
+    }
+}
 
 /// One Tor client plus stable isolation tokens per stream group.
 pub struct TorManager {
@@ -63,6 +100,18 @@ impl TorManager {
         &self.client
     }
 
+    /// Current readiness of the Tor client (bootstrap progress and blockage).
+    pub fn health(&self) -> TorHealth {
+        TorHealth::from_status(&self.client.bootstrap_status())
+    }
+
+    /// Drops the isolation token for `isolation`, so the next connection of
+    /// that group is built on a fresh circuit. Call this after a stream or
+    /// part failed; the existing retry loop then reconnects automatically.
+    pub fn invalidate_isolation(&self, isolation: u64) {
+        self.isolations.invalidate(isolation);
+    }
+
     /// Opens a fresh stream without a dedicated isolation group.
     pub async fn connect(&self, host: &str, port: u16) -> Result<Box<dyn AsyncReadWrite>> {
         let stream = self
@@ -82,14 +131,19 @@ impl TorManager {
         isolation: u64,
     ) -> Result<Box<dyn AsyncReadWrite>> {
         let prefs = self.stream_prefs(isolation);
-        let stream = self
-            .client
-            .connect_with_prefs((host, port), &prefs)
-            .await
-            .map_err(|e| {
-                anyhow::anyhow!("Tor stream -> {host}:{port} (isolation {isolation}): {e}")
-            })?;
-        Ok(Box::new(stream))
+        match self.client.connect_with_prefs((host, port), &prefs).await {
+            Ok(stream) => Ok(Box::new(stream)),
+            Err(error) => {
+                // A failed connect usually means the circuit behind this
+                // isolation group is unusable. Forget the token so the retry
+                // (see `RetryPolicy`) reconnects on a fresh circuit.
+                warn!("Tor connect failed (isolation {isolation}); rotating circuit: {error}");
+                self.invalidate_isolation(isolation);
+                Err(anyhow::anyhow!(
+                    "Tor stream -> {host}:{port} (isolation {isolation}): {error}"
+                ))
+            }
+        }
     }
 
     fn stream_prefs(&self, isolation: u64) -> StreamPrefs {
@@ -117,6 +171,13 @@ impl IsolationTokens {
             .entry(isolation)
             .or_insert_with(IsolationToken::new)
     }
+
+    fn invalidate(&self, isolation: u64) {
+        self.tokens
+            .lock()
+            .expect("isolation map poisoned")
+            .remove(&isolation);
+    }
 }
 
 #[cfg(test)]
@@ -131,6 +192,25 @@ mod tests {
         let c = tokens.token(2);
         assert_eq!(a, b);
         assert_ne!(a, c);
+    }
+
+    #[test]
+    fn invalidating_an_isolation_forces_a_fresh_token() {
+        let tokens = IsolationTokens::default();
+        let before = tokens.token(7);
+        tokens.invalidate(7);
+        let after = tokens.token(7);
+        assert_ne!(before, after);
+        assert_eq!(after, tokens.token(7));
+    }
+
+    #[test]
+    fn health_snapshot_of_unbootstrapped_client_is_unhealthy() {
+        let health = TorHealth::from_status(&BootstrapStatus::default());
+        assert!(!health.ready());
+        assert_eq!(health.bootstrap_percent(), 0);
+        assert!(health.blockage().is_some());
+        assert!(!health.is_healthy());
     }
 
     #[test]
