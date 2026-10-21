@@ -1,16 +1,16 @@
 # rdownloader status
 
-Generated 2026-10-22 at commit 137906c - regenerate with `scripts/status-md.sh`
+Generated 2026-10-22 at commit 0fa33c5 - regenerate with `scripts/status-md.sh`
 
-`[################----]` **30/37** steps done (81%), 1 in progress, 6 open
-Roadmap items: 34 checked, 18 open
+`[################----]` **31/37** steps done (84%), 3 in progress, 3 open
+Roadmap items: 35 checked, 18 open
 
 ## i18n (2/2)
 
 - [x] `i18n-1` src/i18n.rs: String-Katalog (en), Schlüssel + benannte Platzhalter, Tests; Clap-Help darüber
 - [x] `i18n-2` Bestehende deutsche Strings/Kommentare/Docs im Code auf Englisch, UI-Texte in den Katalog
 
-## core (6/8)
+## core (7/8)
 
 - [x] `core-1` src/contract.rs: Verträge A (Transport) + B (JobEvent/JobCommand), MockTransport, FakeJob
 - [x] `core-2` M1.2 Range-Prüfung (Accept-Ranges) + Single-Connection-Fallback
@@ -18,7 +18,7 @@ Roadmap items: 34 checked, 18 open
 - [x] `core-4` M1.4 Resume (Part-Offsets persistieren, ETag/Last-Modified)
 - [x] `core-5` M1.7 Checksummen-Verifikation
 - [x] `core-6` M1.8 Bandbreiten-Limit
-- [ ] `core-7` Job-Scheduler & Per-Host-Limits (parallele Jobs, Hoster-Drosselung)
+- [x] `core-7` Job-Scheduler & Per-Host-Limits (parallele Jobs, Hoster-Drosselung)
 - [ ] `core-8` Auto-Extract-Engine fuer Multi-Part-Archive (.rar, .zip, .7z)
 
 ## net (6/7)
@@ -29,7 +29,7 @@ Roadmap items: 34 checked, 18 open
 - [x] `net-4` M1.5 Stream-Isolation (Single-Client + isolated_client() prüfen)
 - [x] `net-5` M1.6 Health-Check / Auto-Reconnect
 - [x] `net-6` M5 DNS-Leak-Check, Bridges
-- [ ] `net-7` Headless-Daemon & RPC-API (JSON-RPC/REST-Steuerung)
+- [~] `net-7` Headless-Daemon & RPC-API (JSON-RPC/REST-Steuerung) - **in progress**
 
 ## plugins (5/7)
 
@@ -38,7 +38,7 @@ Roadmap items: 34 checked, 18 open
 - [x] `plugins-3` Account-Plugin-Typ
 - [x] `plugins-4` Captcha-Plugin-Typ (interaktive Lösung in TUI)
 - [x] `plugins-5` Berechtigungsmodell (Design-Dokument)
-- [ ] `plugins-6` Container- & Listen-Import (.dlc, .ccf, Textlisten, .metalink)
+- [~] `plugins-6` Container- & Listen-Import (.dlc, .ccf, Textlisten, .metalink) - **in progress**
 - [ ] `plugins-7` WASM-Plugin-Laufzeit (Wasmtime-Sandbox unter Berechtigungsmodell)
 
 ## infra (6/6)
