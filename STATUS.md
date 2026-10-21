@@ -1,8 +1,8 @@
 # rdownloader status
 
-Generated 2026-10-22 at commit 22f35bc - regenerate with `scripts/status-md.sh`
+Generated 2026-10-22 at commit a6c2bfc - regenerate with `scripts/status-md.sh`
 
-`[###############-----]` **24/31** steps done (77%), 2 in progress, 5 open
+`[################----]` **25/31** steps done (81%), 3 in progress, 3 open
 Roadmap items: 26 checked, 21 open
 
 ## i18n (1/2)
@@ -34,14 +34,14 @@ Roadmap items: 26 checked, 21 open
 - [x] `plugins-2` Crawler-Plugin-Typ
 - [x] `plugins-3` Account-Plugin-Typ
 - [x] `plugins-4` Captcha-Plugin-Typ (interaktive Lösung in TUI)
-- [ ] `plugins-5` Berechtigungsmodell (Design-Dokument)
+- [~] `plugins-5` Berechtigungsmodell (Design-Dokument) - **in progress**
 
-## infra (3/6)
+## infra (4/6)
 
 - [x] `infra-1` CI: GitHub Actions fmt, clippy -D warnings, test
 - [x] `infra-2` Test-Harness: lokaler HTTP-Server mit Range-Support + Abbruch-Simulation
 - [x] `infra-3` Integrationstest: Kill + Resume + Hash (Definition of Done M1)
-- [~] `infra-4` Cargo.toml-Aufräumen (ungenutzte Dependencies) - **in progress**
+- [x] `infra-4` Cargo.toml-Aufräumen (ungenutzte Dependencies)
 - [ ] `infra-5` Threat-Modell-Doku, README, Manpage
 - [ ] `infra-6` Release-Binaries (GitHub Releases)
 
@@ -51,5 +51,5 @@ Roadmap items: 26 checked, 21 open
 - [x] `ui-2` Steuerung pro Eintrag: Pause/Resume/Cancel/Remove
 - [x] `ui-3` Session-Restore im Tracker
 - [x] `ui-4` Detail-Ansicht (Parts, Speed, ETA, Circuit)
-- [ ] `ui-5` Batch-Import (Datei, Clipboard)
+- [~] `ui-5` Batch-Import (Datei, Clipboard) - **in progress**
 - [ ] `ui-6` History + Export (CSV/JSON)
