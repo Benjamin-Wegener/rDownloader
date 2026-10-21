@@ -106,6 +106,30 @@ CI früh starten (parallel zu M1), Rest nach M2.
 - [ ] 🟢 Scheduler-Zeitfenster (Downloads nur zu bestimmten Uhrzeiten)
 - [ ] 🟢 Watch-Ordner · RSS-Reader · Desktop-Notifications
 
+## Lücken aus der Recherche (2026-10-22)
+Abgleich mit aria2, JDownloader, yt-dlp und der Arti-Dokumentation. Reihenfolge = Priorität.
+
+**Sicherheit**
+- [ ] 🔴 **Zentraler Dateinamen-Bereiniger** für alle Quellen: Namen aus Plugins, `.dlc`/`.metalink` und URL werden ungeprüft an den Download-Ordner gehängt (`main.rs`, `dl_dir.join(&filename)`); nur `Content-Disposition` wird bereinigt. Dazu Windows-Reservenamen und automatisches Umbenennen bei Kollision (core-9)
+- [ ] 🟠 macOS-Quarantäne-Attribut `com.apple.quarantine` auf fertige Downloads, damit Gatekeeper sie prüft (core-11)
+- [ ] 🟠 Freien Speicher vor dem Start prüfen und Zieldatei vorab reservieren (core-10)
+
+**Tor**
+- [ ] 🟠 `.onion`-URLs: Arti-Feature `onion-service-client` aktivieren und testen (net-8)
+- [ ] 🟢 Vanguards (Schutz gegen Guard-Entdeckung) aktivieren (net-8)
+
+**Download-Kern**
+- [ ] 🟠 Langsame Verbindungen kappen und neu aufbauen (`lowest-speed-limit`-Prinzip), bei Tor besonders nützlich (core-12)
+- [ ] 🟢 Bedingtes Laden (`If-Modified-Since`) (core-12)
+- [ ] 🟠 Mirrors: mehrere URLs pro Datei, Auswahl nach Geschwindigkeit; Metalink-Block-Prüfsummen (core-13)
+- [ ] 🟢 Ereignis-Hooks bei Start/Fertig/Fehler und Desktop-Benachrichtigung (core-14)
+- [ ] 🟢 `~/.netrc`-Zugangsdaten und Cookie-Import aus Browsern (plugins-8)
+
+**Protokolle & Inhalte**
+- [ ] 🟢 FTP/SFTP über Tor (net-9)
+- [ ] 🟢 HLS/DASH-Segment-Downloads, evtl. über die Rust-Crate `vsd` oder einen yt-dlp-Wrapper (net-10)
+- [ ] ⛔ BitTorrent/Magnet: bewusst nicht im Umfang (über Tor unüblich, anderes Bedrohungsmodell)
+
 ## M6 – GUI & Headless RPC (optional, nach M4) ⬜ 🟢
 - [x] 🟠 **Headless Daemon & RPC/Web-API**: JSON-RPC 2.0 + REST für Fernsteuerung ohne TUI (`src/net/rpc.rs`, `--daemon`)
   - [x] Queue-Liste, Status, Hinzufügen, Pause/Resume/Cancel/Remove über `POST /rpc` und `/api/jobs`
