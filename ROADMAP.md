@@ -74,7 +74,7 @@ Abhängig von M1 (Engine muss echten Fortschritt liefern).
 Statisch zuerst, dynamisch erst bei echtem Bedarf.
 - [x] 🟠 Beispiel-Hoster-Plugin (Redirect-Auflösung einer konkreten Site) – validiert, ob der Trait taugt
 - [x] 🟠 Crawler-Plugin-Typ (weitere Links auf einer Seite) → speist LinkGrabber
-- [ ] 🟠 Account-Plugin-Typ (Login-Cookies, Session-Management)
+- [x] 🟠 Account-Plugin-Typ (Login-Cookies, Session-Management)
 - [ ] 🟠 Captcha-Plugin-Typ (interaktive Lösung in der TUI)
 - [ ] 🟠 Berechtigungsmodell definieren (Netzwerk / Dateisystem), **bevor** dynamisches Laden gebaut wird
 - [ ] 🟢 Dynamisches Laden (`cdylib`, stabile C-ABI oder WASM – siehe Design-Entscheidung 2)

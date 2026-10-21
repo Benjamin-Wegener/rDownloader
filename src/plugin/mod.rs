@@ -11,10 +11,13 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use url::Url;
 
+pub mod account;
 pub mod crawler;
 pub mod example_redirect;
 
 #[allow(unused_imports)] // public plugin API; wired into the link grabber later
+pub use account::{AccountManager, AccountPlugin, AccountSession, Cookie, Credentials, CookieImportAccountPlugin, Secret};
+#[allow(unused_imports)]
 pub use crawler::{CrawledLink, CrawlerPlugin, HtmlLinkCrawlerPlugin};
 pub use example_redirect::ExampleRedirectHosterPlugin;
 
