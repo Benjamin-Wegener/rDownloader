@@ -22,6 +22,10 @@ pub struct TrackEntry {
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
     pub tor_parts: usize,
+    #[serde(default)]
+    pub etag: Option<String>,
+    #[serde(default)]
+    pub last_modified: Option<String>,
 }
 
 impl TrackEntry {
@@ -38,6 +42,8 @@ impl TrackEntry {
             created_at: now,
             updated_at: now,
             tor_parts,
+            etag: None,
+            last_modified: None,
         }
     }
 }
@@ -80,7 +86,12 @@ impl Tracker {
         Ok(())
     }
 
-    pub fn update_from_progress(&self, p: &JobProgress, output: &str, tor_parts: usize) -> Result<()> {
+    pub fn update_from_progress(
+        &self,
+        p: &JobProgress,
+        output: &str,
+        tor_parts: usize,
+    ) -> Result<()> {
         let mut list = self.entries.lock().unwrap();
         if let Some(e) = list.iter_mut().find(|e| e.id == p.id) {
             e.bytes_done = p.bytes_done;

@@ -47,7 +47,7 @@ Reihenfolge ist Abhängigkeitsreihenfolge – von oben nach unten.
    - [ ] Eigener Header-Parser (`find_subsequence`) entfällt dadurch
 2. ✅ **Range-Support-Prüfung** (`Accept-Ranges`, Test-GET `bytes=0-0`) → Fallback Single-Connection
 3. [x] 🔴 **Retries mit Backoff pro Part** (Part-Fehler darf nicht den ganzen Job killen)
-4. 🔴 **Resume**: Part-Fortschritt persistieren (Offset je Part, ETag/Last-Modified zur Validierung)
+4. [x] 🔴 **Resume**: Part-Fortschritt persistieren (Offset je Part, ETag/Last-Modified zur Validierung)
 5. 🟠 **Stream-Isolation pro Part** sicherstellen (kein Circuit-Sharing)
    - [ ] Prüfen, ob ein einzelner `TorClient` + `isolated_client()` pro Part statt 10 getrennter Clients reicht – spart 9× Bootstrap und Data-Dirs
 6. 🟠 **Health-Check / Auto-Reconnect** bei Circuit-Failure (baut auf Retry auf)

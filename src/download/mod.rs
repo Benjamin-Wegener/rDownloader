@@ -18,7 +18,9 @@ use uuid::Uuid;
 use crate::contract::{ByteRange, Transport};
 use crate::tor::TorManager;
 
+pub mod resume;
 pub mod retry;
+pub use resume::{PartOffset, ResumeState};
 pub use retry::RetryPolicy;
 
 /// Fortschritt eines einzelnen Parts.
@@ -120,17 +122,32 @@ async fn resolve_size(tor: &TorManager, idx: usize, url: &url::Url) -> Result<Se
         .get(reqwest::header::ACCEPT_RANGES)
         .and_then(|v| v.to_str().ok())
         .is_some_and(accepts_ranges_value);
+    let etag = resp
+        .headers()
+        .get(reqwest::header::ETAG)
+        .and_then(|v| v.to_str().ok())
+        .map(|s| s.to_string());
+    let last_modified = resp
+        .headers()
+        .get(reqwest::header::LAST_MODIFIED)
+        .and_then(|v| v.to_str().ok())
+        .map(|s| s.to_string());
+
     Ok(ServerInfo {
         total: len,
         accepts_ranges,
+        etag,
+        last_modified,
     })
 }
 
 /// Was der Server über die Ressource verrät.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 struct ServerInfo {
     total: u64,
     accepts_ranges: bool,
+    etag: Option<String>,
+    last_modified: Option<String>,
 }
 
 /// `Accept-Ranges: bytes` heißt ja; `none` oder alles andere heißt nein.
@@ -206,6 +223,8 @@ fn plan_parts(
 }
 
 /// Lädt einen Part (Byte-Range) über Tor herunter und schreibt nach `dest`.
+/// Unterstützt Resuming: Wenn `dest` bereits Daten enthält und Ranges unterstützt werden,
+/// wird am vorhandenen Dateiende aufgesetzt.
 async fn download_part(
     tor: Arc<TorManager>,
     part_idx: usize,
@@ -218,6 +237,36 @@ async fn download_part(
     let host = url.host_str().context("Kein Host in URL")?.to_string();
     let port = url.port_or_known_default().unwrap_or(80);
 
+    // Prüfen, ob bereits Teile dieses Parts auf Festplatte vorliegen (Resume)
+    let existing_len = if dest.exists() {
+        tokio::fs::metadata(&dest)
+            .await
+            .map(|m| m.len())
+            .unwrap_or(0)
+    } else {
+        0
+    };
+
+    // Range-Berechnung anpassen falls wir resumieren können
+    let (effective_range, append_mode) = match range {
+        Some((start, end)) => {
+            if existing_len >= (end - start + 1) {
+                // Part ist bereits vollständig heruntergeladen!
+                return Ok(());
+            }
+            if existing_len > 0 {
+                let resume_start = start + existing_len;
+                (Some((resume_start, end)), true)
+            } else {
+                (Some((start, end)), false)
+            }
+        }
+        None => {
+            // Kein Range-Support: Neu anfangen
+            (None, false)
+        }
+    };
+
     // Tor-Stream öffnen
     let mut stream = tor.connect(part_idx, &host, port).await?;
 
@@ -227,7 +276,7 @@ async fn download_part(
     } else {
         url.path()
     };
-    let range_header = range
+    let range_header = effective_range
         .map(|(start, end)| format!("Range: bytes={start}-{end}\r\n"))
         .unwrap_or_default();
     let req = format!(
@@ -257,7 +306,7 @@ async fn download_part(
 
     let header = String::from_utf8_lossy(&buf[..header_end]).to_string();
     let status_line = header.lines().next().unwrap_or("");
-    let ok_status = if range.is_some() {
+    let ok_status = if effective_range.is_some() {
         // Ein 200 auf eine Range-Anfrage hieße: Server ignoriert Range → Part wäre die ganze Datei.
         status_line.contains(" 206 ")
     } else {
@@ -270,12 +319,13 @@ async fn download_part(
     let mut file = OpenOptions::new()
         .create(true)
         .write(true)
-        .truncate(true)
+        .append(append_mode)
+        .truncate(!append_mode)
         .open(&dest)
         .await
         .with_context(|| format!("Teildatei anlegen: {dest:?}"))?;
 
-    // Vorherige Bytes für diesen Part aus `bytes_done` abziehen (falls Wiederholungsversuch)
+    // Vorherige Bytes dieses Versuchs aus `bytes_done` abziehen (falls Retry nach Teildownload)
     if *part_bytes_done > 0 {
         bytes_done.fetch_sub(*part_bytes_done, Ordering::Relaxed);
         *part_bytes_done = 0;
@@ -355,7 +405,73 @@ pub async fn run_job(
         .join(format!("job-{}", job.id));
     fs::create_dir_all(&temp_dir).await?;
 
-    let bytes_done = Arc::new(AtomicU64::new(0));
+    // Resume-Status prüfen / initialisieren
+    let resume_state = match ResumeState::load_from_dir(&temp_dir)? {
+        Some(saved) => {
+            if info.accepts_ranges
+                && saved
+                    .validate(total, info.etag.as_deref(), info.last_modified.as_deref())
+                    .is_ok()
+            {
+                info!("Resuming download from existing metadata");
+                saved
+            } else {
+                info!("Existing resume metadata invalid or ranges not supported; resetting");
+                let parts: Vec<PartOffset> = plan
+                    .iter()
+                    .map(|p| PartOffset::new(p.index, p.start, p.end))
+                    .collect();
+                let state = ResumeState::new(
+                    job.id,
+                    job.url.clone(),
+                    total,
+                    info.accepts_ranges,
+                    info.etag.clone(),
+                    info.last_modified.clone(),
+                    parts,
+                );
+                state.save_to_dir(&temp_dir)?;
+                state
+            }
+        }
+        None => {
+            let parts: Vec<PartOffset> = plan
+                .iter()
+                .map(|p| PartOffset::new(p.index, p.start, p.end))
+                .collect();
+            let state = ResumeState::new(
+                job.id,
+                job.url.clone(),
+                total,
+                info.accepts_ranges,
+                info.etag.clone(),
+                info.last_modified.clone(),
+                parts,
+            );
+            state.save_to_dir(&temp_dir)?;
+            state
+        }
+    };
+
+    // Bereits vorhandene Bytes aus Teildateien zählen
+    let mut initial_bytes_done = 0u64;
+    let mut initial_parts_done = Vec::new();
+    for part in &plan {
+        let dest = temp_dir.join(format!("part-{:03}", part.index));
+        let existing = if dest.exists() {
+            tokio::fs::metadata(&dest)
+                .await
+                .map(|m| m.len())
+                .unwrap_or(0)
+                .min(part.len())
+        } else {
+            0
+        };
+        initial_bytes_done += existing;
+        initial_parts_done.push(existing);
+    }
+
+    let bytes_done = Arc::new(AtomicU64::new(initial_bytes_done));
     let mut part_paths = Vec::new();
     let mut handles = Vec::new();
 
@@ -412,13 +528,18 @@ pub async fn run_job(
         let mut p = progress.lock().await;
         p.status = JobStatus::Downloading;
         p.total_bytes = total;
+        p.bytes_done = initial_bytes_done;
         p.parts = plan
             .iter()
             .map(|part| PartProgress {
                 index: part.index,
-                bytes_done: 0,
+                bytes_done: initial_parts_done.get(part.index).copied().unwrap_or(0),
                 total: part.len(),
-                status: PartStatus::Downloading,
+                status: if initial_parts_done.get(part.index).copied().unwrap_or(0) >= part.len() {
+                    PartStatus::Done
+                } else {
+                    PartStatus::Downloading
+                },
             })
             .collect();
     }
@@ -465,6 +586,27 @@ pub async fn run_job(
     }
 
     reporter.abort();
+
+    // Fortschritt vor Merging im Resume-State persistieren
+    let mut updated_parts = Vec::new();
+    for part in &plan {
+        let dest = temp_dir.join(format!("part-{:03}", part.index));
+        let written = if dest.exists() {
+            tokio::fs::metadata(&dest)
+                .await
+                .map(|m| m.len())
+                .unwrap_or(0)
+        } else {
+            0
+        };
+        let mut po = PartOffset::new(part.index, part.start, part.end);
+        po.bytes_written = written;
+        po.done = written >= po.total();
+        updated_parts.push(po);
+    }
+    let mut final_resume_state = resume_state;
+    final_resume_state.parts = updated_parts;
+    let _ = final_resume_state.save_to_dir(&temp_dir);
 
     if !ok {
         let mut p = progress.lock().await;
