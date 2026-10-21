@@ -1,8 +1,8 @@
 # rdownloader status
 
-Generated 2026-10-22 at commit acdcd2c - regenerate with `scripts/status-md.sh`
+Generated 2026-10-22 at commit e86503f - regenerate with `scripts/status-md.sh`
 
-`[#################---]` **33/37** steps done (89%), 3 in progress, 1 open
+`[##################--]` **34/37** steps done (92%), 2 in progress, 1 open
 Roadmap items: 37 checked, 16 open
 
 ## i18n (2/2)
@@ -10,7 +10,7 @@ Roadmap items: 37 checked, 16 open
 - [x] `i18n-1` src/i18n.rs: String-Katalog (en), Schlüssel + benannte Platzhalter, Tests; Clap-Help darüber
 - [x] `i18n-2` Bestehende deutsche Strings/Kommentare/Docs im Code auf Englisch, UI-Texte in den Katalog
 
-## core (7/8)
+## core (8/8)
 
 - [x] `core-1` src/contract.rs: Verträge A (Transport) + B (JobEvent/JobCommand), MockTransport, FakeJob
 - [x] `core-2` M1.2 Range-Prüfung (Accept-Ranges) + Single-Connection-Fallback
@@ -19,7 +19,7 @@ Roadmap items: 37 checked, 16 open
 - [x] `core-5` M1.7 Checksummen-Verifikation
 - [x] `core-6` M1.8 Bandbreiten-Limit
 - [x] `core-7` Job-Scheduler & Per-Host-Limits (parallele Jobs, Hoster-Drosselung)
-- [~] `core-8` Auto-Extract-Engine fuer Multi-Part-Archive (.rar, .zip, .7z) - **in progress**
+- [x] `core-8` Auto-Extract-Engine fuer Multi-Part-Archive (.rar, .zip, .7z)
 
 ## net (6/7)
 
