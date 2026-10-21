@@ -48,6 +48,8 @@ clap = { version = "4", features = ["derive"] }
 anyhow = "1"
 # Error types of the plugin permission model (src/plugin/permissions.rs).
 thiserror = "1"
+# Sandboxed WebAssembly plugin runtime (plugins-7).
+wasmi = "2"
 async-trait = "0.1"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }

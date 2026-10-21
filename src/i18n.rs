@@ -343,6 +343,42 @@ const EN: &[(&str, &str)] = &[
         "Example hoster plugin could not resolve the download link",
     ),
     (
+        "plugin.wasm.invalid_module",
+        "WebAssembly plugin {name} could not be loaded: {error}",
+    ),
+    (
+        "plugin.wasm.instantiate_failed",
+        "WebAssembly plugin instance could not be started: {error}",
+    ),
+    (
+        "plugin.wasm.missing_export",
+        "WebAssembly plugin {name} is missing required export '{export}'",
+    ),
+    (
+        "plugin.wasm.meta_empty",
+        "WebAssembly plugin {name} has an empty plugin id",
+    ),
+    (
+        "plugin.wasm.invalid_meta",
+        "WebAssembly plugin {name} returned invalid metadata: {error}",
+    ),
+    (
+        "plugin.wasm.invalid_output",
+        "WebAssembly plugin {name} returned invalid resolved-link data: {error}",
+    ),
+    (
+        "plugin.wasm.output_too_large",
+        "WebAssembly plugin {name} returned more than {limit} bytes",
+    ),
+    (
+        "plugin.wasm.guest_error",
+        "WebAssembly plugin {name} failed: {error}",
+    ),
+    (
+        "plugin.wasm.task_failed",
+        "WebAssembly plugin {name} could not run: {error}",
+    ),
+    (
         "download.error.content_length_missing",
         "Content-Length missing",
     ),

@@ -79,7 +79,7 @@ Statisch zuerst, dynamisch unter Sandboxing.
 - [x] 🟠 Account-Plugin-Typ (Login-Cookies, Session-Management)
 - [x] 🟠 Captcha-Plugin-Typ (interaktive Lösung in der TUI)
 - [x] 🟠 Berechtigungsmodell definieren (Netzwerk / Dateisystem), **bevor** dynamisches Laden gebaut wird (Design: `src/plugin/PERMISSIONS.md`, Code: `src/plugin/permissions.rs`)
-- [ ] 🟠 **WASM-Plugin-Laufzeit (Wasmtime/Wasmi)**: Dynamisches Laden von `.wasm`-Plugins zur Laufzeit mit strikter Capability-Sandbox
+- [x] 🟠 **WASM-Plugin-Laufzeit (Wasmtime/Wasmi)**: Dynamisches Laden von `.wasm`-Plugins zur Laufzeit mit strikter Capability-Sandbox
 - [ ] 🟢 Plugin-Marktplatz / signierte Auto-Updates
 
 ## M4 – Release 🟨 🟠
@@ -142,7 +142,7 @@ Abgleich mit aria2, JDownloader, yt-dlp und der Arti-Dokumentation. Reihenfolge 
 
 ## Design-Entscheidungen (mit Empfehlung)
 1. **HTTP-Client** – *Hyper/`tokio-rustls` über Arti-Stream.* Eigener Hyper-Client auf dem Arti-Stream, TLS via `tokio-rustls` (`src/net/`).
-2. **Plugin-ABI** – *WASM-Sandbox (`wasm32-wasip1`) statt `cdylib`.* Löst Sicherheit (Capability-Whitelisting) + ABI-Stabilität. Design fertig in `src/plugin/PERMISSIONS.md`.
+2. **Plugin-ABI** – *WASM-Sandbox (wasmi, ohne WASI-Imports) statt `cdylib`.* Löst Sicherheit (Capability-Whitelisting) + ABI-Stabilität. Umsetzung in `src/plugin/wasm.rs`, Design in `src/plugin/PERMISSIONS.md`.
 3. **GUI vs. Daemon** – TUI + headless Daemon mit RPC-Schnittstelle zuerst; native Desktop-GUI nach Nutzerfeedback.
 
 ## Aufräumen in `Cargo.toml`

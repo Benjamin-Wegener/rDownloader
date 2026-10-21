@@ -18,6 +18,7 @@ pub mod container;
 pub mod crawler;
 pub mod example_redirect;
 pub mod permissions;
+pub mod wasm;
 
 #[allow(unused_imports)] // public plugin API; wired into the link grabber later
 pub use account::{
@@ -39,6 +40,11 @@ pub use crawler::{CrawledLink, CrawlerPlugin, HtmlLinkCrawlerPlugin};
 pub use example_redirect::ExampleRedirectHosterPlugin;
 #[allow(unused_imports)]
 pub use permissions::{PermissionDenied, PluginPermissions};
+#[allow(unused_imports)]
+pub use wasm::{
+    load_dir as load_wasm_plugins, DenyHttpClient, TransportHttpClient, WasmHttpClient, WasmPlugin,
+    WasmRuntimeConfig,
+};
 
 /// Metadata of a plugin.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -148,8 +154,25 @@ impl PluginRegistry {
             .collect()
     }
 
+    /// Finds the most specific plugin for `url`.
+    ///
+    /// Plugins with a wildcard domain (`*`, e.g. the direct-download fallback)
+    /// are only used when no domain-specific plugin accepts the URL, so the
+    /// result does not depend on hash-map iteration order.
     pub fn find_for_url(&self, url: &Url) -> Option<Arc<dyn DownloadPlugin>> {
-        self.plugins.values().find(|p| p.can_handle(url)).cloned()
+        let mut fallback = None;
+        for plugin in self.plugins.values() {
+            if !plugin.can_handle(url) {
+                continue;
+            }
+            let is_fallback = plugin.meta().domains.iter().any(|domain| domain == "*");
+            if is_fallback {
+                fallback.get_or_insert_with(|| plugin.clone());
+            } else {
+                return Some(plugin.clone());
+            }
+        }
+        fallback
     }
 
     pub fn get(&self, id: &str) -> Option<Arc<dyn DownloadPlugin>> {
@@ -212,6 +235,19 @@ impl DownloadPlugin for DirectDownloadPlugin {
 #[cfg(test)]
 mod registry_tests {
     use super::*;
+
+    #[test]
+    fn specific_plugins_win_over_wildcard_fallback() {
+        let mut reg = PluginRegistry::new();
+        reg.register(Arc::new(DirectDownloadPlugin));
+        reg.register(Arc::new(ExampleRedirectHosterPlugin::new()));
+        let url = Url::parse("https://redirector.local/dl/https%3A%2F%2Fcdn.test%2Ff").unwrap();
+        let plugin = reg.find_for_url(&url).unwrap();
+        assert_eq!(plugin.meta().id, "example-redirect-hoster");
+
+        let direct = Url::parse("https://anywhere.test/file.bin").unwrap();
+        assert_eq!(reg.find_for_url(&direct).unwrap().meta().id, "direct");
+    }
 
     #[test]
     fn crawler_registry_lookup() {

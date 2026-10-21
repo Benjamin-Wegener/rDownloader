@@ -175,6 +175,14 @@ impl Config {
             .unwrap_or_else(|| std::env::temp_dir().join("rdownloader"))
     }
 
+    /// Directory with dynamically loaded WebAssembly plugins.
+    pub fn plugin_dir(&self) -> PathBuf {
+        dirs::data_dir()
+            .unwrap_or_else(|| PathBuf::from("."))
+            .join("rdownloader")
+            .join("plugins")
+    }
+
     pub fn download_dir(&self) -> PathBuf {
         self.download_dir.clone().unwrap_or_else(|| {
             dirs::download_dir()

@@ -54,12 +54,25 @@ By default, **all permissions are denied**:
 - **Account Manager Guards**: `AccountManager` checks whether the requesting plugin's domain matches the target cookie domain before supplying authentication tokens.
 - **Captcha Mediator**: `CaptchaManager` checks `check_captcha_prompt()` before forwarding challenges to the interactive solver.
 
-### Dynamic Sandboxed Plugins (Next Phase / WASM)
-When dynamic plugins are introduced:
-- **WebAssembly (Wasmtime / Wasmi)**: Dynamic plugins will be compiled to `wasm32-wasip1` / component model.
-- **Zero Ambient Authority**: WASI system calls for filesystem (`fd_read`, `fd_write`) are pre-opened exclusively for the plugin's isolated scratch folder.
-- **Host Imports**: Network operations are exposed via a narrow Host API implementing Contract A, rejecting any host outside the permitted domains.
-- **Resource Limits**: Memory limits (e.g. 64 MB maximum linear memory) and CPU fuel consumption to prevent CPU starvation.
+### Dynamic Sandboxed Plugins (WASM, `src/plugin/wasm.rs`)
+Dynamic plugins are WebAssembly modules executed by the pure-Rust `wasmi`
+interpreter. They are loaded at runtime from the plugin directory
+(`~/.local/share/rdownloader/plugins/*.wasm`):
+- **Zero Ambient Authority**: no WASI is linked and no filesystem, clock, or
+  socket exports exist. A module importing anything other than the `rdl` host
+  namespace fails to instantiate, so there is no ambient authority to escape.
+- **Host Imports**: `rdl.log` and `rdl.http_get` only. `rdl.http_get` checks
+  `PluginPermissions::check_network` before dispatch and then uses Contract A
+  (Tor in the application). The URL returned by `rdl_resolve` is checked against
+  the same allowlist.
+- **Result ABI**: guests export `memory`, `rdl_alloc`, `rdl_plugin_meta`, and
+  `rdl_resolve`. Results are JSON (`PluginMeta` / `ResolvedLink`).
+- **Resource Limits**: fuel metering bounds CPU use, `StoreLimits` caps linear
+  memory (64 MB by default), outputs are capped (64 KB), and host responses are
+  capped (1 MB). Violations trap and terminate the guest.
+- **Permissions from the host, not the guest**: `hoster.wasm` reads grants from
+  `hoster.json` (serialised `PluginPermissions`). A missing or invalid sidecar
+  means deny-all; the guest cannot widen its own permissions.
 
 ---
 

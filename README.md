@@ -121,7 +121,7 @@ or tunnel it through Tor/a reverse proxy if remote access is needed.
 ## Security
 
 What rdownloader protects, and what it does not, is described in [docs/threat-model.md](docs/threat-model.md).
-Plugin sandboxing is designed in [src/plugin/PERMISSIONS.md](src/plugin/PERMISSIONS.md).
+Plugin sandboxing and the WebAssembly plugin ABI are documented in [src/plugin/PERMISSIONS.md](src/plugin/PERMISSIONS.md) and implemented in `src/plugin/wasm.rs`.
 Read the limitations before relying on it for anonymity.
 Report vulnerabilities privately via GitHub, see [SECURITY.md](SECURITY.md).
 

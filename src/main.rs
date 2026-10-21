@@ -30,7 +30,11 @@ use tracing_subscriber::EnvFilter;
 use crate::contract::JobEvent;
 use crate::download::{run_job, DownloadJob, JobProgress, JobStatus};
 use crate::net::rpc::{self, JobControl};
-use crate::plugin::{DirectDownloadPlugin, ExampleRedirectHosterPlugin, PluginRegistry};
+use crate::net::TorTransport;
+use crate::plugin::{
+    load_wasm_plugins, DenyHttpClient, DirectDownloadPlugin, ExampleRedirectHosterPlugin,
+    PluginRegistry, TransportHttpClient, WasmHttpClient, WasmRuntimeConfig,
+};
 use crate::tor::TorManager;
 use crate::tracker::{RestoreAction, TrackEntry, Tracker};
 use crate::ui::{App, SharedApp, UiCommand};
@@ -128,6 +132,32 @@ async fn main() -> Result<()> {
     let mut registry = PluginRegistry::new();
     registry.register(Arc::new(DirectDownloadPlugin));
     registry.register(Arc::new(ExampleRedirectHosterPlugin::new()));
+
+    // Dynamically loaded WebAssembly plugins (sandboxed, permissions from sidecar).
+    let wasm_http: Arc<dyn WasmHttpClient> = match &tor {
+        Some(tm) => Arc::new(TransportHttpClient::new(
+            Arc::new(TorTransport::new(tm.clone())),
+            tokio::runtime::Handle::current(),
+            0x5057_4153_4d00_0001,
+        )),
+        None => Arc::new(DenyHttpClient),
+    };
+    let plugin_dir = cfg.plugin_dir();
+    for result in load_wasm_plugins(&plugin_dir, &WasmRuntimeConfig::default(), wasm_http) {
+        match result {
+            Ok(plugin) => {
+                let meta = plugin.meta().clone();
+                info!(
+                    "WebAssembly plugin loaded: {} ({}) from {}",
+                    meta.name,
+                    meta.id,
+                    plugin_dir.display()
+                );
+                registry.register(Arc::new(plugin));
+            }
+            Err(error) => warn!("WebAssembly plugin rejected: {error:#}"),
+        }
+    }
     info!("{} plugin(s) loaded", registry.len());
 
     // Tracker
