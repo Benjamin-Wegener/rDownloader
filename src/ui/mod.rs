@@ -1465,7 +1465,7 @@ mod tests {
         let mut app = App::new(cmd_tx, evt_rx, _grab_rx);
 
         app.enqueue_import(Ok(import::parse_urls(
-            "http://a.test/1\nhttp://a.test/2\nftp://x/y\n",
+            "http://a.test/1\nhttp://a.test/2\nsftp://x/y\n",
         )));
         assert_eq!(
             cmd_rx.try_recv().unwrap(),
