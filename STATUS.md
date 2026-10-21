@@ -1,9 +1,9 @@
 # rdownloader status
 
-Generated 2026-10-22 at commit ae69e04 - regenerate with `scripts/status-md.sh`
+Generated 2026-10-22 at commit f3432ac - regenerate with `scripts/status-md.sh`
 
-`[################----]` **26/31** steps done (84%), 2 in progress, 3 open
-Roadmap items: 27 checked, 20 open
+`[#################---]` **27/31** steps done (87%), 1 in progress, 3 open
+Roadmap items: 28 checked, 19 open
 
 ## i18n (1/2)
 
@@ -28,13 +28,13 @@ Roadmap items: 27 checked, 20 open
 - [x] `net-5` M1.6 Health-Check / Auto-Reconnect
 - [x] `net-6` M5 DNS-Leak-Check, Bridges
 
-## plugins (4/5)
+## plugins (5/5)
 
 - [x] `plugins-1` Beispiel-Hoster-Plugin (Redirect-Auflösung)
 - [x] `plugins-2` Crawler-Plugin-Typ
 - [x] `plugins-3` Account-Plugin-Typ
 - [x] `plugins-4` Captcha-Plugin-Typ (interaktive Lösung in TUI)
-- [~] `plugins-5` Berechtigungsmodell (Design-Dokument) - **in progress**
+- [x] `plugins-5` Berechtigungsmodell (Design-Dokument)
 
 ## infra (4/6)
 
