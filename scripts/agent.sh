@@ -5,6 +5,7 @@
 #   scripts/agent.sh abort <id>    Schritt aufgeben (Sperre + Worktree weg, nicht erledigt)
 #   scripts/agent.sh status        Queue mit Zuständen
 set -euo pipefail
+cd "$(dirname "$0")/.."   # works from any directory (e.g. watch started elsewhere)
 main=$(git worktree list --porcelain | awk '/^worktree /{print $2; exit}')
 state="$(git -C "$main" rev-parse --git-common-dir)"; case "$state" in /*) ;; *) state="$main/$state";; esac
 state="$state/orch"; mkdir -p "$state/claims" "$state/done" "$state/areas"
