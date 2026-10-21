@@ -41,8 +41,8 @@ Der Kern (M1) ist das Risiko; Plugins/GUI sind ohne ihn wertlos.
 Reihenfolge ist Abhängigkeitsreihenfolge – von oben nach unten.
 
 1. 🔴 **Tor-Transport entscheiden & fertigstellen**
-   - [ ] Entscheidung treffen (siehe „Design-Entscheidungen“, Empfehlung: Hyper/`reqwest` über eigenen Connector auf dem Arti-Stream statt handgeschriebenem HTTP)
-   - [ ] HEAD/GET komplett über Tor-Stream inkl. TLS für `https` (Arti liefert nur rohe TCP-Streams → TLS-Layer nötig)
+   - [x] Entscheidung treffen (siehe „Design-Entscheidungen“, Empfehlung: Hyper/`reqwest` über eigenen Connector auf dem Arti-Stream statt handgeschriebenem HTTP)
+   - [x] HEAD/GET komplett über Tor-Stream inkl. TLS für `https` (Arti liefert nur rohe TCP-Streams → TLS-Layer nötig)
    - [ ] Redirects, Chunked-Encoding und `Content-Disposition`-Dateiname korrekt behandeln
    - [ ] Eigener Header-Parser (`find_subsequence`) entfällt dadurch
 2. ✅ **Range-Support-Prüfung** (`Accept-Ranges`, Test-GET `bytes=0-0`) → Fallback Single-Connection
@@ -106,7 +106,7 @@ CI früh starten (parallel zu M1), Rest nach M2.
 ---
 
 ## Design-Entscheidungen (mit Empfehlung)
-1. **HTTP-Client** – *Empfehlung: Hyper/`reqwest` mit eigenem Connector über den Arti-Stream (+ `tokio-rustls`).* Kein Handparsing von Headern, trotzdem kein externer Tor-Daemon nötig. Das `socks`-Feature von reqwest wäre nur bei externem Tor sinnvoll und kann dann entfallen. **Offen bis Ende M1-Schritt 1.**
+1. **HTTP-Client** – *Empfehlung: Hyper/`reqwest` mit eigenem Connector über den Arti-Stream (+ `tokio-rustls`).* Kein Handparsing von Headern, trotzdem kein externer Tor-Daemon nötig. Das `socks`-Feature von reqwest wäre nur bei externem Tor sinnvoll und kann dann entfallen. **Entschieden in net-1:** eigener Hyper-Client auf dem Arti-Stream, TLS via `tokio-rustls` (`src/net/`).
 2. **Plugin-ABI** – *Empfehlung: statisch eingebettete Rust-Plugins (`Box<dyn Trait>`) bis M3 abgeschlossen; danach WASM-Sandbox statt `cdylib`.* WASM löst Sicherheit + ABI-Stabilität gleichzeitig, `cdylib` bräuchte `unsafe` und hat keine Isolation.
 3. **GUI** – verschoben nach M6; TUI zuerst.
 
