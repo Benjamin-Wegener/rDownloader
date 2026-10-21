@@ -78,7 +78,7 @@ Statisch zuerst, dynamisch erst bei echtem Bedarf.
 
 ## M4 – Release 🟠
 CI früh starten (parallel zu M1), Rest nach M2.
-- [ ] 🔴 **CI jetzt**: GitHub Actions mit `cargo fmt --check`, `clippy -D warnings`, `cargo test` (macOS + Linux)
+- [x] 🔴 **CI jetzt**: GitHub Actions mit `cargo fmt --check`, `clippy -D warnings`, `cargo test` (macOS + Linux)
 - [ ] 🟠 Prebuilt-Binaries (macOS/Linux/Windows) via GitHub Releases
 - [ ] 🟠 Manpage + `--help` (clap), README mit Quickstart
 - [ ] 🟢 `cargo install` (crates.io), Homebrew-Tap / AUR / Scoop
