@@ -21,6 +21,8 @@ core-5	core	M1.7 Checksummen-Verifikation	core-4
 plugins-4	plugins	Captcha-Plugin-Typ (interaktive Lösung in TUI)	plugins-3
 ui-4	ui	Detail-Ansicht (Parts, Speed, ETA, Circuit)	ui-3
 net-5	net	M1.6 Health-Check / Auto-Reconnect	net-4
+i18n-1	i18n	src/i18n.rs: String-Katalog (en), Schlüssel + benannte Platzhalter, Tests; Clap-Help darüber	-
+i18n-2	i18n	Bestehende deutsche Strings/Kommentare/Docs im Code auf Englisch, UI-Texte in den Katalog	i18n-1,ui-3,core-4,plugins-3
 infra-4	infra	Cargo.toml-Aufräumen (ungenutzte Dependencies)	infra-3
 core-6	core	M1.8 Bandbreiten-Limit	core-5
 plugins-5	plugins	Berechtigungsmodell (Design-Dokument)	plugins-4

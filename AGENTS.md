@@ -27,6 +27,12 @@ Der Hauptordner bleibt dabei **unverändert** – gearbeitet wird in einem Workt
 - Review-Wunsch oder Blocker an andere Bereiche: `HANDOFF.md` (append-only), Format `[von → an] Anliegen – Status`.
 - Das Skript prüft, dass der Hauptordner sauber ist. Dort nie direkt arbeiten.
 
+## Sprache & Übersetzbarkeit (verbindlich für alle neuen Änderungen)
+- **Alles im Programm ist Englisch**: Quellcode (Bezeichner, Kommentare, Doc-Comments, Commit-Messages), `--help`/Clap-Texte, TUI-Oberfläche, Fehlermeldungen, Logs. Interne Orchestrierungs-Dateien (AGENTS.md, ROADMAP.md, QUEUE.tsv, HANDOFF.md) bleiben Deutsch.
+- **Keine Nutzer-Texte als Literale im Code.** Sichtbare Texte (UI, Hilfe, Fehler für Nutzer) laufen über den String-Katalog `src/i18n.rs` (Schritt i18n-1): stabile Schlüssel wie `queue.title`, Platzhalter benannt (`{name}`), Standardsprache `en`, später weitere Sprachen als zusätzliche Kataloge ohne Code-Änderung. Bis i18n-1 gemergt ist: Texte Englisch und an einer Stelle pro Modul bündeln (`const`), nicht verstreuen.
+- Logs für Entwickler (`tracing`) bleiben Englisch und werden nicht übersetzt.
+- Bestehende deutsche Texte im Code werden in Schritt i18n-2 umgestellt; in Dateien, die du ohnehin änderst, direkt mitziehen.
+
 ## Build-Umgebung (macOS ohne Xcode/CLT)
 Auf diesem Rechner gibt es keine Xcode Command Line Tools, nur ein macOS-SDK und Homebrew-LLVM. Vor jedem `cargo`-Aufruf (auch fmt, clippy, test):
 ```
