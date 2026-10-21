@@ -1,9 +1,9 @@
 # rdownloader status
 
-Generated 2026-10-22 at commit 81d03a9 - regenerate with `scripts/status-md.sh`
+Generated 2026-10-22 at commit 8301e93 - regenerate with `scripts/status-md.sh`
 
-`[############--------]` **19/31** steps done (61%), 3 in progress, 9 open
-Roadmap items: 21 checked, 23 open
+`[#############-------]` **20/31** steps done (65%), 2 in progress, 9 open
+Roadmap items: 23 checked, 23 open
 
 ## i18n (1/2)
 
@@ -19,14 +19,14 @@ Roadmap items: 21 checked, 23 open
 - [x] `core-5` M1.7 Checksummen-Verifikation
 - [x] `core-6` M1.8 Bandbreiten-Limit
 
-## net (5/6)
+## net (6/6)
 
 - [x] `net-1` TLS über Arti-Stream (https-Connector, vertragsfrei)
 - [x] `net-2` TorTransport implementiert Vertrag A
 - [x] `net-3` M1.1 Redirects, Chunked, Content-Disposition
 - [x] `net-4` M1.5 Stream-Isolation (Single-Client + isolated_client() prüfen)
 - [x] `net-5` M1.6 Health-Check / Auto-Reconnect
-- [~] `net-6` M5 DNS-Leak-Check, Bridges - **in progress**
+- [x] `net-6` M5 DNS-Leak-Check, Bridges
 
 ## plugins (3/5)
 
