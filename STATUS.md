@@ -1,9 +1,9 @@
 # rdownloader status
 
-Generated 2026-10-22 at commit e86503f - regenerate with `scripts/status-md.sh`
+Generated 2026-10-22 at commit c8f644c - regenerate with `scripts/status-md.sh`
 
-`[##################--]` **34/37** steps done (92%), 2 in progress, 1 open
-Roadmap items: 37 checked, 16 open
+`[###################-]` **35/37** steps done (95%), 1 in progress, 1 open
+Roadmap items: 41 checked, 15 open
 
 ## i18n (2/2)
 
@@ -21,7 +21,7 @@ Roadmap items: 37 checked, 16 open
 - [x] `core-7` Job-Scheduler & Per-Host-Limits (parallele Jobs, Hoster-Drosselung)
 - [x] `core-8` Auto-Extract-Engine fuer Multi-Part-Archive (.rar, .zip, .7z)
 
-## net (6/7)
+## net (7/7)
 
 - [x] `net-1` TLS über Arti-Stream (https-Connector, vertragsfrei)
 - [x] `net-2` TorTransport implementiert Vertrag A
@@ -29,7 +29,7 @@ Roadmap items: 37 checked, 16 open
 - [x] `net-4` M1.5 Stream-Isolation (Single-Client + isolated_client() prüfen)
 - [x] `net-5` M1.6 Health-Check / Auto-Reconnect
 - [x] `net-6` M5 DNS-Leak-Check, Bridges
-- [~] `net-7` Headless-Daemon & RPC-API (JSON-RPC/REST-Steuerung) - **in progress**
+- [x] `net-7` Headless-Daemon & RPC-API (JSON-RPC/REST-Steuerung)
 
 ## plugins (6/7)
 
