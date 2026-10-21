@@ -1,9 +1,9 @@
 # rdownloader status
 
-Generated 2026-10-22 at commit 9e4de67 - regenerate with `scripts/status-md.sh`
+Generated 2026-10-22 at commit 81d03a9 - regenerate with `scripts/status-md.sh`
 
-`[###########---------]` **18/31** steps done (58%), 3 in progress, 10 open
-Roadmap items: 20 checked, 24 open
+`[############--------]` **19/31** steps done (61%), 3 in progress, 9 open
+Roadmap items: 21 checked, 23 open
 
 ## i18n (1/2)
 
@@ -26,7 +26,7 @@ Roadmap items: 20 checked, 24 open
 - [x] `net-3` M1.1 Redirects, Chunked, Content-Disposition
 - [x] `net-4` M1.5 Stream-Isolation (Single-Client + isolated_client() prüfen)
 - [x] `net-5` M1.6 Health-Check / Auto-Reconnect
-- [ ] `net-6` M5 DNS-Leak-Check, Bridges
+- [~] `net-6` M5 DNS-Leak-Check, Bridges - **in progress**
 
 ## plugins (3/5)
 
@@ -45,11 +45,11 @@ Roadmap items: 20 checked, 24 open
 - [ ] `infra-5` Threat-Modell-Doku, README, Manpage
 - [ ] `infra-6` Release-Binaries (GitHub Releases)
 
-## ui (2/6)
+## ui (3/6)
 
 - [x] `ui-1` Queue-Rendering gegen FakeJob (Live-Updates über Vertrag B)
 - [x] `ui-2` Steuerung pro Eintrag: Pause/Resume/Cancel/Remove
-- [~] `ui-3` Session-Restore im Tracker - **in progress**
+- [x] `ui-3` Session-Restore im Tracker
 - [ ] `ui-4` Detail-Ansicht (Parts, Speed, ETA, Circuit)
 - [ ] `ui-5` Batch-Import (Datei, Clipboard)
 - [ ] `ui-6` History + Export (CSV/JSON)
