@@ -1,11 +1,11 @@
 # rdownloader status
 
-Generated 2026-10-22 at commit 24706fb - regenerate with `scripts/status-md.sh`
+Generated 2026-10-22 at commit ed5c9e7 - regenerate with `scripts/status-md.sh`
 
-`[################----]` **38/47** steps done (81%), 1 in progress, 8 open
-Roadmap items: 45 checked, 24 open
+`[################----]` **39/47** steps done (83%), 3 in progress, 5 open
+Roadmap items: 46 checked, 23 open
 
-## core (9/14)
+## core (10/14)
 
 - [x] `core-9` Zentraler Dateinamen-Bereiniger fuer alle Quellen (Plugin/Container/URL): kein Pfad-Ausbruch, Windows-Reservenamen, Kollision -> automatisch umbenennen
 - [x] `core-1` src/contract.rs: Verträge A (Transport) + B (JobEvent/JobCommand), MockTransport, FakeJob
@@ -16,7 +16,7 @@ Roadmap items: 45 checked, 24 open
 - [x] `core-6` M1.8 Bandbreiten-Limit
 - [x] `core-7` Job-Scheduler & Per-Host-Limits (parallele Jobs, Hoster-Drosselung)
 - [x] `core-8` Auto-Extract-Engine fuer Multi-Part-Archive (.rar, .zip, .7z)
-- [ ] `core-10` Freier-Speicher-Pruefung vor dem Start + Vorab-Reservierung der Zieldatei
+- [x] `core-10` Freier-Speicher-Pruefung vor dem Start + Vorab-Reservierung der Zieldatei
 - [ ] `core-11` macOS-Quarantaene-Attribut (com.apple.quarantine) auf fertige Downloads setzen
 - [ ] `core-12` Langsame Verbindungen kappen (lowest-speed-limit) + bedingtes Laden (If-Modified-Since)
 - [ ] `core-13` Mirrors (mehrere URLs pro Datei, Auswahl nach Geschwindigkeit) + Metalink-Block-Pruefsummen
@@ -37,7 +37,7 @@ Roadmap items: 45 checked, 24 open
 - [x] `net-6` M5 DNS-Leak-Check, Bridges
 - [x] `net-7` Headless-Daemon & RPC-API (JSON-RPC/REST-Steuerung)
 - [x] `net-8` Onion-Dienste: .onion-URLs (Arti-Feature onion-service-client) + Vanguards
-- [ ] `net-9` FTP/SFTP ueber Tor
+- [~] `net-9` FTP/SFTP ueber Tor - **in progress**
 - [ ] `net-10` HLS/DASH: Segment-Downloads (parallele Fragmente, Zusammenfuegen)
 
 ## plugins (7/8)
@@ -49,7 +49,7 @@ Roadmap items: 45 checked, 24 open
 - [x] `plugins-5` Berechtigungsmodell (Design-Dokument)
 - [x] `plugins-6` Container- & Listen-Import (.dlc, .ccf, Textlisten, .metalink)
 - [x] `plugins-7` WASM-Plugin-Laufzeit (Wasmtime-Sandbox unter Berechtigungsmodell)
-- [ ] `plugins-8` netrc-Zugangsdaten + Cookie-Import (Firefox/Chromium/Netscape-Format)
+- [~] `plugins-8` netrc-Zugangsdaten + Cookie-Import (Firefox/Chromium/Netscape-Format) - **in progress**
 
 ## infra (6/6)
 
