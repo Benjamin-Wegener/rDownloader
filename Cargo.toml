@@ -58,3 +58,7 @@ hyper = { version = "1", features = ["server"] }
 lto = true
 codegen-units = 1
 strip = true
+
+[[test]]
+name = "integration_kill_resume_hash"
+path = "tests/integration_kill_resume_hash.rs"

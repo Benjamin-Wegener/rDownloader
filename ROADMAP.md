@@ -54,7 +54,7 @@ Reihenfolge ist Abhängigkeitsreihenfolge – von oben nach unten.
 7. ✅ Checksummen-Verifikation (nur wenn Server/Plugin Hash liefert)
 8. ✅ Bandbreiten-Limit (globales Token-Bucket)
 
-**Definition of Done M1:** 1-GB-Testdatei über Tor, Prozess mitten im Download killen, neu starten → Download setzt fort, Hash stimmt. Als Integrationstest automatisiert.
+- [x] **Definition of Done M1:** 1-GB-Testdatei über Tor, Prozess mitten im Download killen, neu starten → Download setzt fort, Hash stimmt. Als Integrationstest automatisiert (`tests/integration_kill_resume_hash.rs`).
 
 ## Querschnitt: Englisch + Übersetzbarkeit
 - [x] 🟠 `src/i18n.rs`: String-Katalog (Standard `en`, Schlüssel + benannte Platzhalter), später Sprachpakete (i18n-1)
