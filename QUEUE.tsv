@@ -1,0 +1,31 @@
+# id	bereich	titel	braucht (kommagetrennt, ids)
+# Reihenfolge = Priorität. Innerhalb eines Bereichs strikt sequenziell. Status liegt nicht hier, sondern in .git/orch/.
+core-1	core	src/contract.rs: Verträge A (Transport) + B (JobEvent/JobCommand), MockTransport, FakeJob	-
+net-1	net	TLS über Arti-Stream (https-Connector, vertragsfrei)	-
+plugins-1	plugins	Beispiel-Hoster-Plugin (Redirect-Auflösung)	-
+infra-1	infra	CI: GitHub Actions fmt, clippy -D warnings, test	-
+core-2	core	M1.2 Range-Prüfung (Accept-Ranges) + Single-Connection-Fallback	core-1
+ui-1	ui	Queue-Rendering gegen FakeJob (Live-Updates über Vertrag B)	core-1
+net-2	net	TorTransport implementiert Vertrag A	core-1,net-1
+infra-2	infra	Test-Harness: lokaler HTTP-Server mit Range-Support + Abbruch-Simulation	-
+core-3	core	M1.3 Retries mit Backoff pro Part	core-2
+plugins-2	plugins	Crawler-Plugin-Typ	plugins-1
+ui-2	ui	Steuerung pro Eintrag: Pause/Resume/Cancel/Remove	ui-1
+net-3	net	M1.1 Redirects, Chunked, Content-Disposition	net-2
+core-4	core	M1.4 Resume (Part-Offsets persistieren, ETag/Last-Modified)	core-3
+plugins-3	plugins	Account-Plugin-Typ	plugins-2
+infra-3	infra	Integrationstest: Kill + Resume + Hash (Definition of Done M1)	core-4,net-2,infra-2
+ui-3	ui	Session-Restore im Tracker	core-4
+net-4	net	M1.5 Stream-Isolation (Single-Client + isolated_client() prüfen)	net-3
+core-5	core	M1.7 Checksummen-Verifikation	core-4
+plugins-4	plugins	Captcha-Plugin-Typ (interaktive Lösung in TUI)	plugins-3
+ui-4	ui	Detail-Ansicht (Parts, Speed, ETA, Circuit)	ui-3
+net-5	net	M1.6 Health-Check / Auto-Reconnect	net-4
+infra-4	infra	Cargo.toml-Aufräumen (ungenutzte Dependencies)	infra-3
+core-6	core	M1.8 Bandbreiten-Limit	core-5
+plugins-5	plugins	Berechtigungsmodell (Design-Dokument)	plugins-4
+ui-5	ui	Batch-Import (Datei, Clipboard)	ui-4
+infra-5	infra	Threat-Modell-Doku, README, Manpage	infra-4
+ui-6	ui	History + Export (CSV/JSON)	ui-5
+net-6	net	M5 DNS-Leak-Check, Bridges	net-5
+infra-6	infra	Release-Binaries (GitHub Releases)	infra-5

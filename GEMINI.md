@@ -1,3 +1,3 @@
 # Projektanweisungen
 
-Lies `AGENTS.md` (Orchestrierung, Lane-Protokoll) und `ROADMAP.md`. Auf „mach den nächsten Schritt“ folgst du dem Protokoll in AGENTS.md.
+Lies `AGENTS.md` und `ROADMAP.md`. Bei „mach den nächsten Schritt“: im Hauptordner `scripts/agent.sh next` ausführen und dem Protokoll in AGENTS.md folgen. Im Hauptordner selbst keine Dateien ändern.
