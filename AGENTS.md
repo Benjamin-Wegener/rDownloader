@@ -3,7 +3,7 @@
 Quelle der Wahrheit für *was*: [ROADMAP.md](ROADMAP.md). Dieses Dokument regelt *wer, wo, in welcher Reihenfolge*.
 
 ## Grundregeln
-1. **Ein Agent = eine Lane = ein Verzeichnis-Besitz.** Dateien außerhalb der eigenen Lane nicht ändern; stattdessen Änderungswunsch in `HANDOFF.md` eintragen.
+1. **Ein Agent = ein Worktree; jeder Worktree gehört zu einem Bereich (Lane) mit Verzeichnis-Besitz.** Dateien außerhalb der eigenen Lane nicht ändern; stattdessen Änderungswunsch in `HANDOFF.md` eintragen.
 2. **Eigener Git-Worktree + Branch pro Agent** (`lane/<name>`), z. B. `git worktree add ../rdl-core lane/core`. Kein Arbeiten im selben Checkout.
 3. **Claimen in der Roadmap:** Beim Start einer Aufgabe `[ ]` → `[~ @lane]`, bei Abschluss `[x]`. Nur die eigenen Zeilen anfassen (vermeidet Merge-Konflikte).
 4. **Kleine PRs/Merges** in `master`, je Roadmap-Punkt einer. Vor Merge: `cargo fmt`, `cargo clippy -D warnings`, `cargo test` grün.
@@ -42,13 +42,19 @@ Vorschlag: **infra** schreibt Schritt 0 nicht, sondern **core** (kennt die Engin
 ## HANDOFF.md
 Eine Datei, Append-only, Format: `[von-Lane → an-Lane] Anliegen – Status`. Blockiert eine Lane, trägt sie dort ein und wechselt zur nächsten freien Aufgabe der eigenen Lane.
 
+## Skalierung: 3, 4, 5, 6, … Agents
+Lanes sind **Bereiche** (net, core, ui, plugins, infra), keine festen Agents. Die Anzahl der Agents ist beliebig:
+- **Weniger als 5:** Ein Agent bearbeitet erst seine eigene Queue. Ist sie leer oder blockiert, nimmt er den obersten startbaren Schritt aus einem **unbesetzten** Bereich (kein Worktree dafür vorhanden oder dort ist nichts geclaimt) – er arbeitet dann in seinem eigenen Worktree an den Dateien dieses Bereichs. Empfohlene Besetzung bei 3: core+net · ui+plugins · infra. Bei 4: core · net · ui+plugins · infra.
+- **Mehr als 5:** Zusätzliche Worktrees im selben Bereich: `scripts/agent.sh add core 2` → Branch `lane/core-2`. Bereich = Name ohne `-<n>`. Zwei Agents im gleichen Bereich arbeiten an **verschiedenen Queue-Schritten**, die verschiedene Dateien berühren; was sie sich teilen, klären sie über den Claim.
+- **Claims sind der Lock:** `scripts/agent.sh claim <bereich>-<nr>` (z. B. `core-3`) legt atomar eine Sperre im gemeinsamen `.git`-Verzeichnis an; sie ist in allen Worktrees sofort sichtbar (die Roadmap-Zeile ist nur die lesbare Spiegelung). Schlägt `claim` fehl, nimmt der Agent den nächsten Schritt.
+
 ## "Mach den nächsten Schritt" – Protokoll (gilt für jeden Agent)
 Der Nutzer öffnet nur den Worktree-Ordner und sagt z. B. „mach den nächsten Schritt“. Dann:
-1. **Lane bestimmen:** `git branch --show-current` → `lane/<name>` ergibt deine Lane. Keine `lane/…`-Branch → nachfragen.
-2. **Sync:** `git fetch`/`git merge master` (bzw. `git merge master` im Worktree), damit Verträge und fremde Merges da sind. Danach `HANDOFF.md` auf Einträge an deine Lane prüfen.
-3. **Schritt wählen:** Der erste Eintrag deiner Lane-Queue unten, der in der Roadmap noch `[ ]` ist und dessen „braucht“-Bedingung erfüllt ist. Ist keiner startbar → `HANDOFF.md` lesen/schreiben und den nächsten startbaren nehmen; gibt es keinen, dem Nutzer sagen, worauf du wartest.
-4. **Claimen** in ROADMAP.md (`[~ @lane]`), implementieren mit Tests, `cargo fmt`, `cargo clippy -D warnings`, `cargo test`.
-5. **Abschluss:** Roadmap-Zeile auf `[x]`, committen auf dem Lane-Branch, nach `master` mergen (Fast-Forward nach Rebase; bei Konflikt nicht raten, `HANDOFF.md`). Dem Nutzer in 2–3 Sätzen berichten: was fertig, was als Nächstes dran ist.
+1. **Bereich bestimmen:** `scripts/agent.sh lane`. Kein `lane/…`-Branch → nachfragen.
+2. **Sync:** `git merge master`, `HANDOFF.md` auf Einträge an deinen Bereich prüfen, `scripts/agent.sh claims` ansehen.
+3. **Schritt wählen:** erster Eintrag deiner Queue, der in der Roadmap `[ ]` ist, dessen „braucht“-Bedingung erfüllt ist und der sich per `claim` sperren lässt. Sonst Work-Stealing aus unbesetzten Bereichen (siehe oben). Gibt es nichts Startbares, dem Nutzer sagen, worauf gewartet wird.
+4. **Umsetzen:** Roadmap-Zeile `[~ @branch]`, implementieren mit Tests, `cargo fmt`, `cargo clippy -D warnings`, `cargo test`.
+5. **Abschluss:** Roadmap-Zeile `[x]`, auf dem Lane-Branch committen, `scripts/agent.sh merge` (rebase auf master + Fast-Forward in master unter Merge-Lock; bei Konflikt nicht raten → `HANDOFF.md`), dann `scripts/agent.sh release <name>`. Dem Nutzer in 2–3 Sätzen berichten: was fertig, was als Nächstes dran ist.
 6. Immer nur **einen** Schritt pro Aufruf, dann stoppen.
 
 ## Lane-Queues (Reihenfolge = Priorität)
@@ -58,4 +64,4 @@ Der Nutzer öffnet nur den Worktree-Ordner und sagt z. B. „mach den nächsten 
 **plugins** – 1. Beispiel-Hoster-Plugin (Redirect-Auflösung) · 2. Crawler-Plugin-Typ · 3. Account-Plugin-Typ · 4. Captcha-Plugin-Typ · 5. Berechtigungsmodell (Design-Dokument) · 6. dynamisches Laden/WASM (nur nach Freigabe durch den Nutzer)
 **infra** – 1. CI (fmt, clippy, test) · 2. Test-Harness: lokaler HTTP-Server mit Range-Support, Abbruch-Simulation · 3. Integrationstest „Kill + Resume + Hash“ (braucht: core 4, net 2) · 4. Cargo.toml-Aufräumen (nach M1) · 5. Threat-Modell-Doku, README, Manpage · 6. Release-Binaries
 
-Tipp: Der Nutzer startet am besten zuerst **core** (Schritt 1 entsperrt net/ui), die anderen drei können sofort parallel laufen.
+Tipp: Zuerst **core** starten (Schritt 1 entsperrt net/ui); plugins, infra und net-Schritt 1 können sofort parallel laufen. Queue-Schritte heißen im Claim `<bereich>-<nr>`, z. B. `net-1`.
