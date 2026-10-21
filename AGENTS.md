@@ -42,5 +42,20 @@ Vorschlag: **infra** schreibt Schritt 0 nicht, sondern **core** (kennt die Engin
 ## HANDOFF.md
 Eine Datei, Append-only, Format: `[von-Lane → an-Lane] Anliegen – Status`. Blockiert eine Lane, trägt sie dort ein und wechselt zur nächsten freien Aufgabe der eigenen Lane.
 
-## Agent-Start-Prompt (pro Lane kopieren, `<LANE>` ersetzen)
-> Du bist Lane `<LANE>` im Projekt rdownloader. Lies `AGENTS.md` und `ROADMAP.md`. Arbeite nur in den Dateien deiner Lane, in deinem Worktree `lane/<LANE>`. Nimm den obersten offenen Punkt deiner Lane, claime ihn in der Roadmap, implementiere ihn mit Tests, halte fmt/clippy/test grün, merge klein. Bei Abhängigkeiten von anderen Lanes: `HANDOFF.md`, nicht deren Dateien ändern.
+## "Mach den nächsten Schritt" – Protokoll (gilt für jeden Agent)
+Der Nutzer öffnet nur den Worktree-Ordner und sagt z. B. „mach den nächsten Schritt“. Dann:
+1. **Lane bestimmen:** `git branch --show-current` → `lane/<name>` ergibt deine Lane. Keine `lane/…`-Branch → nachfragen.
+2. **Sync:** `git fetch`/`git merge master` (bzw. `git merge master` im Worktree), damit Verträge und fremde Merges da sind. Danach `HANDOFF.md` auf Einträge an deine Lane prüfen.
+3. **Schritt wählen:** Der erste Eintrag deiner Lane-Queue unten, der in der Roadmap noch `[ ]` ist und dessen „braucht“-Bedingung erfüllt ist. Ist keiner startbar → `HANDOFF.md` lesen/schreiben und den nächsten startbaren nehmen; gibt es keinen, dem Nutzer sagen, worauf du wartest.
+4. **Claimen** in ROADMAP.md (`[~ @lane]`), implementieren mit Tests, `cargo fmt`, `cargo clippy -D warnings`, `cargo test`.
+5. **Abschluss:** Roadmap-Zeile auf `[x]`, committen auf dem Lane-Branch, nach `master` mergen (Fast-Forward nach Rebase; bei Konflikt nicht raten, `HANDOFF.md`). Dem Nutzer in 2–3 Sätzen berichten: was fertig, was als Nächstes dran ist.
+6. Immer nur **einen** Schritt pro Aufruf, dann stoppen.
+
+## Lane-Queues (Reihenfolge = Priorität)
+**core** – 1. `src/contract.rs` (Verträge A+B) + `MockTransport` + `FakeJob`, nach master mergen · 2. M1.2 Range-Prüfung/Fallback (braucht: 1) · 3. M1.3 Retry/Backoff · 4. M1.4 Resume · 5. M1.7 Hash (braucht: Meta.etag/Hash) · 6. M1.8 Bandbreiten-Limit
+**net** – 1. TLS über Arti-Stream (https-Connector, vertragsfrei) · 2. `TorTransport` implementiert Vertrag A (braucht: core 1) · 3. M1.1 Redirects/Chunked/Content-Disposition · 4. M1.5 Isolation (Single-Client + `isolated_client()` prüfen) · 5. M1.6 Health-Check/Reconnect · 6. M5 DNS-Leak-Check, Bridges
+**ui** – 1. Queue-Rendering gegen `FakeJob` (braucht: core 1) · 2. Steuerung Pause/Resume/Cancel · 3. Session-Restore im Tracker (braucht: core 4) · 4. Detail-Ansicht · 5. Batch-Import · 6. History + Export · 7. Themes/Hotkey
+**plugins** – 1. Beispiel-Hoster-Plugin (Redirect-Auflösung) · 2. Crawler-Plugin-Typ · 3. Account-Plugin-Typ · 4. Captcha-Plugin-Typ · 5. Berechtigungsmodell (Design-Dokument) · 6. dynamisches Laden/WASM (nur nach Freigabe durch den Nutzer)
+**infra** – 1. CI (fmt, clippy, test) · 2. Test-Harness: lokaler HTTP-Server mit Range-Support, Abbruch-Simulation · 3. Integrationstest „Kill + Resume + Hash“ (braucht: core 4, net 2) · 4. Cargo.toml-Aufräumen (nach M1) · 5. Threat-Modell-Doku, README, Manpage · 6. Release-Binaries
+
+Tipp: Der Nutzer startet am besten zuerst **core** (Schritt 1 entsperrt net/ui), die anderen drei können sofort parallel laufen.
