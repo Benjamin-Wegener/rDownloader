@@ -392,10 +392,6 @@ async fn download_part(
     Ok(())
 }
 
-fn find_subsequence(haystack: &[u8], needle: &[u8]) -> Option<usize> {
-    haystack.windows(needle.len()).position(|w| w == needle)
-}
-
 /// Merges all part files into the final output file.
 async fn merge_parts(parts: &[PathBuf], output: &Path, expected_total: u64) -> Result<()> {
     // If output file parent does not exist, create it
@@ -736,6 +732,18 @@ pub async fn run_job_with(
     {
         let mut p = progress.lock().await;
         p.status = JobStatus::Resolving;
+    }
+
+    // HLS/DASH manifests are routed to the segment downloader instead of the
+    // byte-range engine.
+    if crate::net::looks_like_manifest(&job.url) {
+        let downloader = crate::net::SegmentDownloader::new(transport.clone());
+        let report = downloader.download(&job.url, &job.output).await?;
+        let mut p = progress.lock().await;
+        p.total_bytes = report.bytes;
+        p.bytes_done = report.bytes;
+        p.status = JobStatus::Done;
+        return Ok(());
     }
 
     let mut all_urls = vec![job.url.clone()];
