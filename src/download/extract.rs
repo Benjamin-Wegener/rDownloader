@@ -284,7 +284,10 @@ fn extract_zip(set: &ArchiveSet, dest: &Path, budget: &mut Budget) -> Result<(us
             skipped += 1;
             continue;
         }
-        let name = entry.name().to_string();
+        let name = entry
+            .name()
+            .map_err(|e| anyhow::anyhow!("bad ZIP entry name: {e}"))?
+            .to_string();
         if entry.is_dir() {
             fs::create_dir_all(safe_join(dest, name.trim_end_matches('/'))?)?;
         } else {
@@ -357,8 +360,7 @@ impl Seek for MultiReader {
 
 fn extract_7z(set: &ArchiveSet, dest: &Path, budget: &mut Budget) -> Result<(usize, usize)> {
     let reader = MultiReader::open(&set.parts)?;
-    let total = reader.total;
-    let mut sz = sevenz_rust::SevenZReader::new(reader, total, sevenz_rust::Password::empty())
+    let mut sz = sevenz_rust2::ArchiveReader::new(reader, sevenz_rust2::Password::empty())
         .map_err(|e| anyhow::anyhow!("reading 7z: {e}"))?;
     let mut files = 0;
     let mut failure: Option<anyhow::Error> = None;
@@ -679,7 +681,7 @@ mod tests {
         fs::write(src.join("one.txt"), b"first file").unwrap();
         fs::write(src.join("sub/two.txt"), vec![7u8; 5000]).unwrap();
         let archive = t.0.join("whole.7z");
-        sevenz_rust::compress_to_path(&src, &archive).unwrap();
+        sevenz_rust2::compress_to_path(&src, &archive).unwrap();
 
         // Cut the archive into three volumes.
         let data = fs::read(&archive).unwrap();
@@ -707,7 +709,7 @@ mod tests {
         fs::create_dir_all(&src).unwrap();
         fs::write(src.join("f.txt"), vec![1u8; 4000]).unwrap();
         let archive = t.0.join("x.7z");
-        sevenz_rust::compress_to_path(&src, &archive).unwrap();
+        sevenz_rust2::compress_to_path(&src, &archive).unwrap();
         let data = fs::read(&archive).unwrap();
         fs::remove_file(&archive).unwrap();
         let only_first = t.0.join("y.7z.001");

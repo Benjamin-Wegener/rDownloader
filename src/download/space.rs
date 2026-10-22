@@ -63,11 +63,33 @@ pub fn query_available_space(path: &Path) -> Result<DiskSpace> {
 }
 
 #[cfg(windows)]
-pub fn query_available_space(_path: &Path) -> Result<DiskSpace> {
-    // Basic fallback for Windows builds (can use GetDiskFreeSpaceExW if libc/winapi available)
+pub fn query_available_space(path: &Path) -> Result<DiskSpace> {
+    use std::os::windows::ffi::OsStrExt;
+    use windows_sys::Win32::Storage::FileSystem::GetDiskFreeSpaceExW;
+
+    // The target file may not exist yet: ask about the nearest existing folder.
+    let check_path = path
+        .ancestors()
+        .find(|p| !p.as_os_str().is_empty() && p.exists())
+        .unwrap_or_else(|| Path::new("."));
+    let wide: Vec<u16> = check_path
+        .as_os_str()
+        .encode_wide()
+        .chain(Some(0))
+        .collect();
+    let (mut available, mut total, mut free) = (0u64, 0u64, 0u64);
+    // SAFETY: `wide` is a valid NUL-terminated string and the three pointers point to live u64 values.
+    let ok = unsafe { GetDiskFreeSpaceExW(wide.as_ptr(), &mut available, &mut total, &mut free) };
+    if ok == 0 {
+        let err = std::io::Error::last_os_error();
+        bail!(
+            "GetDiskFreeSpaceExW failed on {}: {err}",
+            check_path.display()
+        );
+    }
     Ok(DiskSpace {
-        available_bytes: u64::MAX,
-        total_bytes: u64::MAX,
+        available_bytes: available,
+        total_bytes: total,
     })
 }
 

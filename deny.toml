@@ -13,7 +13,12 @@ targets = [
 version = 2
 unmaintained = "workspace"
 yanked = "warn"
-ignore = []
+ignore = [
+    # `rsa` (Marvin attack, no fixed version exists): pulled in by Arti's key handling and the SSH library.
+    # The attack needs an attacker who can observe many private-key operations over the network; a download client
+    # does not offer such an oracle. Revisit when RustCrypto publishes a constant-time implementation.
+    "RUSTSEC-2023-0071",
+]
 
 [licenses]
 version = 2
