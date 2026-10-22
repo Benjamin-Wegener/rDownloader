@@ -1,11 +1,11 @@
 # rdownloader status
 
-Generated 2026-10-22 at commit 3225e05 - regenerate with `scripts/status-md.sh`
+Generated 2026-10-22 at commit e2ea17c - regenerate with `scripts/status-md.sh`
 
-`[##################--]` **51/55** steps done (93%), 0 in progress, 4 open
-Roadmap items: 61 checked, 21 open
+`[###############-----]` **52/67** steps done (78%), 2 in progress, 13 open
+Roadmap items: 61 checked, 23 open
 
-## core (14/14)
+## core (15/19)
 
 - [x] `core-9` Zentraler Dateinamen-Bereiniger fuer alle Quellen (Plugin/Container/URL): kein Pfad-Ausbruch, Windows-Reservenamen, Kollision -> automatisch umbenennen
 - [x] `core-1` src/contract.rs: Verträge A (Transport) + B (JobEvent/JobCommand), MockTransport, FakeJob
@@ -21,13 +21,19 @@ Roadmap items: 61 checked, 21 open
 - [x] `core-12` Langsame Verbindungen kappen (lowest-speed-limit) + bedingtes Laden (If-Modified-Since)
 - [x] `core-13` Mirrors (mehrere URLs pro Datei, Auswahl nach Geschwindigkeit) + Metalink-Block-Pruefsummen
 - [x] `core-14` Ereignis-Hooks (Start/Fertig/Fehler -> eigener Befehl) und Desktop-Benachrichtigung
+- [x] `core-15` HLS/DASH in die Engine einbinden: Manifest-URLs (.m3u8/.mpd) an net::SegmentDownloader routen (Fortschritt, Abbruch, Zielendung .ts/.mp4), toten Parser find_subsequence entfernen
+- [ ] `core-16` Scheduler-Zeitfenster und zeitabhaengige Geschwindigkeitslimits
+- [ ] `core-17` Watch-Ordner: Linklisten, .dlc und .metalink in einem Ordner werden importiert (Link-Sammler, nie direkt Download)
+- [ ] `core-18` Download-Regeln: Zielordner und Umbenennen nach Dateityp, Host oder Muster
+- [ ] `core-19` Duplikat-Erkennung (schon geladen per URL oder History) im Link-Sammler
 
-## i18n (2/2)
+## i18n (2/3)
 
 - [x] `i18n-1` src/i18n.rs: String-Katalog (en), Schlüssel + benannte Platzhalter, Tests; Clap-Help darüber
 - [x] `i18n-2` Bestehende deutsche Strings/Kommentare/Docs im Code auf Englisch, UI-Texte in den Katalog
+- [ ] `i18n-3` Deutsche Uebersetzung als Sprachpaket (lang/de.toml), Sprache per Config/Umgebung, Test auf Vollstaendigkeit aller Schluessel
 
-## net (11/12)
+## net (11/13)
 
 - [x] `net-1` TLS über Arti-Stream (https-Connector, vertragsfrei)
 - [x] `net-2` TorTransport implementiert Vertrag A
@@ -40,7 +46,8 @@ Roadmap items: 61 checked, 21 open
 - [x] `net-9` FTP/SFTP ueber Tor
 - [x] `net-10` HLS/DASH: Segment-Downloads (parallele Fragmente, Zusammenfuegen)
 - [x] `net-12` Daemon-API absichern gegen fremde Webseiten (CSRF/DNS-Rebinding): Host-/Origin-/Content-Type-Pruefung ohne Token, Sicherheits-Header, Tests
-- [ ] `net-11` SFTP (SSH-Client mit Host-Key-Pruefung) und FTPS ueber Tor
+- [~] `net-11` SFTP (SSH-Client mit Host-Key-Pruefung) und FTPS ueber Tor - **in progress**
+- [ ] `net-17` Live-Events im Daemon per Server-Sent Events
 
 ## plugins (8/8)
 
@@ -53,7 +60,7 @@ Roadmap items: 61 checked, 21 open
 - [x] `plugins-7` WASM-Plugin-Laufzeit (Wasmtime-Sandbox unter Berechtigungsmodell)
 - [x] `plugins-8` netrc-Zugangsdaten + Cookie-Import (Firefox/Chromium/Netscape-Format)
 
-## infra (6/6)
+## infra (6/8)
 
 - [x] `infra-1` CI: GitHub Actions fmt, clippy -D warnings, test
 - [x] `infra-2` Test-Harness: lokaler HTTP-Server mit Range-Support + Abbruch-Simulation
@@ -61,6 +68,8 @@ Roadmap items: 61 checked, 21 open
 - [x] `infra-4` Cargo.toml-Aufräumen (ungenutzte Dependencies)
 - [x] `infra-5` Threat-Modell-Doku, README, Manpage
 - [x] `infra-6` Release-Binaries (GitHub Releases)
+- [ ] `infra-7` Aufraeumen: ungenutzte Config connect_timeout_secs (umsetzen oder entfernen), irrefuehrende Tor-Log-Zeile (bootstrap 85%, healthy=false), README/Roadmap an den echten Stand anpassen
+- [ ] `infra-8` Paketierungsvorlagen: Cargo-Metadaten fuer crates.io, Homebrew-Formel, AUR-PKGBUILD, Scoop-Manifest (Veroeffentlichen von Hand)
 
 ## ui (7/7)
 
@@ -72,11 +81,14 @@ Roadmap items: 61 checked, 21 open
 - [x] `ui-6` History + Export (CSV/JSON)
 - [x] `ui-7` LinkGrabber-Workflow: Entkoppeltes Sammeln, Filtern & Bestaetigen
 
-## gui (3/6)
+## gui (3/9)
 
 - [x] `gui-1` Native GUI-Fenster (egui) mit derselben Engine, Standard wenn ein Display da ist; --tui fuer das Terminal
 - [x] `gui-2` GUI-Rahmen nach docs/gui-layout.md: Toolbar, Reiter, Uebersichtspanel, Befehlsleiste, Fusszeile
 - [x] `gui-3` GUI-Tabelle: Spalten (Name, Groesse, Host, Verbindung, Status, Tempo, Rest, Geladen, Fortschritt, Speicherort, Kommentar), Sortierung, Spaltenauswahl, Pakete im Datenmodell
-- [ ] `gui-4` GUI-Reiter Link-Sammler auf dem vorhandenen Sammler-Modell
+- [~] `gui-4` GUI-Reiter Link-Sammler auf dem vorhandenen Sammler-Modell - **in progress**
 - [ ] `gui-5` GUI-Dialoge und Menues: Links-hinzufuegen-Dialog, Kontextmenue, Einstellungen, Dateiauswahl
 - [ ] `gui-6` App-Paket: macOS .app mit Icon, Windows/Linux-Pakete, Autostart
+- [ ] `gui-7` Themes (hell, dunkel, automatisch, Akzentfarbe) und Einstellungsseite inkl. Sprachwahl
+- [ ] `gui-8` Zwischenablage-Ueberwachung (opt-in) speist den Link-Sammler, nie direkt den Download
+- [ ] `gui-9` Tray-Symbol, Autostart, Fenster in den Tray schliessen
