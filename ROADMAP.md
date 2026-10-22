@@ -96,7 +96,7 @@ CI früh starten (parallel zu M1), Rest nach M2.
 **Sicherheit/Privacy**
 - [x] 🟠 Threat-Modell-Doku: was Tor schützt / was nicht (`docs/threat-model.md`)
 - [x] 🟠 DNS-Leak-Prüfung (alle Auflösungen über Tor, auch in Plugins) – Guard-Test verbietet lokale Resolver im Code
-- [ ] 🟠 Keine Telemetrie – als Test/Grep-Check in CI absichern
+- [x] 🟠 Keine Telemetrie – `tests/no_telemetry.rs` prüft Cargo.toml/Cargo.lock auf bekannte Telemetrie-Crates und die Quellen auf bekannte Analytics-Hosts (läuft in CI mit `cargo test`; ist eine Absicherung gegen versehentliche Aufnahme, kein Beweis)
 - [ ] 🟢 Bridges / Pluggable Transports (obfs4, snowflake)
   - [x] Direkte Bridge-Lines (Config-Feld `bridges`, in Arti geladen; `Bridge `-Präfix optional)
   - [ ] Pluggable Transports (obfs4, snowflake) – braucht `pt-client`-Feature plus externe PT-Binaries
@@ -157,7 +157,6 @@ Was automatisch geprüft ist und was noch **nicht** am echten System gesehen wur
 - [ ] 🟠 RAR-Entpacken mit `unrar`/`7zz` (auf der Entwicklungsmaschine ist keins installiert)
 - [ ] 🟠 TUI im echten Terminal: Detail-Ansicht, Import (`i`/`v`), LinkGrabber
 - [ ] 🟠 Linux- und Windows-Build sowie ein echter CI-Lauf auf GitHub (bisher nur lokal auf macOS)
-- [ ] 🟢 Kein Telemetrie-Test in CI (siehe M5)
 
 ---
 

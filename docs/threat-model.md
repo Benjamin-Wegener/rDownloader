@@ -43,6 +43,8 @@ Statements marked *(verified)* are enforced by code or tests in this repository;
 - **Credentials**: `Secret` and cookie values are redacted in `Debug` output and are not serialisable, so they do not reach logs or the tracker file by accident *(verified)*. Cookies are only attached to requests for the matching domain.
 - **Plugins**: a permission model (network allow-list per plugin, file system limits, credential scoping) is specified in `src/plugin/PERMISSIONS.md`. Plugins are static Rust code today, so they are trusted code; the model matters once dynamic (WASM) plugins exist.
 
+- **No telemetry**: rdownloader sends no usage data or crash reports. `tests/no_telemetry.rs` fails the build if a known telemetry crate enters the dependency tree (`Cargo.lock`, including transitive ones) or a known analytics host appears in the sources. This is a guard against accidents, not a proof: an unlisted service or a dynamically built address would not be caught.
+
 ## Not protected / known limitations
 
 - **Anonymity is only as good as Tor.** Traffic correlation by a global observer, and exit-relay attacks on plain `http`, are out of scope.
