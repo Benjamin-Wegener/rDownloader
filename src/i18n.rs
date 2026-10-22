@@ -564,6 +564,10 @@ const EN: &[(&str, &str)] = &[
         "Remove finished downloads from the list",
     ),
     (
+        "gui.toolbar.settings",
+        "Open settings",
+    ),
+    (
         "gui.overview.title",
         "Overview",
     ),
@@ -610,6 +614,138 @@ const EN: &[(&str, &str)] = &[
     (
         "gui.add.title",
         "Add links",
+    ),
+    (
+        "gui.add.save_to",
+        "Save directory",
+    ),
+    (
+        "gui.add.browse",
+        "Browse…",
+    ),
+    (
+        "gui.add.package",
+        "Package name",
+    ),
+    (
+        "gui.add.comment",
+        "Comment",
+    ),
+    (
+        "gui.add.direct_to_queue",
+        "Start download immediately (skip link grabber)",
+    ),
+    (
+        "gui.context.start",
+        "Resume",
+    ),
+    (
+        "gui.context.pause",
+        "Pause",
+    ),
+    (
+        "gui.context.cancel",
+        "Cancel",
+    ),
+    (
+        "gui.context.remove",
+        "Remove",
+    ),
+    (
+        "gui.context.copy_url",
+        "Copy link URL",
+    ),
+    (
+        "gui.context.open_folder",
+        "Open save folder",
+    ),
+    (
+        "gui.context.rename",
+        "Rename package",
+    ),
+    (
+        "gui.picker.title",
+        "Choose save directory",
+    ),
+    (
+        "gui.picker.current",
+        "Path: {path}",
+    ),
+    (
+        "gui.picker.select",
+        "Select this directory",
+    ),
+    (
+        "gui.picker.up",
+        "Up one level",
+    ),
+    (
+        "gui.settings.title",
+        "Settings",
+    ),
+    (
+        "gui.settings.general",
+        "General",
+    ),
+    (
+        "gui.settings.network",
+        "Network & Tor",
+    ),
+    (
+        "gui.settings.limits",
+        "Limits & Retries",
+    ),
+    (
+        "gui.settings.save",
+        "Save & Apply",
+    ),
+    (
+        "gui.settings.cancel",
+        "Cancel",
+    ),
+    (
+        "gui.settings.download_dir",
+        "Default download directory",
+    ),
+    (
+        "gui.settings.temp_dir",
+        "Temp directory",
+    ),
+    (
+        "gui.settings.max_parts",
+        "Max parts per download",
+    ),
+    (
+        "gui.settings.max_concurrent_jobs",
+        "Max concurrent downloads",
+    ),
+    (
+        "gui.settings.max_jobs_per_host",
+        "Max downloads per host",
+    ),
+    (
+        "gui.settings.max_speed",
+        "Speed limit (KiB/s, 0 = unlimited)",
+    ),
+    (
+        "gui.settings.min_speed",
+        "Drop connections slower than (KiB/s, 0 = off)",
+    ),
+    (
+        "gui.settings.max_retries",
+        "Max retries per part",
+    ),
+    (
+        "gui.settings.auto_extract",
+        "Auto-extract archives (.zip, .7z, .rar)",
+    ),
+    (
+        "gui.settings.extract_delete",
+        "Delete archives after extraction",
+    ),
+    (
+        "gui.settings.log_level",
+        "Log level",
     ),
     (
         "gui.search.hint",

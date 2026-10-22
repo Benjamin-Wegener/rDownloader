@@ -13,6 +13,7 @@ pub enum Icon {
     Down,
     ToBottom,
     Clear,
+    Settings,
 }
 
 const SIZE: Vec2 = Vec2::new(30.0, 28.0);
@@ -125,6 +126,25 @@ fn paint(p: &egui::Painter, r: Rect, icon: Icon, color: Color32) {
         Icon::Clear => {
             p.line_segment([pt(r, 0.1, 0.1), pt(r, 0.9, 0.9)], stroke);
             p.line_segment([pt(r, 0.9, 0.1), pt(r, 0.1, 0.9)], stroke);
+        }
+        Icon::Settings => {
+            // Draw a gear-like circular icon with spokes
+            let center = pt(r, 0.5, 0.5);
+            let radius = r.width().min(r.height()) * 0.35;
+            p.circle_stroke(center, radius, stroke);
+            p.circle_filled(center, radius * 0.4, color);
+            for angle in [0.0, 45.0, 90.0, 135.0] {
+                let rad = angle * std::f32::consts::PI / 180.0;
+                let dx = rad.cos() * radius * 1.35;
+                let dy = rad.sin() * radius * 1.35;
+                p.line_segment(
+                    [
+                        Pos2::new(center.x - dx, center.y - dy),
+                        Pos2::new(center.x + dx, center.y + dy),
+                    ],
+                    stroke,
+                );
+            }
         }
     }
 }

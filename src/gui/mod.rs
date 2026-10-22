@@ -231,16 +231,36 @@ struct GuiApp {
     query: String,
     add_open: bool,
     add_text: String,
+    add_save_to: String,
+    add_package: String,
+    add_comment: String,
+    add_direct: bool,
     overview_open: bool,
     captcha_input: String,
     columns: ColumnConfig,
     sort: SortConfig,
     collapsed_packages: std::collections::HashSet<String>,
     grabber_collapsed_packages: std::collections::HashSet<usize>,
+    settings_open: bool,
+    settings_cfg: crate::config::Config,
+    picker_open: bool,
+    picker_path: std::path::PathBuf,
+    picker_target_settings: bool,
 }
 
 impl GuiApp {
     fn new(app: SharedApp) -> Self {
+        let initial_cfg = crate::config::load().unwrap_or_default();
+        let initial_download_dir = initial_cfg
+            .download_dir
+            .as_ref()
+            .map(|p| p.to_string_lossy().to_string())
+            .unwrap_or_else(|| {
+                dirs::download_dir()
+                    .unwrap_or_else(|| std::path::PathBuf::from("."))
+                    .to_string_lossy()
+                    .to_string()
+            });
         Self {
             app,
             tab: Tab::Downloads,
@@ -250,12 +270,21 @@ impl GuiApp {
             query: String::new(),
             add_open: false,
             add_text: String::new(),
+            add_save_to: initial_download_dir,
+            add_package: String::new(),
+            add_comment: String::new(),
+            add_direct: false,
             overview_open: true,
             captcha_input: String::new(),
             columns: ColumnConfig::default(),
             sort: SortConfig::default(),
             collapsed_packages: std::collections::HashSet::new(),
             grabber_collapsed_packages: std::collections::HashSet::new(),
+            settings_open: false,
+            settings_cfg: initial_cfg,
+            picker_open: false,
+            picker_path: dirs::download_dir().unwrap_or_else(|| std::path::PathBuf::from(".")),
+            picker_target_settings: false,
         }
     }
 
@@ -324,6 +353,11 @@ impl GuiApp {
             ui.separator();
             if icons::button(ui, Icon::Clear, &t!("gui.toolbar.clear"), clear).clicked() {
                 Self::bulk(app, Bulk::ClearFinished);
+            }
+            ui.separator();
+            if icons::button(ui, Icon::Settings, &t!("gui.toolbar.settings"), true).clicked() {
+                self.settings_open = true;
+                self.settings_cfg = crate::config::load().unwrap_or_default();
             }
         });
     }
@@ -552,91 +586,142 @@ impl GuiApp {
             egui::Color32::from_rgb(0xe5, 0xe9, 0xf0)
         });
 
-        frame.show(ui, |ui| {
-            ui.horizontal(|ui| {
-                if self.columns.is_visible(ColumnId::Name) {
-                    ui.allocate_ui(egui::vec2(ColumnId::Name.default_width(), 20.0), |ui| {
-                        let text = format!("{arrow}{}", pkg.name);
-                        if ui
-                            .selectable_label(false, egui::RichText::new(text).strong())
-                            .clicked()
-                        {
-                            if is_collapsed {
-                                self.collapsed_packages.remove(&pkg.id);
-                            } else {
-                                self.collapsed_packages.insert(pkg.id.clone());
+        let pkg_resp = frame
+            .show(ui, |ui| {
+                ui.horizontal(|ui| {
+                    if self.columns.is_visible(ColumnId::Name) {
+                        ui.allocate_ui(egui::vec2(ColumnId::Name.default_width(), 20.0), |ui| {
+                            let text = format!("{arrow}{}", pkg.name);
+                            if ui
+                                .selectable_label(false, egui::RichText::new(text).strong())
+                                .clicked()
+                            {
+                                if is_collapsed {
+                                    self.collapsed_packages.remove(&pkg.id);
+                                } else {
+                                    self.collapsed_packages.insert(pkg.id.clone());
+                                }
                             }
-                        }
-                    });
+                        });
+                    }
+                    if self.columns.is_visible(ColumnId::Size) {
+                        ui.allocate_ui(egui::vec2(ColumnId::Size.default_width(), 20.0), |ui| {
+                            ui.label(fmt_bytes(pkg.total_size()));
+                        });
+                    }
+                    if self.columns.is_visible(ColumnId::Host) {
+                        ui.allocate_ui(egui::vec2(ColumnId::Host.default_width(), 20.0), |ui| {
+                            ui.label(t!("gui.package.items", count = pkg.items.len()));
+                        });
+                    }
+                    if self.columns.is_visible(ColumnId::Connection) {
+                        ui.allocate_ui(
+                            egui::vec2(ColumnId::Connection.default_width(), 20.0),
+                            |ui| {
+                                ui.label("");
+                            },
+                        );
+                    }
+                    if self.columns.is_visible(ColumnId::Status) {
+                        ui.allocate_ui(egui::vec2(ColumnId::Status.default_width(), 20.0), |ui| {
+                            let st = pkg.status_summary();
+                            ui.colored_label(status_color(&st, dark), status_text(&st));
+                        });
+                    }
+                    if self.columns.is_visible(ColumnId::Speed) {
+                        ui.allocate_ui(egui::vec2(ColumnId::Speed.default_width(), 20.0), |ui| {
+                            let speed = pkg.total_speed();
+                            if speed > 0 {
+                                ui.label(detail::fmt_speed(speed));
+                            } else {
+                                ui.label("–");
+                            }
+                        });
+                    }
+                    if self.columns.is_visible(ColumnId::Eta) {
+                        ui.allocate_ui(egui::vec2(ColumnId::Eta.default_width(), 20.0), |ui| {
+                            if let Some(eta) = pkg.eta() {
+                                ui.label(detail::fmt_eta(eta));
+                            } else {
+                                ui.label("–");
+                            }
+                        });
+                    }
+                    if self.columns.is_visible(ColumnId::Loaded) {
+                        ui.allocate_ui(egui::vec2(ColumnId::Loaded.default_width(), 20.0), |ui| {
+                            ui.label(fmt_bytes(pkg.loaded_bytes()));
+                        });
+                    }
+                    if self.columns.is_visible(ColumnId::Progress) {
+                        ui.allocate_ui(
+                            egui::vec2(ColumnId::Progress.default_width(), 20.0),
+                            |ui| {
+                                let bar = match pkg.progress() {
+                                    Some(f) => egui::ProgressBar::new(f).show_percentage(),
+                                    None => egui::ProgressBar::new(0.0),
+                                };
+                                ui.add(bar);
+                            },
+                        );
+                    }
+                    if self.columns.is_visible(ColumnId::SaveTo) {
+                        ui.allocate_ui(egui::vec2(ColumnId::SaveTo.default_width(), 20.0), |ui| {
+                            ui.label(&pkg.save_to);
+                        });
+                    }
+                    if self.columns.is_visible(ColumnId::Comment) {
+                        ui.allocate_ui(egui::vec2(ColumnId::Comment.default_width(), 20.0), |ui| {
+                            ui.label(&pkg.comment);
+                        });
+                    }
+                });
+            })
+            .response;
+
+        pkg_resp.context_menu(|ui| {
+            if !pkg.save_to.is_empty() && ui.button(t!("gui.context.open_folder")).clicked() {
+                let _ = std::process::Command::new(if cfg!(target_os = "macos") {
+                    "open"
+                } else if cfg!(target_os = "windows") {
+                    "explorer"
+                } else {
+                    "xdg-open"
+                })
+                .arg(&pkg.save_to)
+                .spawn();
+                ui.close();
+            }
+            if ui.button(t!("gui.context.start")).clicked() {
+                for item in &pkg.items {
+                    if actions_for(&item.status).resume {
+                        Self::send(app, UiCommand::ResumeJob(item.id));
+                    }
                 }
-                if self.columns.is_visible(ColumnId::Size) {
-                    ui.allocate_ui(egui::vec2(ColumnId::Size.default_width(), 20.0), |ui| {
-                        ui.label(fmt_bytes(pkg.total_size()));
-                    });
+                ui.close();
+            }
+            if ui.button(t!("gui.context.pause")).clicked() {
+                for item in &pkg.items {
+                    if actions_for(&item.status).pause {
+                        Self::send(app, UiCommand::PauseJob(item.id));
+                    }
                 }
-                if self.columns.is_visible(ColumnId::Host) {
-                    ui.allocate_ui(egui::vec2(ColumnId::Host.default_width(), 20.0), |ui| {
-                        ui.label(t!("gui.package.items", count = pkg.items.len()));
-                    });
+                ui.close();
+            }
+            if ui.button(t!("gui.context.cancel")).clicked() {
+                for item in &pkg.items {
+                    if actions_for(&item.status).cancel {
+                        Self::send(app, UiCommand::CancelJob(item.id));
+                    }
                 }
-                if self.columns.is_visible(ColumnId::Connection) {
-                    ui.allocate_ui(
-                        egui::vec2(ColumnId::Connection.default_width(), 20.0),
-                        |ui| {
-                            ui.label("");
-                        },
-                    );
+                ui.close();
+            }
+            if ui.button(t!("gui.context.remove")).clicked() {
+                for item in &pkg.items {
+                    app.speeds.forget(item.id);
+                    Self::send(app, UiCommand::RemoveJob(item.id));
                 }
-                if self.columns.is_visible(ColumnId::Status) {
-                    ui.allocate_ui(egui::vec2(ColumnId::Status.default_width(), 20.0), |ui| {
-                        let st = pkg.status_summary();
-                        ui.colored_label(status_color(&st, dark), status_text(&st));
-                    });
-                }
-                if self.columns.is_visible(ColumnId::Speed) {
-                    ui.allocate_ui(egui::vec2(ColumnId::Speed.default_width(), 20.0), |ui| {
-                        let speed = pkg.total_speed();
-                        if speed > 0 {
-                            ui.label(detail::fmt_speed(speed));
-                        } else {
-                            ui.label("–");
-                        }
-                    });
-                }
-                if self.columns.is_visible(ColumnId::Eta) {
-                    ui.allocate_ui(egui::vec2(ColumnId::Eta.default_width(), 20.0), |ui| {
-                        if let Some(eta) = pkg.eta() {
-                            ui.label(detail::fmt_eta(eta));
-                        } else {
-                            ui.label("–");
-                        }
-                    });
-                }
-                if self.columns.is_visible(ColumnId::Loaded) {
-                    ui.allocate_ui(egui::vec2(ColumnId::Loaded.default_width(), 20.0), |ui| {
-                        ui.label(fmt_bytes(pkg.loaded_bytes()));
-                    });
-                }
-                if self.columns.is_visible(ColumnId::Progress) {
-                    ui.allocate_ui(egui::vec2(ColumnId::Progress.default_width(), 20.0), |ui| {
-                        let bar = match pkg.progress() {
-                            Some(f) => egui::ProgressBar::new(f).show_percentage(),
-                            None => egui::ProgressBar::new(0.0),
-                        };
-                        ui.add(bar);
-                    });
-                }
-                if self.columns.is_visible(ColumnId::SaveTo) {
-                    ui.allocate_ui(egui::vec2(ColumnId::SaveTo.default_width(), 20.0), |ui| {
-                        ui.label(&pkg.save_to);
-                    });
-                }
-                if self.columns.is_visible(ColumnId::Comment) {
-                    ui.allocate_ui(egui::vec2(ColumnId::Comment.default_width(), 20.0), |ui| {
-                        ui.label(&pkg.comment);
-                    });
-                }
-            });
+                ui.close();
+            }
         });
 
         if !is_collapsed {
@@ -791,16 +876,52 @@ impl GuiApp {
             })
             .response;
 
-        if ui
-            .interact(
-                response.rect,
-                ui.make_persistent_id(("row", item.id)),
-                egui::Sense::click(),
-            )
-            .clicked()
-        {
+        let interact_resp = ui.interact(
+            response.rect,
+            ui.make_persistent_id(("row", item.id)),
+            egui::Sense::click(),
+        );
+        if interact_resp.clicked() {
             self.selected = Some(item.id);
         }
+        interact_resp.context_menu(|ui| {
+            self.selected = Some(item.id);
+            let actions = actions_for(&item.status);
+            if actions.resume && ui.button(t!("gui.context.start")).clicked() {
+                Self::send(app, UiCommand::ResumeJob(item.id));
+                ui.close();
+            }
+            if actions.pause && ui.button(t!("gui.context.pause")).clicked() {
+                Self::send(app, UiCommand::PauseJob(item.id));
+                ui.close();
+            }
+            if actions.cancel && ui.button(t!("gui.context.cancel")).clicked() {
+                Self::send(app, UiCommand::CancelJob(item.id));
+                ui.close();
+            }
+            if actions.remove && ui.button(t!("gui.context.remove")).clicked() {
+                app.speeds.forget(item.id);
+                Self::send(app, UiCommand::RemoveJob(item.id));
+                ui.close();
+            }
+            ui.separator();
+            if ui.button(t!("gui.context.copy_url")).clicked() {
+                ui.ctx().copy_text(item.raw.url.clone());
+                ui.close();
+            }
+            if !item.save_to.is_empty() && ui.button(t!("gui.context.open_folder")).clicked() {
+                let _ = std::process::Command::new(if cfg!(target_os = "macos") {
+                    "open"
+                } else if cfg!(target_os = "windows") {
+                    "explorer"
+                } else {
+                    "xdg-open"
+                })
+                .arg(&item.save_to)
+                .spawn();
+                ui.close();
+            }
+        });
         ui.add_space(2.0);
     }
 
@@ -1090,7 +1211,7 @@ impl GuiApp {
             });
     }
 
-    /// The "add links" window: paste text, links are picked out of it.
+    /// The "add links" window: paste text, links are picked out of it, choose folder/package.
     fn add_dialog(&mut self, ctx: &egui::Context, app: &mut App) {
         if !self.add_open {
             return;
@@ -1099,10 +1220,12 @@ impl GuiApp {
         let mut text = std::mem::take(&mut self.add_text);
         let mut submit = false;
         let mut cancel = false;
+        let mut browse = false;
+
         egui::Window::new(t!("gui.add.title"))
             .open(&mut open)
             .collapsible(false)
-            .default_width(480.0)
+            .default_width(520.0)
             .anchor(egui::Align2::CENTER_CENTER, [0.0, -40.0])
             .show(ctx, |ui| {
                 ui.weak(t!("gui.add.hint"));
@@ -1111,6 +1234,40 @@ impl GuiApp {
                         .desired_rows(6)
                         .desired_width(f32::INFINITY),
                 );
+
+                ui.add_space(4.0);
+
+                // Save directory row
+                ui.horizontal(|ui| {
+                    ui.label(t!("gui.add.save_to"));
+                    ui.add(
+                        egui::TextEdit::singleline(&mut self.add_save_to)
+                            .desired_width(ui.available_width() - 80.0),
+                    );
+                    if ui.button(t!("gui.add.browse")).clicked() {
+                        browse = true;
+                    }
+                });
+
+                // Package & Comment row
+                ui.horizontal(|ui| {
+                    ui.label(t!("gui.add.package"));
+                    ui.add(
+                        egui::TextEdit::singleline(&mut self.add_package)
+                            .desired_width((ui.available_width() - 150.0).max(80.0)),
+                    );
+                    ui.label(t!("gui.add.comment"));
+                    ui.add(
+                        egui::TextEdit::singleline(&mut self.add_comment)
+                            .desired_width(ui.available_width()),
+                    );
+                });
+
+                // Checkbox: direct to queue or into link grabber
+                ui.checkbox(&mut self.add_direct, t!("gui.add.direct_to_queue"));
+
+                ui.add_space(6.0);
+
                 ui.horizontal(|ui| {
                     if ui.button(t!("gui.add.clipboard")).clicked() {
                         if let Ok(clip) = import::read_clipboard() {
@@ -1122,19 +1279,295 @@ impl GuiApp {
                     }
                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                         submit = ui.button(t!("gui.add.button")).clicked();
-                        cancel = ui.button(t!("gui.captcha.cancel")).clicked();
+                        cancel = ui.button(t!("gui.settings.cancel")).clicked();
                     });
                 });
             });
-        if submit && Self::add_links(app, &text) {
-            text.clear();
-            open = false;
+
+        if browse {
+            self.picker_target_settings = false;
+            let current = std::path::PathBuf::from(&self.add_save_to);
+            self.picker_path = if current.is_dir() {
+                current
+            } else {
+                dirs::download_dir().unwrap_or_else(|| std::path::PathBuf::from("."))
+            };
+            self.picker_open = true;
+        }
+
+        if submit {
+            let links = links_in(&text);
+            if !links.is_empty() {
+                if self.add_direct {
+                    if links.len() == 1 {
+                        Self::send(app, UiCommand::AddUrl(links[0].clone()));
+                    } else {
+                        Self::send(app, UiCommand::AddUrls(links));
+                    }
+                } else {
+                    let parsed: Vec<url::Url> = links
+                        .into_iter()
+                        .filter_map(|s| url::Url::parse(&s).ok())
+                        .collect();
+                    let source = if self.add_package.trim().is_empty() {
+                        LinkSource::Manual
+                    } else {
+                        LinkSource::File(self.add_package.trim().to_string())
+                    };
+                    app.grabber.add_links(source, parsed);
+                    self.tab = Tab::LinkGrabber;
+                }
+                text.clear();
+                open = false;
+            }
         }
         if cancel {
             open = false;
         }
         self.add_text = text;
         self.add_open = open;
+    }
+
+    /// Settings dialog with tabs: General, Network/Tor, Limits/Retries
+    fn settings_dialog(&mut self, ctx: &egui::Context, _app: &mut App) {
+        if !self.settings_open {
+            return;
+        }
+        let mut open = true;
+        let mut save = false;
+        let mut cancel = false;
+        let mut browse_download = false;
+        let mut browse_temp = false;
+
+        egui::Window::new(t!("gui.settings.title"))
+            .open(&mut open)
+            .collapsible(false)
+            .default_width(540.0)
+            .anchor(egui::Align2::CENTER_CENTER, [0.0, -20.0])
+            .show(ctx, |ui| {
+                ui.heading(t!("gui.settings.general"));
+                ui.horizontal(|ui| {
+                    ui.label(t!("gui.settings.download_dir"));
+                    let mut dir_str = self
+                        .settings_cfg
+                        .download_dir
+                        .as_ref()
+                        .map(|p| p.to_string_lossy().to_string())
+                        .unwrap_or_default();
+                    if ui.text_edit_singleline(&mut dir_str).changed() {
+                        self.settings_cfg.download_dir = if dir_str.trim().is_empty() {
+                            None
+                        } else {
+                            Some(std::path::PathBuf::from(dir_str.trim()))
+                        };
+                    }
+                    if ui.button(t!("gui.add.browse")).clicked() {
+                        browse_download = true;
+                    }
+                });
+
+                ui.horizontal(|ui| {
+                    ui.label(t!("gui.settings.temp_dir"));
+                    let mut temp_str = self
+                        .settings_cfg
+                        .temp_dir
+                        .as_ref()
+                        .map(|p| p.to_string_lossy().to_string())
+                        .unwrap_or_default();
+                    if ui.text_edit_singleline(&mut temp_str).changed() {
+                        self.settings_cfg.temp_dir = if temp_str.trim().is_empty() {
+                            None
+                        } else {
+                            Some(std::path::PathBuf::from(temp_str.trim()))
+                        };
+                    }
+                    if ui.button(t!("gui.add.browse")).clicked() {
+                        browse_temp = true;
+                    }
+                });
+
+                ui.checkbox(
+                    &mut self.settings_cfg.auto_extract,
+                    t!("gui.settings.auto_extract"),
+                );
+                ui.checkbox(
+                    &mut self.settings_cfg.extract_delete_archives,
+                    t!("gui.settings.extract_delete"),
+                );
+
+                ui.separator();
+                ui.heading(t!("gui.settings.network"));
+                ui.horizontal(|ui| {
+                    ui.label(t!("gui.settings.max_parts"));
+                    ui.add(egui::DragValue::new(&mut self.settings_cfg.max_parts).range(1..=32));
+                });
+                ui.horizontal(|ui| {
+                    ui.label(t!("gui.settings.log_level"));
+                    egui::ComboBox::from_id_salt("log_level")
+                        .selected_text(&self.settings_cfg.log_level)
+                        .show_ui(ui, |ui| {
+                            for lvl in ["error", "warn", "info", "debug", "trace"] {
+                                ui.selectable_value(
+                                    &mut self.settings_cfg.log_level,
+                                    lvl.to_string(),
+                                    lvl,
+                                );
+                            }
+                        });
+                });
+
+                ui.separator();
+                ui.heading(t!("gui.settings.limits"));
+                ui.horizontal(|ui| {
+                    ui.label(t!("gui.settings.max_concurrent_jobs"));
+                    ui.add(
+                        egui::DragValue::new(&mut self.settings_cfg.max_concurrent_jobs)
+                            .range(0..=100),
+                    );
+                });
+                ui.horizontal(|ui| {
+                    ui.label(t!("gui.settings.max_jobs_per_host"));
+                    ui.add(
+                        egui::DragValue::new(&mut self.settings_cfg.max_jobs_per_host)
+                            .range(0..=20),
+                    );
+                });
+                ui.horizontal(|ui| {
+                    ui.label(t!("gui.settings.max_speed"));
+                    ui.add(
+                        egui::DragValue::new(&mut self.settings_cfg.max_speed_kib)
+                            .range(0..=1_000_000),
+                    );
+                });
+                ui.horizontal(|ui| {
+                    ui.label(t!("gui.settings.min_speed"));
+                    ui.add(
+                        egui::DragValue::new(&mut self.settings_cfg.min_speed_kib)
+                            .range(0..=10_000),
+                    );
+                });
+                ui.horizontal(|ui| {
+                    ui.label(t!("gui.settings.max_retries"));
+                    ui.add(egui::DragValue::new(&mut self.settings_cfg.max_retries).range(0..=20));
+                });
+
+                ui.add_space(8.0);
+                ui.horizontal(|ui| {
+                    save = ui.button(t!("gui.settings.save")).clicked();
+                    cancel = ui.button(t!("gui.settings.cancel")).clicked();
+                });
+            });
+
+        if browse_download {
+            self.picker_target_settings = true;
+            let current = self.settings_cfg.download_dir.clone().unwrap_or_else(|| {
+                dirs::download_dir().unwrap_or_else(|| std::path::PathBuf::from("."))
+            });
+            self.picker_path = current;
+            self.picker_open = true;
+        } else if browse_temp {
+            self.picker_target_settings = true;
+            let current = self
+                .settings_cfg
+                .temp_dir
+                .clone()
+                .unwrap_or_else(std::env::temp_dir);
+            self.picker_path = current;
+            self.picker_open = true;
+        }
+
+        if save {
+            let path = crate::config::Config::config_path();
+            if let Some(parent) = path.parent() {
+                let _ = std::fs::create_dir_all(parent);
+            }
+            if let Ok(s) = toml::to_string_pretty(&self.settings_cfg) {
+                let _ = std::fs::write(&path, s);
+            }
+            open = false;
+        }
+        if cancel {
+            open = false;
+        }
+        self.settings_open = open;
+    }
+
+    /// File / directory picker dialog for selecting a folder.
+    fn picker_dialog(&mut self, ctx: &egui::Context) {
+        if !self.picker_open {
+            return;
+        }
+        let mut open = true;
+        let mut select = false;
+        let mut cancel = false;
+        let mut nav_up = false;
+        let mut nav_into: Option<std::path::PathBuf> = None;
+
+        egui::Window::new(t!("gui.picker.title"))
+            .open(&mut open)
+            .collapsible(false)
+            .default_width(460.0)
+            .anchor(egui::Align2::CENTER_CENTER, [0.0, 0.0])
+            .show(ctx, |ui| {
+                let path_display = self.picker_path.to_string_lossy().to_string();
+                ui.label(t!("gui.picker.current", path = path_display));
+
+                ui.horizontal(|ui| {
+                    if self.picker_path.parent().is_some()
+                        && ui.button(t!("gui.picker.up")).clicked()
+                    {
+                        nav_up = true;
+                    }
+                    select = ui.button(t!("gui.picker.select")).clicked();
+                    cancel = ui.button(t!("gui.settings.cancel")).clicked();
+                });
+
+                ui.separator();
+
+                egui::ScrollArea::vertical()
+                    .max_height(240.0)
+                    .show(ui, |ui| {
+                        if let Ok(entries) = std::fs::read_dir(&self.picker_path) {
+                            let mut dirs: Vec<std::path::PathBuf> = entries
+                                .filter_map(|e| e.ok())
+                                .map(|e| e.path())
+                                .filter(|p| p.is_dir())
+                                .collect();
+                            dirs.sort();
+                            for d in dirs {
+                                let name = d
+                                    .file_name()
+                                    .map(|n| n.to_string_lossy().to_string())
+                                    .unwrap_or_else(|| "/".into());
+                                if ui.button(format!("📁 {name}")).clicked() {
+                                    nav_into = Some(d);
+                                }
+                            }
+                        }
+                    });
+            });
+
+        if nav_up {
+            if let Some(parent) = self.picker_path.parent() {
+                self.picker_path = parent.to_path_buf();
+            }
+        }
+        if let Some(into) = nav_into {
+            self.picker_path = into;
+        }
+        if select {
+            let chosen = self.picker_path.to_string_lossy().to_string();
+            if self.picker_target_settings {
+                self.settings_cfg.download_dir = Some(self.picker_path.clone());
+            } else {
+                self.add_save_to = chosen;
+            }
+            open = false;
+        }
+        if cancel {
+            open = false;
+        }
+        self.picker_open = open;
     }
 
     /// A plugin asked for a captcha answer; the answer goes back through the model.
@@ -1197,6 +1630,8 @@ impl GuiApp {
 
         let ctx = ui.ctx().clone();
         self.add_dialog(&ctx, &mut a);
+        self.settings_dialog(&ctx, &mut a);
+        self.picker_dialog(&ctx);
         self.captcha_dialog(&ctx, &mut a);
     }
 }
@@ -1611,5 +2046,32 @@ mod tests {
             a.grabber.clear();
         }
         assert!(render(&mut gui, 1) > 0);
+    }
+
+    #[test]
+    fn dialogs_and_menus_render() {
+        let (app, _rx) = shared_app();
+        app.lock().unwrap().jobs = jobs_in_every_state();
+        let mut gui = GuiApp::new(app);
+
+        // Add dialog open
+        gui.add_open = true;
+        gui.add_text = "https://example.com/file.zip".into();
+        gui.add_package = "MyPackage".into();
+        gui.add_comment = "test comment".into();
+        gui.add_direct = true;
+        assert!(render(&mut gui, 2) > 0);
+        gui.add_open = false;
+
+        // Settings dialog open
+        gui.settings_open = true;
+        assert!(render(&mut gui, 2) > 0);
+        gui.settings_open = false;
+
+        // Picker dialog open
+        gui.picker_open = true;
+        gui.picker_path = std::env::temp_dir();
+        assert!(render(&mut gui, 2) > 0);
+        gui.picker_open = false;
     }
 }
