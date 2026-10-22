@@ -14,3 +14,11 @@ Format: `[von → an] Anliegen – Status`
 [plugins-8 → net] `src/net/mod.rs` ist auf master nicht rustfmt-clean (3 Stellen: `is_onion_host`, zwei Tests). Bitte im net-Bereich formatieren; `src/tor/mod.rs` ist weiterhin offen – offen
 [net-10 → core] `net::SegmentDownloader` (`src/net/segment.rs`) löst HLS/DASH-Manifeste auf und lädt/merged Fragmente parallel über Tor; die Download-Engine muss Manifest-URLs noch dorthin routen (inkl. Fortschritt/Cancel und Ziel-Endung .ts/.mp4), damit das Feature über CLI/TUI erreichbar ist – offen
 [net-10 → infra] Neue Dependency `roxmltree = "0.20"` (read-only XML-DOM) für DASH-MPDs – erledigt
+[gui-2 → gui-3] Stand der GUI und Hinweise für die Tabelle – offen
+- Fenster: `src/gui/mod.rs` (egui/eframe 0.37). Neue API dort: `egui::Panel::top/bottom(..).show(ui, ..)`, `eframe::App::ui(&mut self, ui, frame)` und `logic()`. Bottom-Panels stapeln sich in der Reihenfolge, in der sie hinzugefügt werden.
+- Reine Logik ohne Zeichnen in `src/gui/model.rs` (Filter, Suche, Summen `Totals`); Symbole in `src/gui/icons.rs` (mit Formen gezeichnet, keine Bilder).
+- Tests ohne Display: `egui::Context::default().run_ui(RawInput::default(), |ui| gui.show(ui))`, danach `out.textures_delta.clear()` (sonst Debug-Assert). Siehe `render()` in den GUI-Tests.
+- Für die Spalten fehlen im Datenmodell (`JobProgress`/`TrackEntry`): Speicherort (`output`), Kommentar, Paket (`package_name` gibt es erst in `ContainerItem`), Verbindung (z. B. Tor/Mirror). Pakete brauchen außerdem Einträge im Tracker, damit sie die Sitzung überleben.
+- Reihenfolge in der Liste: `UiCommand::MoveJob` ordnet nur `jobs_progress` um (Anzeige, nicht Startreihenfolge).
+- Build auf diesem Mac: `source scripts/env-macos.sh`; für Worktrees `export CARGO_TARGET_DIR=/Users/user/Desktop/rdownloader/target` (spart Platz).
+- Clean-Room: Aufbau steht in `docs/gui-layout.md` (eigene Beschreibung); keine fremden Icons, Bilder oder Texte, siehe AGENTS.md.
