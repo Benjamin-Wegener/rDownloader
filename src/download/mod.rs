@@ -12,7 +12,7 @@ use std::sync::Arc;
 use tokio::fs::{self, File, OpenOptions};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::sync::Mutex;
-use tracing::{error, info};
+use tracing::{error, info, warn};
 use uuid::Uuid;
 
 use crate::contract::{ByteRange, Transport};
@@ -24,6 +24,8 @@ pub mod checksum;
 pub mod conditional;
 pub mod extract;
 pub mod limiter;
+pub mod mirror;
+pub mod pieces;
 pub mod quarantine;
 pub mod resume;
 pub mod retry;
@@ -94,12 +96,19 @@ pub struct DownloadJob {
     /// A local copy to compare against (conditional download): when it is as new
     /// as the server's version, nothing is downloaded.
     pub existing_copy: Option<PathBuf>,
+    /// Further URLs of the same file; the engine picks one per part (see `mirror`).
+    pub mirrors: Vec<url::Url>,
+    /// Piece checksums for chunk-wise verification and repair after merging.
+    pub pieces: Option<pieces::PieceHashes>,
 }
 
 impl DownloadJob {
     pub fn new(url: url::Url, output: PathBuf, max_parts: usize) -> Self {
+        let hint = mirror::hints::lookup(&url);
         Self {
             id: Uuid::new_v4(),
+            mirrors: hint.as_ref().map(|h| h.mirrors.clone()).unwrap_or_default(),
+            pieces: hint.and_then(|h| h.pieces),
             url,
             output,
             max_parts: max_parts.clamp(1, 10),
@@ -223,18 +232,33 @@ fn part_isolation(job: Uuid, part_idx: usize) -> u64 {
     hasher.finish()
 }
 
+/// What one attempt at a part needs to know.
+struct PartSpec {
+    isolation: u64,
+    url: url::Url,
+    dest: PathBuf,
+    /// Inclusive byte range; `None` = whole file without a Range header.
+    range: Option<(u64, u64)>,
+    /// Size of the whole file; a mirror reporting another size is rejected.
+    expected_total: u64,
+}
+
 /// Downloads a part (byte range) through `transport` and writes it to `dest`.
 /// Supports resuming: if `dest` already contains data and ranges are supported,
 /// it continues at the existing end of the file.
 async fn download_part(
     transport: Arc<dyn Transport>,
-    isolation: u64,
-    url: url::Url,
-    dest: PathBuf,
-    range: Option<(u64, u64)>, // inclusive; None = whole file without a Range header
+    spec: PartSpec,
     bytes_done: Arc<AtomicU64>,
     part_bytes_done: &mut u64,
 ) -> Result<()> {
+    let PartSpec {
+        isolation,
+        url,
+        dest,
+        range,
+        expected_total,
+    } = spec;
     // Check whether data for this part already exists on disk (resume)
     let existing_len = if dest.exists() {
         tokio::fs::metadata(&dest)
@@ -293,6 +317,15 @@ async fn download_part(
         ));
     }
     let expected_len = response.head.content_length;
+    // A mirror with another file size serves a different file: its bytes must
+    // never be mixed into this download.
+    if response
+        .head
+        .total_size
+        .is_some_and(|t| t != expected_total)
+    {
+        return Err(mirror::MirrorMismatch.into());
+    }
 
     let mut file = OpenOptions::new()
         .create(true)
@@ -406,6 +439,89 @@ async fn merge_parts(parts: &[PathBuf], output: &Path, expected_total: u64) -> R
     Ok(())
 }
 
+/// Checks the merged file piece by piece and re-downloads damaged pieces from the
+/// mirrors (each fetched piece is verified before it is written). Fails if a
+/// piece cannot be repaired.
+async fn verify_and_repair_pieces(
+    output: &Path,
+    table: &pieces::PieceHashes,
+    total: u64,
+    can_range: bool,
+    transport: &dyn Transport,
+    selector: &mirror::MirrorSelector,
+    job_id: Uuid,
+) -> Result<()> {
+    use tokio::io::AsyncSeekExt;
+
+    let bad = pieces::bad_pieces(output, table, total).await?;
+    if bad.is_empty() {
+        info!("All {} pieces verified", table.hashes.len());
+        return Ok(());
+    }
+    warn!(
+        "{} of {} pieces are damaged, repairing",
+        bad.len(),
+        table.hashes.len()
+    );
+    if !can_range {
+        anyhow::bail!(t!(
+            "download.error.pieces_corrupt",
+            count = bad.len().to_string()
+        ));
+    }
+
+    let mut file = OpenOptions::new().write(true).open(output).await?;
+    let mut unrepaired = 0usize;
+    for index in bad {
+        let (start, end) = table.range(index, total);
+        let mut repaired = false;
+        // Every mirror gets a chance; a piece only counts when its hash matches.
+        for m in 0..selector.len() {
+            let range = ByteRange {
+                start,
+                end: Some(end - 1),
+            };
+            let isolation = part_isolation(job_id, 1000 + index);
+            let Ok(resp) = transport.get(selector.url(m), Some(range), isolation).await else {
+                continue;
+            };
+            let mut data = Vec::with_capacity((end - start) as usize);
+            let mut body = resp.body;
+            let mut failed = false;
+            while let Some(chunk) = body.next().await {
+                match chunk {
+                    Ok(c) => data.extend_from_slice(&c),
+                    Err(_) => {
+                        failed = true;
+                        break;
+                    }
+                }
+            }
+            if failed || data.len() as u64 != end - start {
+                continue;
+            }
+            if checksum::hash_bytes(table.algo, &data).eq_ignore_ascii_case(&table.hashes[index]) {
+                file.seek(std::io::SeekFrom::Start(start)).await?;
+                file.write_all(&data).await?;
+                repaired = true;
+                break;
+            }
+        }
+        if !repaired {
+            unrepaired += 1;
+        }
+    }
+    file.flush().await?;
+    if unrepaired > 0 {
+        anyhow::bail!(t!(
+            "download.error.pieces_corrupt",
+            count = unrepaired.to_string()
+        ));
+    }
+    info!("All damaged pieces repaired");
+    Ok(())
+}
+
 /// Runs a complete download job.
 pub async fn run_job(
     job: &DownloadJob,
@@ -435,7 +551,31 @@ pub async fn run_job_with(
         p.status = JobStatus::Resolving;
     }
 
-    let info = resolve_size(&*transport, &job.url).await?;
+    let mut all_urls = vec![job.url.clone()];
+    all_urls.extend(job.mirrors.iter().cloned());
+    let selector = Arc::new(mirror::MirrorSelector::new(all_urls));
+
+    // The first URL that answers decides size and validators; the others are
+    // checked against this size when they serve a part.
+    let mut resolved = None;
+    let mut last_error = None;
+    for i in 0..selector.len() {
+        match resolve_size(&*transport, selector.url(i)).await {
+            Ok(info) => {
+                resolved = Some(info);
+                break;
+            }
+            Err(e) => {
+                warn!("Could not resolve {}: {e:#}", selector.url(i));
+                selector.record_failure(i);
+                last_error = Some(e);
+            }
+        }
+    }
+    let info = match resolved {
+        Some(info) => info,
+        None => return Err(last_error.expect("at least one URL")),
+    };
     let total = info.total;
 
     if let Some(local) = &job.existing_copy {
@@ -547,12 +687,13 @@ pub async fn run_job_with(
         part_paths.push(dest.clone());
         let transport_c = transport.clone();
         let invalidate_c = invalidate.clone();
-        let url = job.url.clone();
+        let selector_c = selector.clone();
         let bd = bytes_done.clone();
         let cancel_c = cancel.clone();
         let progress_c = progress.clone();
         let handle = tokio::spawn(async move {
             let part_bytes = Arc::new(AtomicU64::new(0));
+            let last_mirror = Arc::new(std::sync::atomic::AtomicUsize::new(usize::MAX));
             let isolation = part_isolation(job_id, i);
             retry_policy
                 .retry_with_cancel(
@@ -560,22 +701,43 @@ pub async fn run_job_with(
                     |_attempt| {
                         let transport_c = transport_c.clone();
                         let invalidate_c = invalidate_c.clone();
-                        let url = url.clone();
+                        let selector_c = selector_c.clone();
+                        let last_mirror = last_mirror.clone();
                         let dest = dest.clone();
                         let bd = bd.clone();
                         let pb_arc = part_bytes.clone();
                         async move {
+                            let avoid = match last_mirror.load(Ordering::Relaxed) {
+                                usize::MAX => None,
+                                m => Some(m),
+                            };
+                            let mirror_idx = selector_c.pick(i, avoid);
+                            let url = selector_c.url(mirror_idx).clone();
                             let mut pb = pb_arc.load(Ordering::Relaxed);
-                            let res = download_part(
-                                transport_c.clone(),
+                            let (before, started) = (pb, std::time::Instant::now());
+                            let spec = PartSpec {
                                 isolation,
                                 url,
                                 dest,
                                 range,
-                                bd,
-                                &mut pb,
-                            )
-                            .await;
+                                expected_total: total,
+                            };
+                            let res = download_part(transport_c.clone(), spec, bd, &mut pb).await;
+                            match &res {
+                                Ok(()) => selector_c.record_success(
+                                    mirror_idx,
+                                    pb.saturating_sub(before),
+                                    started.elapsed().as_secs_f64(),
+                                ),
+                                Err(e) => {
+                                    if e.downcast_ref::<mirror::MirrorMismatch>().is_some() {
+                                        selector_c.ban(mirror_idx);
+                                    } else {
+                                        selector_c.record_failure(mirror_idx);
+                                    }
+                                    last_mirror.store(mirror_idx, Ordering::Relaxed);
+                                }
+                            }
                             if res.is_err() {
                                 // The circuit may have died mid-stream. Force a
                                 // fresh one for the retry that follows.
@@ -710,6 +872,25 @@ pub async fn run_job_with(
             return Err(e);
         }
         info!("Checksum verified: {expected}");
+    }
+
+    if let Some(table) = job.pieces.as_ref().filter(|p| p.fits(total)) {
+        if let Err(e) = verify_and_repair_pieces(
+            &job.output,
+            table,
+            total,
+            info.accepts_ranges,
+            &*transport,
+            &selector,
+            job_id,
+        )
+        .await
+        {
+            let _ = fs::remove_file(&job.output).await;
+            let mut p = progress.lock().await;
+            p.status = JobStatus::Failed(e.to_string());
+            return Err(e);
+        }
     }
 
     // Clean up temp files
@@ -1054,5 +1235,171 @@ mod tests {
         r.unwrap();
         assert!(get_count(&t) > 0);
         let _ = std::fs::remove_file(local);
+    }
+
+    // ── mirrors and piece repair ──
+
+    async fn run_job_with_mirrors(
+        transport: MockTransport,
+        primary: &str,
+        mirrors: &[&str],
+        pieces: Option<pieces::PieceHashes>,
+        parts: usize,
+    ) -> (Result<()>, Vec<u8>) {
+        let dir = std::env::temp_dir().join(format!("rdl-engine-{}", Uuid::new_v4()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let output = dir.join("out.bin");
+        let mut job = DownloadJob::new(url::Url::parse(primary).unwrap(), output.clone(), parts);
+        job.mirrors = mirrors
+            .iter()
+            .map(|m| url::Url::parse(m).unwrap())
+            .collect();
+        job.pieces = pieces;
+        let progress = Arc::new(Mutex::new(JobProgress {
+            id: job.id,
+            url: String::new(),
+            filename: String::new(),
+            total_bytes: 0,
+            bytes_done: 0,
+            parts: vec![],
+            status: JobStatus::Queued,
+        }));
+        let res = run_job_with(
+            &job,
+            Arc::new(transport),
+            Arc::new(|_| {}),
+            progress,
+            Arc::new(tokio::sync::Notify::new()),
+        )
+        .await;
+        let data = std::fs::read(&output).unwrap_or_default();
+        let _ = std::fs::remove_dir_all(&dir);
+        (res, data)
+    }
+
+    fn hosts_used(t: &MockTransport) -> std::collections::HashSet<String> {
+        t.requests()
+            .iter()
+            .filter_map(|r| match r {
+                crate::contract::RecordedRequest::Get {
+                    url,
+                    range: Some(_),
+                    ..
+                } => Some(url.host_str().unwrap().to_string()),
+                _ => None,
+            })
+            .collect()
+    }
+
+    #[tokio::test]
+    async fn parts_are_spread_over_mirrors() {
+        let data = payload(8_000);
+        let t = MockTransport::new()
+            .with_resource("http://a.test/f", MockResource::new(data.clone()))
+            .with_resource("http://b.test/f", MockResource::new(data.clone()));
+        let (r, got) =
+            run_job_with_mirrors(t.clone(), "http://a.test/f", &["http://b.test/f"], None, 4).await;
+        r.unwrap();
+        assert_eq!(got, data);
+        assert_eq!(hosts_used(&t).len(), 2, "both mirrors must serve parts");
+    }
+
+    #[tokio::test]
+    async fn dead_primary_is_replaced_by_a_mirror() {
+        let data = payload(5_000);
+        // Only the mirror exists; the primary answers with an error.
+        let t =
+            MockTransport::new().with_resource("http://b.test/f", MockResource::new(data.clone()));
+        let (r, got) =
+            run_job_with_mirrors(t, "http://a.test/f", &["http://b.test/f"], None, 3).await;
+        r.unwrap();
+        assert_eq!(got, data);
+    }
+
+    #[tokio::test]
+    async fn mirror_with_another_file_size_is_never_used() {
+        let data = payload(6_000);
+        let t = MockTransport::new()
+            .with_resource("http://a.test/f", MockResource::new(data.clone()))
+            .with_resource("http://evil.test/f", MockResource::new(payload(7_777)));
+        let (r, got) =
+            run_job_with_mirrors(t, "http://a.test/f", &["http://evil.test/f"], None, 4).await;
+        r.unwrap();
+        assert_eq!(
+            got, data,
+            "no byte of the wrong file may end up in the result"
+        );
+    }
+
+    fn piece_table(data: &[u8], length: usize) -> pieces::PieceHashes {
+        pieces::PieceHashes::new(
+            checksum::HashAlgo::Sha1,
+            length as u64,
+            data.chunks(length)
+                .map(|c| checksum::hash_bytes(checksum::HashAlgo::Sha1, c))
+                .collect(),
+        )
+        .unwrap()
+    }
+
+    #[tokio::test]
+    async fn damaged_pieces_are_repaired_from_another_mirror() {
+        let good = payload(4_000);
+        // Mirror a has the right size but wrong bytes in the first half, which is
+        // exactly the part it is asked for (part 0 goes to the first mirror).
+        let mut bad = good.clone();
+        bad[..2_000].iter_mut().for_each(|b| *b ^= 0xff);
+        let t = MockTransport::new()
+            .with_resource("http://a.test/f", MockResource::new(bad))
+            .with_resource("http://b.test/f", MockResource::new(good.clone()));
+        let table = piece_table(&good, 500);
+        let (r, got) = run_job_with_mirrors(
+            t.clone(),
+            "http://a.test/f",
+            &["http://b.test/f"],
+            Some(table),
+            2,
+        )
+        .await;
+        r.unwrap();
+        assert_eq!(got, good, "damaged pieces must have been replaced");
+        // Repair fetches single 500-byte pieces.
+        let piece_requests = t
+            .requests()
+            .iter()
+            .filter(|r| {
+                matches!(r, crate::contract::RecordedRequest::Get { range: Some(r), .. }
+                    if r.end.map(|e| e - r.start + 1) == Some(500))
+            })
+            .count();
+        assert!(
+            piece_requests >= 4,
+            "expected piece-wise repair requests, saw {piece_requests}"
+        );
+    }
+
+    #[tokio::test]
+    async fn unrepairable_pieces_fail_the_job_and_remove_the_file() {
+        let good = payload(2_000);
+        let mut bad = good.clone();
+        bad[0] ^= 0xff;
+        // The only mirror serves the damaged data.
+        let t = MockTransport::new().with_resource("http://a.test/f", MockResource::new(bad));
+        let table = piece_table(&good, 500);
+        let (r, got) = run_job_with_mirrors(t, "http://a.test/f", &[], Some(table), 1).await;
+        assert!(r.is_err());
+        assert!(
+            got.is_empty(),
+            "a file that fails verification must not stay behind"
+        );
+    }
+
+    #[test]
+    fn jobs_pick_up_import_hints() {
+        let primary = url::Url::parse("http://hinted.test/engine-hint").unwrap();
+        let mirror = url::Url::parse("http://mirror.test/engine-hint").unwrap();
+        mirror::hints::register(&primary, vec![mirror.clone()], None);
+        let job = DownloadJob::new(primary, PathBuf::from("/tmp/x"), 2);
+        assert_eq!(job.mirrors, vec![mirror]);
     }
 }

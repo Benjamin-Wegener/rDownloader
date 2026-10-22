@@ -128,6 +128,36 @@ impl Hasher {
     }
 }
 
+/// Hex digest of an in-memory buffer.
+pub fn hash_bytes(algo: HashAlgo, data: &[u8]) -> String {
+    let mut hasher = Hasher::new(algo);
+    hasher.update(data);
+    hasher.finish_hex()
+}
+
+/// Hex digest of `len` bytes of `path` starting at `offset` (the last piece of a
+/// file may be shorter; reading stops at the end of the file).
+pub async fn hash_range(path: &Path, algo: HashAlgo, offset: u64, len: u64) -> Result<String> {
+    use tokio::io::AsyncSeekExt;
+    let mut file = File::open(path)
+        .await
+        .with_context(|| format!("opening {path:?} for hashing"))?;
+    file.seek(std::io::SeekFrom::Start(offset)).await?;
+    let mut hasher = Hasher::new(algo);
+    let mut buf = vec![0u8; 64 * 1024];
+    let mut left = len;
+    while left > 0 {
+        let want = buf.len().min(left as usize);
+        let n = file.read(&mut buf[..want]).await?;
+        if n == 0 {
+            break;
+        }
+        hasher.update(&buf[..n]);
+        left -= n as u64;
+    }
+    Ok(hasher.finish_hex())
+}
+
 /// Streams `path` through the hash; never holds the whole file in memory.
 pub async fn hash_file(path: &Path, algo: HashAlgo) -> Result<String> {
     let mut file = File::open(path)

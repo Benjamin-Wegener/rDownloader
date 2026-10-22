@@ -505,6 +505,14 @@ const EN: &[(&str, &str)] = &[
         "Connection ended early: received {received} of {expected} bytes",
     ),
     (
+        "download.error.pieces_corrupt",
+        "{count} damaged piece(s) could not be repaired",
+    ),
+    (
+        "download.error.mirror_mismatch",
+        "Mirror serves a different file",
+    ),
+    (
         "download.error.read_timeout",
         "No data received for {secs} s",
     ),

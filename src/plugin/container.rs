@@ -11,6 +11,9 @@ use std::collections::HashMap;
 use std::path::Path;
 use url::Url;
 
+use crate::download::checksum::HashAlgo;
+use crate::download::pieces::PieceHashes;
+
 /// Represents a single file or link item extracted from an import container or list.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ContainerItem {
@@ -19,6 +22,10 @@ pub struct ContainerItem {
     pub filesize: Option<u64>,
     pub checksums: HashMap<String, String>, // e.g. "sha256" -> "..."
     pub package_name: Option<String>,
+    /// Further URLs of the same file (Metalink mirrors), best first.
+    pub mirrors: Vec<Url>,
+    /// Piece checksums (Metalink `<pieces>`) for chunk-wise verification and repair.
+    pub pieces: Option<PieceHashes>,
 }
 
 /// Result of container extraction.
@@ -106,6 +113,8 @@ pub fn parse_plain_text(text: &str) -> ContainerContent {
                             filesize: None,
                             checksums: HashMap::new(),
                             package_name: None,
+                            mirrors: Vec::new(),
+                            pieces: None,
                         });
                     }
                 }
@@ -176,86 +185,151 @@ impl<'a> MiniXmlReader<'a> {
     }
 }
 
+/// Priority of a Metalink `<url>`: lower is better (RFC 5854 `priority`, 1 = best).
+/// Metalink 3 `preference` (higher is better, 1-100) is mapped onto the same scale.
+fn url_priority(attrs: &HashMap<String, String>) -> u32 {
+    if let Some(p) = attrs.get("priority").and_then(|v| v.parse::<u32>().ok()) {
+        return p;
+    }
+    if let Some(p) = attrs.get("preference").and_then(|v| v.parse::<u32>().ok()) {
+        return 101u32.saturating_sub(p.min(100));
+    }
+    999_999
+}
+
+#[derive(Default)]
+struct MetalinkFile {
+    name: Option<String>,
+    size: Option<u64>,
+    checksums: HashMap<String, String>,
+    urls: Vec<(u32, Url)>,
+    piece_algo: Option<HashAlgo>,
+    piece_length: u64,
+    piece_hashes: Vec<String>,
+}
+
+impl MetalinkFile {
+    fn into_item(mut self, out: &mut ContainerContent) {
+        // Stable sort: URLs with the same priority keep their document order.
+        self.urls.sort_by_key(|(priority, _)| *priority);
+        let mut urls: Vec<Url> = Vec::new();
+        for (_, url) in self.urls {
+            if !urls.contains(&url) {
+                urls.push(url);
+            }
+        }
+        if urls.is_empty() {
+            out.skipped += 1;
+            return;
+        }
+        let url = urls.remove(0);
+        let filename = self.name.or_else(|| {
+            url.path_segments()
+                .and_then(|mut s| s.next_back())
+                .filter(|s| !s.is_empty())
+                .map(str::to_string)
+        });
+        let pieces = self
+            .piece_algo
+            .and_then(|algo| PieceHashes::new(algo, self.piece_length, self.piece_hashes));
+        out.items.push(ContainerItem {
+            url,
+            filename,
+            filesize: self.size,
+            checksums: self.checksums,
+            package_name: None,
+            mirrors: urls,
+            pieces,
+        });
+    }
+}
+
 /// Parses RFC 5854 Metalink XML documents (.metalink, .meta4).
+///
+/// All `<url>` entries of one `<file>` become **one** item: the best URL plus its
+/// mirrors. Hashes inside `<pieces>` are piece checksums and never replace the
+/// whole-file hash.
 pub fn parse_metalink(xml: &str) -> Result<ContainerContent> {
     let mut out = ContainerContent::default();
     let mut reader = MiniXmlReader::new(xml);
 
-    let mut current_file: Option<ContainerItem> = None;
+    let mut current: Option<MetalinkFile> = None;
+    let mut in_pieces = false;
 
     while let Some((tag, is_closing, attrs, text)) = reader.next_tag() {
-        if !is_closing {
+        if is_closing {
             match tag.as_str() {
+                "pieces" => in_pieces = false,
                 "file" => {
-                    let filename = attrs.get("name").cloned();
-                    current_file = Some(ContainerItem {
-                        url: Url::parse("http://invalid.placeholder")?, // temporary
-                        filename,
-                        filesize: None,
-                        checksums: HashMap::new(),
-                        package_name: None,
-                    });
-                }
-                "filename" => {
-                    if let Some(ref mut file) = current_file {
-                        if !text.is_empty() {
-                            file.filename = Some(text.clone());
-                        }
-                    }
-                }
-                "size" => {
-                    if let Some(ref mut file) = current_file {
-                        if let Ok(size) = text.parse::<u64>() {
-                            file.filesize = Some(size);
-                        }
-                    }
-                }
-                "hash" => {
-                    let hash_type = attrs
-                        .get("type")
-                        .cloned()
-                        .unwrap_or_else(|| "sha256".into())
-                        .to_ascii_lowercase();
-                    if !text.is_empty() {
-                        if let Some(ref mut file) = current_file {
-                            file.checksums.insert(hash_type, text.clone());
-                        }
-                    }
-                }
-                "url" => {
-                    if let Ok(parsed_url) = Url::parse(&text) {
-                        if parsed_url.host_str().is_some() {
-                            if let Some(ref file) = current_file {
-                                let mut item = file.clone();
-                                item.url = parsed_url;
-                                if item.filename.is_none() {
-                                    item.filename = item
-                                        .url
-                                        .path_segments()
-                                        .and_then(|mut s| s.next_back())
-                                        .map(|s| s.to_string());
-                                }
-                                out.items.push(item);
-                            } else {
-                                out.items.push(ContainerItem {
-                                    url: parsed_url,
-                                    filename: None,
-                                    filesize: None,
-                                    checksums: HashMap::new(),
-                                    package_name: None,
-                                });
-                            }
-                        } else {
-                            out.skipped += 1;
-                        }
-                    } else if !text.is_empty() {
-                        out.skipped += 1;
+                    if let Some(file) = current.take() {
+                        file.into_item(&mut out);
                     }
                 }
                 _ => {}
             }
-        } else if tag == "file" {
-            current_file = None;
+            continue;
+        }
+        match tag.as_str() {
+            "file" => {
+                current = Some(MetalinkFile {
+                    name: attrs.get("name").cloned(),
+                    ..Default::default()
+                });
+            }
+            "filename" => {
+                if let (Some(file), false) = (current.as_mut(), text.is_empty()) {
+                    file.name = Some(text);
+                }
+            }
+            "size" => {
+                if let (Some(file), Ok(size)) = (current.as_mut(), text.parse::<u64>()) {
+                    file.size = Some(size);
+                }
+            }
+            "pieces" => {
+                in_pieces = true;
+                if let Some(file) = current.as_mut() {
+                    file.piece_algo = attrs.get("type").and_then(|t| t.parse().ok());
+                    file.piece_length = attrs
+                        .get("length")
+                        .and_then(|l| l.parse().ok())
+                        .unwrap_or(0);
+                }
+            }
+            "hash" => {
+                if text.is_empty() {
+                    continue;
+                }
+                if let Some(file) = current.as_mut() {
+                    if in_pieces {
+                        file.piece_hashes.push(text.to_ascii_lowercase());
+                    } else {
+                        let hash_type = attrs
+                            .get("type")
+                            .cloned()
+                            .unwrap_or_else(|| "sha256".into())
+                            .to_ascii_lowercase();
+                        file.checksums.insert(hash_type, text);
+                    }
+                }
+            }
+            "url" => match Url::parse(&text) {
+                Ok(url) if url.host_str().is_some() => match current.as_mut() {
+                    Some(file) => file.urls.push((url_priority(&attrs), url)),
+                    None => out.items.push(ContainerItem {
+                        url,
+                        filename: None,
+                        filesize: None,
+                        checksums: HashMap::new(),
+                        package_name: None,
+                        mirrors: Vec::new(),
+                        pieces: None,
+                    }),
+                },
+                _ if !text.is_empty() => out.skipped += 1,
+                _ => {}
+            },
+            _ => {}
         }
     }
 
@@ -401,6 +475,8 @@ pub fn parse_dlc_xml(xml: &str) -> Result<ContainerContent> {
                                 filesize: current_size,
                                 checksums: HashMap::new(),
                                 package_name: current_package.clone(),
+                                mirrors: Vec::new(),
+                                pieces: None,
                             });
                         } else {
                             out.skipped += 1;
@@ -518,7 +594,8 @@ mod tests {
         </metalink>"#;
 
         let content = parse_metalink(sample).expect("valid metalink");
-        assert_eq!(content.items.len(), 2);
+        assert_eq!(content.items.len(), 1, "mirrors belong to one item");
+        assert_eq!(content.items[0].mirrors.len(), 1);
         assert_eq!(
             content.items[0].filename.as_deref(),
             Some("ubuntu-22.04.iso")
@@ -581,5 +658,70 @@ mod tests {
             ContainerFormat::detect(Path::new("links.txt"), b"https://test.org\n"),
             ContainerFormat::PlainText
         );
+    }
+
+    #[test]
+    fn metalink_groups_urls_by_priority_and_keeps_piece_hashes() {
+        let h1 = "a".repeat(40);
+        let h2 = "b".repeat(40);
+        let whole = "c".repeat(64);
+        let sample = format!(
+            r#"<metalink xmlns="urn:ietf:params:xml:ns:metalink">
+              <file name="big.iso">
+                <size>20</size>
+                <hash type="sha-256">{whole}</hash>
+                <pieces length="10" type="sha-1"><hash>{h1}</hash><hash>{h2}</hash></pieces>
+                <url priority="3">http://slow.test/big.iso</url>
+                <url priority="1">http://best.test/big.iso</url>
+                <url priority="2">http://mid.test/big.iso</url>
+                <url priority="2">http://best.test/big.iso</url>
+              </file>
+              <file name="other.bin"><url>http://only.test/other.bin</url></file>
+            </metalink>"#
+        );
+        let content = parse_metalink(&sample).unwrap();
+        assert_eq!(content.items.len(), 2);
+
+        let big = &content.items[0];
+        assert_eq!(big.url.as_str(), "http://best.test/big.iso");
+        let mirrors: Vec<_> = big.mirrors.iter().map(|u| u.as_str()).collect();
+        assert_eq!(
+            mirrors,
+            ["http://mid.test/big.iso", "http://slow.test/big.iso"]
+        );
+        // Piece hashes must not replace the whole-file hash.
+        assert_eq!(big.checksums.get("sha-256"), Some(&whole));
+        let pieces = big.pieces.as_ref().expect("pieces parsed");
+        assert_eq!((pieces.length, pieces.hashes.len()), (10, 2));
+        assert!(pieces.fits(20));
+
+        assert!(content.items[1].mirrors.is_empty() && content.items[1].pieces.is_none());
+    }
+
+    #[test]
+    fn metalink_with_invalid_piece_table_ignores_the_pieces() {
+        let sample = r#"<metalink><file name="f"><pieces length="10" type="sha-1"><hash>tooshort</hash></pieces>
+            <url>http://a.test/f</url></file></metalink>"#;
+        let content = parse_metalink(sample).unwrap();
+        assert_eq!(content.items.len(), 1);
+        assert!(content.items[0].pieces.is_none());
+    }
+
+    #[test]
+    fn metalink_file_without_usable_url_is_skipped() {
+        let content =
+            parse_metalink(r#"<metalink><file name="f"><url>not a url</url></file></metalink>"#)
+                .unwrap();
+        assert!(content.items.is_empty());
+        assert!(content.skipped >= 1);
+    }
+
+    #[test]
+    fn metalink3_preference_is_mapped_to_priority() {
+        let sample = r#"<metalink><file name="f">
+            <url preference="10">http://low.test/f</url>
+            <url preference="90">http://high.test/f</url></file></metalink>"#;
+        let item = &parse_metalink(sample).unwrap().items[0];
+        assert_eq!(item.url.as_str(), "http://high.test/f");
     }
 }

@@ -17,6 +17,7 @@ no code was taken from it. JDownloader's Java plugins cannot be loaded.
 - Multi-part downloads (1-10 parts) with automatic fallback to one connection when the server has no `Accept-Ranges`
 - Retries with backoff per part, and resume of partial downloads (ETag / Last-Modified are validated)
 - Optional checksum verification (MD5, SHA-1, SHA-256, SHA-512) when a hash is known
+- Mirrors: a Metalink file lists several URLs per file; parts are spread over them, faster mirrors are preferred, dead or wrong ones are dropped. Metalink piece checksums find damaged chunks, which are repaired from another mirror
 - Global speed limit (`max_speed_kib`)
 - Terminal UI: queue with live progress, per-job details (parts, speed, ETA, Tor state), pause / resume / cancel / remove
 - Batch import of links from a text or M3U file, or from the clipboard

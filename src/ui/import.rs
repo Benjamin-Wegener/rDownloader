@@ -63,6 +63,14 @@ pub fn import_file(path: &Path) -> Result<Import> {
         );
     }
     let container = crate::plugin::container::import_container_file(path)?;
+    // Mirrors and piece checksums travel to the job through the hint table.
+    for item in &container.items {
+        crate::download::mirror::hints::register(
+            &item.url,
+            item.mirrors.clone(),
+            item.pieces.clone(),
+        );
+    }
     Ok(Import {
         urls: container.urls(),
         skipped: container.skipped,

@@ -124,7 +124,7 @@ Abgleich mit aria2, JDownloader, yt-dlp und der Arti-Dokumentation. Reihenfolge 
 **Download-Kern**
 - [x] 🟠 Langsame Verbindungen kappen und neu aufbauen (`lowest-speed-limit`-Prinzip), bei Tor besonders nützlich (core-12)
 - [x] 🟢 Bedingtes Laden (Vergleich mit `Last-Modified` aus dem Größen-Request, `conditional_get`) (core-12)
-- [ ] 🟠 Mirrors: mehrere URLs pro Datei, Auswahl nach Geschwindigkeit; Metalink-Block-Prüfsummen (core-13)
+- [x] 🟠 Mirrors: mehrere URLs pro Datei (Verteilung auf die Parts, Auswahl nach gemessener Geschwindigkeit, Ausfall-/Falsch-Erkennung); Metalink-Stückprüfsummen mit Reparatur defekter Stücke (core-13)
 - [ ] 🟢 Ereignis-Hooks bei Start/Fertig/Fehler und Desktop-Benachrichtigung (core-14)
 - [x] 🟢 `~/.netrc`-Zugangsdaten und Cookie-Import aus Browsern (Firefox/Chromium/Netscape, plugins-8)
 
