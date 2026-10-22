@@ -149,12 +149,12 @@ Was automatisch geprüft ist und was noch **nicht** am echten System gesehen wur
 
 **Geprüft (CI-relevant):** `cargo fmt --check`, `clippy -D warnings`, 240 Unit-Tests + Integrationstests (Harness-Server, Kill + Resume + Hash), Release-Build (macOS arm64). Die Engine ist Ende-zu-Ende gegen den `MockTransport` getestet (Mehrteiler, Server ohne Ranges, Verbindungsabbruch mit Retry, zu kurzer Body). FTP läuft gegen einen lokalen Test-Server.
 
-**Live geprüft:** HEAD auf einen echten `.onion`-Dienst über Tor (`tests/live_onion.rs`, einmalig, 231 s inkl. Bootstrap).
-
-**Fund aus dem Live-Test (2026-10-22):** Der erste echte Download scheiterte an „Content-Length missing“: Cloudflare-Server senden auf HEAD keine Größe und bedienen keine Ranges. Behoben – Downloads ohne bekannte Größe laufen jetzt über eine Verbindung (Fortschritt in Bytes, Größe nach dem Ende bekannt).
+**Live geprüft (2026-10-22, Release-Binary über das echte Tor-Netz):**
+- HEAD auf einen echten `.onion`-Dienst (`tests/live_onion.rs`).
+- HTTPS-Download ohne bekannte Größe (`rfc9110.txt`, 502 941 Bytes): Hash identisch mit einer direkten Kopie.
+- HTTPS-Download mit 4 Parts und Ranges (`hello-2.12.1.tar.gz`, 1 033 297 Bytes): Hash identisch, Archiv gültig; ein echter Timeout wurde per Retry mit frischem Circuit aufgefangen.
 
 **Noch nicht live geprüft:**
-- [ ] 🔴 Kompletter Download (HTTPS, mehrere Parts) über das echte Tor-Netz mit dem Release-Binary. Der Versuch am 2026-10-22 scheiterte schon im Tor-Bootstrap (Verbindungen zu den Verzeichnisservern liefen in Timeouts bzw. wurden abgelehnt) – am Netz der Testumgebung, nicht nachweislich am Code. Die Engine wurde zuvor auf den `Transport`-Vertrag umgebaut (Parts liefen vorher ohne TLS), deshalb ist dieser Test wichtig
 - [ ] 🟠 FTP gegen einen echten Server über Tor
 - [ ] 🟠 RAR-Entpacken mit `unrar`/`7zz` (auf der Entwicklungsmaschine ist keins installiert)
 - [ ] 🟠 TUI im echten Terminal: Detail-Ansicht, Import (`i`/`v`), LinkGrabber
