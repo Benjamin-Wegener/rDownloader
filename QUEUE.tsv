@@ -48,3 +48,6 @@ net-9	net	FTP/SFTP ueber Tor	net-8
 net-10	net	HLS/DASH: Segment-Downloads (parallele Fragmente, Zusammenfuegen)	net-9
 plugins-8	plugins	netrc-Zugangsdaten + Cookie-Import (Firefox/Chromium/Netscape-Format)	plugins-7
 net-11	net	SFTP (SSH-Client mit Host-Key-Pruefung) und FTPS ueber Tor	net-10
+gui-1	gui	Web-GUI vom Daemon ausgeliefert (Queue, Hinzufuegen, Steuerung, Tor-Status), --gui oeffnet den Browser; CSRF-/DNS-Rebinding-Schutz fuer die API	net-7
+gui-2	gui	Web-GUI ausbauen: Details je Download, History, Einstellungen, LinkGrabber	gui-1
+gui-3	gui	Native App: Fenster um die Web-GUI (Tauri/wry), Tray, Autostart	gui-2

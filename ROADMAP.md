@@ -139,7 +139,11 @@ Abgleich mit aria2, JDownloader, yt-dlp und der Arti-Dokumentation. Reihenfolge 
   - [x] Queue-Liste, Status, Hinzufügen, Pause/Resume/Cancel/Remove über `POST /rpc` und `/api/jobs`
   - [x] Optionaler Bearer-Token (`rpc_token`), Loopback-Bindung ohne Token erzwungen
   - [ ] WebSocket-Unterstützung für Live-Events
-- [ ] 🟢 GUI-Entscheidung: egui vs. Tauri vs. Browser-WebUI
+- [ ] 🟠 **Grafische Oberfläche** (Nutzerwunsch 2026-10-22: GUI statt TUI). Entscheidung: zuerst eine **Web-GUI**, die der Daemon selbst ausliefert (keine neuen schweren Abhängigkeiten, läuft auf macOS/Linux/Windows und per Fernzugriff, wiederverwendbar in einem Fenster-Wrapper). Danach optional eine native App darum.
+  - [ ] gui-1: Seite mit Queue, Hinzufügen, Pause/Resume/Abbrechen/Entfernen, Tor-Status; `--gui` startet den Daemon und öffnet den Browser; Schutz der API gegen fremde Webseiten (Host-/Origin-/Content-Type-Prüfung)
+  - [ ] gui-2: Details je Download, History, Einstellungen, LinkGrabber
+  - [ ] gui-3: native App-Hülle (Tauri/wry), Tray, Autostart
+- [x] ⛔ GUI-Entscheidung egui vs. Tauri vs. Browser-WebUI: Web-GUI zuerst (siehe oben); egui verworfen (große Abhängigkeiten, doppelte Oberfläche)
 - [ ] 🟢 Tray-Integration, Browser-Extension-Brücke
 
 ---
