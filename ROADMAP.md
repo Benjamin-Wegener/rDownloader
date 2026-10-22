@@ -113,6 +113,7 @@ CI früh starten (parallel zu M1), Rest nach M2.
 Abgleich mit aria2, JDownloader, yt-dlp und der Arti-Dokumentation. Reihenfolge = Priorität.
 
 **Sicherheit**
+- [ ] 🔴 **Daemon-API gegen fremde Webseiten absichern** (net-12): Ohne Token kann jede im Browser geöffnete Seite per `fetch` an `127.0.0.1:8765` Downloads einreihen (kein Host-/Origin-/Content-Type-Check, JSON wird auch bei `text/plain` gelesen) und per DNS-Rebinding die Queue lesen. Nötig: Host-Header muss lokal sein, ändernde Anfragen brauchen `application/json` und gleiche Herkunft, Sicherheits-Header, Doku für `curl`-Nutzer
 - [x] 🔴 **Zentraler Dateinamen-Bereiniger** für alle Quellen: Namen aus Plugins, `.dlc`/`.metalink` und URL werden ungeprüft an den Download-Ordner gehängt (`main.rs`, `dl_dir.join(&filename)`); nur `Content-Disposition` wird bereinigt. Dazu Windows-Reservenamen und automatisches Umbenennen bei Kollision (core-9)
 - [x] 🟠 macOS-Quarantäne-Attribut `com.apple.quarantine` auf fertige Downloads, damit Gatekeeper sie prüft (core-11)
 - [x] 🟠 Freien Speicher vor dem Start prüfen und Zieldatei vorab reservieren (core-10)

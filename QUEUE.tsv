@@ -51,3 +51,4 @@ net-11	net	SFTP (SSH-Client mit Host-Key-Pruefung) und FTPS ueber Tor	net-10
 gui-1	gui	Web-GUI vom Daemon ausgeliefert (Queue, Hinzufuegen, Steuerung, Tor-Status), --gui oeffnet den Browser; CSRF-/DNS-Rebinding-Schutz fuer die API	net-7
 gui-2	gui	Web-GUI ausbauen: Details je Download, History, Einstellungen, LinkGrabber	gui-1
 gui-3	gui	Native App: Fenster um die Web-GUI (Tauri/wry), Tray, Autostart	gui-2
+net-12	net	Daemon-API absichern gegen fremde Webseiten (CSRF/DNS-Rebinding): Host-/Origin-/Content-Type-Pruefung ohne Token, Sicherheits-Header, Tests	net-7
