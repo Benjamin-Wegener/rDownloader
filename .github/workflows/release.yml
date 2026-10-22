@@ -27,7 +27,7 @@ jobs:
             target: aarch64-apple-darwin
             artifact_name: rdownloader
             asset_name: rdownloader-aarch64-apple-darwin
-          - os: macos-13
+          - os: macos-15-intel
             target: x86_64-apple-darwin
             artifact_name: rdownloader
             asset_name: rdownloader-x86_64-apple-darwin
@@ -108,5 +108,7 @@ jobs:
       - name: Publish GitHub Release
         uses: softprops/action-gh-release@v2
         with:
+          name: rDownloader ${{ github.ref_name }} (alpha)
+          body_path: docs/release-v0.1.0.md
+          prerelease: true
           files: release-assets/*
-          generate_release_notes: true
