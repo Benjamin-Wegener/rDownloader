@@ -146,7 +146,7 @@ Abgleich mit aria2, JDownloader, yt-dlp und der Arti-Dokumentation. Reihenfolge 
 
 **Protokolle & Inhalte**
 - [x] 🟢 FTP über Tor (unverschlüsselt; Passiv-Modus, Resume, pro Part eigene Isolation) (net-9)
-- [ ] 🟢 SFTP über Tor (SSH-Client, Host-Key-Prüfung) und FTPS (net-11)
+- [x] 🟢 SFTP über Tor (SSH-Client, Host-Key-Prüfung) und FTPS (net-11)
 - [x] 🟢 HLS/DASH-Segment-Downloader in `src/net/segment.rs` (eigene Parser, parallele Fragmente, Merge; DRM/verschlüsselte Streams abgelehnt) (net-10)
 - [ ] 🟠 HLS/DASH **in die Engine einbinden**: Der Downloader wird bisher von keiner Stelle aufgerufen, Manifest-URLs laufen noch als normale Dateien durch (core-15)
 - [ ] ⛔ BitTorrent/Magnet: bewusst nicht im Umfang (über Tor unüblich, anderes Bedrohungsmodell)
@@ -226,7 +226,7 @@ Erledigt (infra-4): `reqwest` (inkl. `socks`), `indicatif` und `thiserror` entfe
 - Manche Hoster brauchen JS zum Link-Auflösen – ohne Browser-Engine nicht sauber lösbar; Workaround: vorberechnete Endpunkte oder manuelle Eingabe.
 - Tor ist langsam – 10 Parallel-Circuits helfen nur, wenn der Hoster Ranges erlaubt und nicht der Guard der Flaschenhals ist.
 - FTP über Tor: Server, die den Datenkanal nur von derselben IP wie den Steuerkanal annehmen (z. B. vsftpd mit Standardeinstellung), lehnen Verbindungen ab, wenn Tor beide Streams über verschiedene Exits schickt (`425 Bad IP connecting`). Das ist Glückssache pro Versuch; die Retries lösen es meist nach 1-2 Versuchen, ein Download kann dadurch länger dauern oder bei Pech scheitern.
-- FTP (`ftp://`) ist unverschlüsselt: Login und Daten sind für das Exit-Relay lesbar. SFTP/FTPS fehlen noch.
+- FTP (`ftp://`) ist unverschlüsselt: Login und Daten sind für das Exit-Relay lesbar. Dafür gibt es FTPS (`ftps://`/`ftpes://`) und SFTP (`sftp://`); SFTP prüft den Host-Key gegen `~/.ssh/known_hosts` und lehnt unbekannte Schlüssel ab.
 - `--no-tor` startet nur die Oberfläche; Downloads laufen ohne Tor bewusst nicht (kein direkter Fallback).
 - Arti hat noch keine volle C-Tor-Parität (Relay-Mode etc.); als Client produktionsreif (v2.7+).
 

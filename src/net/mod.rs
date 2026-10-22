@@ -39,6 +39,7 @@ pub mod hls;
 pub mod router;
 pub mod rpc;
 pub mod segment;
+pub mod sftp;
 pub mod transport;
 
 mod disposition;
@@ -84,6 +85,15 @@ pub fn tls_config() -> Arc<ClientConfig> {
     Arc::new(config)
 }
 
+/// TLS configuration without ALPN, for protocols that do not use it (FTPS).
+pub fn tls_config_no_alpn() -> Arc<ClientConfig> {
+    Arc::new(
+        ClientConfig::builder()
+            .with_root_certificates(root_store())
+            .with_no_client_auth(),
+    )
+}
+
 fn server_name(host: &str) -> Result<ServerName<'static>> {
     let host = bare_host(host);
     ServerName::try_from(host.to_owned())
@@ -118,6 +128,11 @@ impl TlsConnector {
         Self {
             inner: RustlsConnector::from(config),
         }
+    }
+
+    /// Connector for FTP over TLS (no ALPN).
+    pub fn for_ftp() -> Self {
+        Self::with_config(tls_config_no_alpn())
     }
 
     /// Performs the TLS handshake over an already open byte stream.

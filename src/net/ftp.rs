@@ -1,12 +1,15 @@
 //! FTP client over Tor streams, exposed as a [`Transport`].
 //!
-//! Plain FTP (RFC 959) with passive mode only. Every FTP command goes through the
-//! same [`StreamProvider`] as HTTP, so nothing is resolved or connected outside
-//! Tor, and each part uses its own isolation group.
+//! Plain FTP (RFC 959) and FTPS (RFC 4217) with passive mode only. Every FTP
+//! command goes through the same [`StreamProvider`] as HTTP, so nothing is
+//! resolved or connected outside Tor, and each part uses its own isolation group.
+//! `ftps://` uses implicit TLS (port 990, as in `curl`), `ftpes://` explicit TLS
+//! (`AUTH TLS` on port 21). Certificates are checked against the WebPKI roots.
 //!
 //! Security notes:
-//! - **No encryption.** User name, password and data cross the exit relay in the
-//!   clear (FTPS/SFTP are separate features). A warning is logged for every login.
+//! - **Plain `ftp://` is not encrypted.** User name, password and data cross the
+//!   exit relay in the clear. A warning is logged for every login. Use `ftps://`
+//!   or `ftpes://` (or `sftp://`) where the server supports it.
 //! - The address a server returns for passive mode is **ignored**: the data
 //!   connection always goes to the host of the URL. Otherwise a server could make
 //!   the client connect to arbitrary hosts.
@@ -24,13 +27,31 @@ use tokio::io::{AsyncBufReadExt, AsyncReadExt, AsyncWriteExt, BufReader};
 use tracing::warn;
 use url::Url;
 
-use super::StreamProvider;
+use super::{StreamProvider, TlsConnector};
 use crate::contract::{ByteRange, Response, ResponseHead, Transport};
+use crate::t;
 use crate::tor::{AsyncReadWrite, TorManager};
 
 const MAX_REPLY_LINE: u64 = 8 * 1024;
 const MAX_REPLY_LINES: usize = 200;
 const DATA_CHUNK: usize = 16 * 1024;
+
+/// Transport protection of an FTP URL.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum FtpSecurity {
+    /// `ftp://`: everything in the clear.
+    Plain,
+    /// `ftpes://`: `AUTH TLS` after the greeting (port 21).
+    ExplicitTls,
+    /// `ftps://`: TLS from the first byte (port 990).
+    ImplicitTls,
+}
+
+impl FtpSecurity {
+    fn uses_tls(self) -> bool {
+        !matches!(self, Self::Plain)
+    }
+}
 
 /// Where and how to log in, taken from an `ftp://` URL.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -40,6 +61,7 @@ pub struct FtpTarget {
     pub user: String,
     pub pass: String,
     pub path: String,
+    pub security: FtpSecurity,
 }
 
 fn decode(s: &str) -> Result<String> {
@@ -57,10 +79,16 @@ fn check_line_safe(what: &str, value: &str) -> Result<()> {
 }
 
 pub fn parse_target(url: &Url) -> Result<FtpTarget> {
-    if url.scheme() != "ftp" {
-        bail!("not an ftp:// URL: {url}");
-    }
-    let host = url.host_str().context("FTP URL without host")?.to_string();
+    let (security, default_port) = match url.scheme() {
+        "ftp" => (FtpSecurity::Plain, 21),
+        "ftpes" => (FtpSecurity::ExplicitTls, 21),
+        "ftps" => (FtpSecurity::ImplicitTls, 990),
+        other => bail!(t!("net.error.ftp_scheme", scheme = other)),
+    };
+    let host = url
+        .host_str()
+        .context(t!("net.error.url_without_host"))?
+        .to_string();
     let user = match url.username() {
         "" => "anonymous".to_string(),
         u => decode(u)?,
@@ -75,10 +103,11 @@ pub fn parse_target(url: &Url) -> Result<FtpTarget> {
     check_line_safe("path", &path)?;
     Ok(FtpTarget {
         host,
-        port: url.port().unwrap_or(21),
+        port: url.port().unwrap_or(default_port),
         user,
         pass,
         path,
+        security,
     })
 }
 
@@ -158,6 +187,18 @@ impl Control {
         bail!("FTP reply too long")
     }
 
+    /// Replaces the plain control stream with a TLS one (explicit FTPS).
+    async fn into_tls(self, tls: &TlsConnector, host: &str) -> Result<Self> {
+        let io = self.io.into_inner();
+        let io = tls
+            .connect(io, host)
+            .await
+            .with_context(|| t!("net.error.ftps_tls", host = host))?;
+        Ok(Self {
+            io: BufReader::new(Box::new(io)),
+        })
+    }
+
     async fn cmd(&mut self, line: &str) -> Result<(u16, String)> {
         self.io.write_all(line.as_bytes()).await?;
         self.io.write_all(b"\r\n").await?;
@@ -178,29 +219,71 @@ impl Control {
 
 pub struct FtpTransport {
     provider: Arc<dyn StreamProvider>,
+    tls: TlsConnector,
 }
 
 impl FtpTransport {
     pub fn new(tor: Arc<TorManager>) -> Self {
-        Self { provider: tor }
+        Self::with_provider_and_tls(tor, TlsConnector::for_ftp())
     }
 
     pub fn with_provider(provider: Arc<dyn StreamProvider>) -> Self {
-        Self { provider }
+        Self::with_provider_and_tls(provider, TlsConnector::for_ftp())
+    }
+
+    pub fn with_provider_and_tls(provider: Arc<dyn StreamProvider>, tls: TlsConnector) -> Self {
+        Self { provider, tls }
+    }
+
+    fn data_stream(
+        &self,
+        t: &FtpTarget,
+        stream: Box<dyn AsyncReadWrite>,
+    ) -> impl std::future::Future<Output = Result<Box<dyn AsyncReadWrite>>> + '_ {
+        let tls = self.tls.clone();
+        let host = t.host.clone();
+        let tls_needed = t.security.uses_tls();
+        async move {
+            if tls_needed {
+                let stream = tls
+                    .connect(stream, &host)
+                    .await
+                    .with_context(|| t!("net.error.ftps_tls", host = &host))?;
+                Ok(Box::new(stream) as Box<dyn AsyncReadWrite>)
+            } else {
+                Ok(stream)
+            }
+        }
     }
 
     async fn login(&self, t: &FtpTarget, isolation: u64) -> Result<Control> {
-        warn!(
-            "FTP to {} is not encrypted: login and data are visible to the exit relay",
-            t.host
-        );
+        if t.security == FtpSecurity::Plain {
+            warn!(
+                "FTP to {} is not encrypted: login and data are visible to the exit relay",
+                t.host
+            );
+        }
         let io = self.provider.connect(isolation, &t.host, t.port).await?;
         let mut c = Control {
             io: BufReader::new(io),
         };
+        if t.security == FtpSecurity::ImplicitTls {
+            c = c.into_tls(&self.tls, &t.host).await?;
+        }
         let (code, text) = c.reply().await?;
         if code != 220 {
             bail!("FTP server refused the connection: {}", text.trim());
+        }
+        if t.security == FtpSecurity::ExplicitTls {
+            let (code, text) = c.cmd("AUTH TLS").await?;
+            if code != 234 {
+                bail!("FTP server refused AUTH TLS: {}", text.trim());
+            }
+            c = c.into_tls(&self.tls, &t.host).await?;
+        }
+        if t.security.uses_tls() {
+            c.expect("PBSZ 0", &[200]).await?;
+            c.expect("PROT P", &[200]).await?;
         }
         let (code, text) = c.cmd(&format!("USER {}", t.user)).await?;
         match code {
@@ -268,6 +351,9 @@ impl Transport for FtpTransport {
         }
         let data = self.provider.connect(isolation, &t.host, port).await?;
         c.expect(&format!("RETR {}", t.path), &[125, 150]).await?;
+        // RFC 4217: the server starts its TLS handshake on the data connection
+        // after accepting RETR, so the client does the same after the 150 reply.
+        let data = self.data_stream(&t, data).await?;
 
         let head = ResponseHead {
             status: if range.is_some() { 206 } else { 200 },
@@ -330,7 +416,8 @@ mod tests {
                 port: 2121,
                 user: "bob".into(),
                 pass: "p@ss".into(),
-                path: "/pub/a b.bin".into()
+                path: "/pub/a b.bin".into(),
+                security: FtpSecurity::Plain
             }
         );
         let anon = parse_target(&Url::parse("ftp://files.test/x").unwrap()).unwrap();
@@ -338,6 +425,14 @@ mod tests {
             (anon.user.as_str(), anon.pass.as_str(), anon.port),
             ("anonymous", "anonymous@", 21)
         );
+
+        let implicit = parse_target(&Url::parse("ftps://files.test/x").unwrap()).unwrap();
+        assert_eq!(
+            (implicit.port, implicit.security),
+            (990, FtpSecurity::ImplicitTls)
+        );
+        let explicit = parse_target(&Url::parse("ftpes://files.test:21/x").unwrap()).unwrap();
+        assert_eq!(explicit.security, FtpSecurity::ExplicitTls);
         assert!(parse_target(&Url::parse("http://files.test/x").unwrap()).is_err());
     }
 
@@ -543,6 +638,144 @@ mod tests {
         let url = Url::parse(&format!("ftp://127.0.0.1:{port}/data.bin")).unwrap();
         let err = transport().head(&url, 0).await.unwrap_err().to_string();
         assert!(err.contains("size"), "{err}");
+    }
+
+    /// FTP server with TLS control and data connections (implicit or explicit).
+    async fn serve_tls(data: Vec<u8>, implicit: bool) -> (u16, TlsConnector, TlsConnector) {
+        use tokio_rustls::rustls::pki_types::{PrivateKeyDer, PrivatePkcs8KeyDer};
+        use tokio_rustls::rustls::{ClientConfig, RootCertStore, ServerConfig};
+        use tokio_rustls::TlsAcceptor;
+
+        let generated = rcgen::generate_simple_self_signed(vec!["127.0.0.1".to_string()])
+            .expect("test certificate");
+        let mut roots = RootCertStore::empty();
+        roots
+            .add(generated.cert.der().clone())
+            .expect("trusted test certificate");
+        let client_config = ClientConfig::builder()
+            .with_root_certificates(roots)
+            .with_no_client_auth();
+        let client_tls = TlsConnector::with_config(Arc::new(client_config));
+
+        let server_config = ServerConfig::builder()
+            .with_no_client_auth()
+            .with_single_cert(
+                vec![generated.cert.der().clone()],
+                PrivateKeyDer::Pkcs8(PrivatePkcs8KeyDer::from(
+                    generated.signing_key.serialize_der(),
+                )),
+            )
+            .expect("test server certificate");
+        let acceptor = TlsAcceptor::from(Arc::new(server_config));
+
+        let ctl = TcpListener::bind(("127.0.0.1", 0)).await.unwrap();
+        let port = ctl.local_addr().unwrap().port();
+        tokio::spawn(async move {
+            loop {
+                let Ok((sock, _)) = ctl.accept().await else {
+                    return;
+                };
+                let (data, acceptor) = (data.clone(), acceptor.clone());
+                tokio::spawn(async move {
+                    let mut io: Box<dyn AsyncReadWrite> = Box::new(sock);
+                    if implicit {
+                        io = Box::new(acceptor.accept(io).await.unwrap());
+                    }
+                    let mut r = BufReader::new(io);
+                    r.get_mut().write_all(b"220 hello\r\n").await.unwrap();
+                    let (mut rest, mut pasv, mut tls_control): (u64, Option<TcpListener>, bool) =
+                        (0, None, implicit);
+                    let mut line = String::new();
+                    while {
+                        line.clear();
+                        r.read_line(&mut line).await.unwrap_or(0) > 0
+                    } {
+                        let cmd = line.trim().to_string();
+                        let verb = cmd.split(' ').next().unwrap().to_ascii_uppercase();
+                        let reply = match verb.as_str() {
+                            "AUTH" => {
+                                r.get_mut().write_all(b"234 go ahead\r\n").await.unwrap();
+                                let io = r.into_inner();
+                                let tls = acceptor.accept(io).await.unwrap();
+                                r = BufReader::new(Box::new(tls));
+                                tls_control = true;
+                                continue;
+                            }
+                            "USER" => "331 need password\r\n".into(),
+                            "PASS" => "230 ok\r\n".into(),
+                            "PBSZ" | "PROT" | "TYPE" => "200 ok\r\n".into(),
+                            "SIZE" => format!("213 {}\r\n", data.len()),
+                            "REST" => {
+                                rest = cmd[5..].parse().unwrap_or(0);
+                                "350 ok\r\n".into()
+                            }
+                            "EPSV" => {
+                                let l = TcpListener::bind(("127.0.0.1", 0)).await.unwrap();
+                                let p = l.local_addr().unwrap().port();
+                                pasv = Some(l);
+                                format!("229 Entering Extended Passive Mode (|||{p}|)\r\n")
+                            }
+                            "RETR" => {
+                                r.get_mut().write_all(b"150 opening\r\n").await.unwrap();
+                                let l = pasv.take().unwrap();
+                                let (sock, _) = l.accept().await.unwrap();
+                                let mut d: Box<dyn AsyncReadWrite> = Box::new(sock);
+                                if tls_control {
+                                    d = Box::new(acceptor.accept(d).await.unwrap());
+                                }
+                                d.write_all(&data[rest as usize..]).await.unwrap();
+                                drop(d);
+                                "226 done\r\n".into()
+                            }
+                            "QUIT" => "221 bye\r\n".into(),
+                            _ => "502 no\r\n".into(),
+                        };
+                        r.get_mut().write_all(reply.as_bytes()).await.unwrap();
+                    }
+                });
+            }
+        });
+        (port, client_tls.clone(), TlsConnector::new())
+    }
+
+    #[tokio::test]
+    async fn explicit_ftps_downloads_over_tls() {
+        let (port, tls, _) = serve_tls(payload(), false).await;
+        let url = Url::parse(&format!("ftpes://u:p@127.0.0.1:{port}/data.bin")).unwrap();
+        let t = FtpTransport::with_provider_and_tls(Arc::new(TcpProvider), tls);
+        let head = t.head(&url, 0).await.unwrap();
+        assert_eq!(head.total_size, Some(5000));
+        let response = t.get(&url, None, 0).await.unwrap();
+        assert_eq!(collect(response).await.unwrap(), payload());
+    }
+
+    #[tokio::test]
+    async fn implicit_ftps_downloads_over_tls() {
+        let (port, tls, _) = serve_tls(payload(), true).await;
+        let url = Url::parse(&format!("ftps://u:p@127.0.0.1:{port}/data.bin")).unwrap();
+        let t = FtpTransport::with_provider_and_tls(Arc::new(TcpProvider), tls);
+        let response = t
+            .get(
+                &url,
+                Some(ByteRange {
+                    start: 1000,
+                    end: Some(1999),
+                }),
+                1,
+            )
+            .await
+            .unwrap();
+        assert_eq!(response.head.status, 206);
+        assert_eq!(collect(response).await.unwrap(), payload()[1000..2000]);
+    }
+
+    #[tokio::test]
+    async fn ftps_rejects_untrusted_certificates() {
+        let (port, _, default_tls) = serve_tls(payload(), false).await;
+        let url = Url::parse(&format!("ftpes://u:p@127.0.0.1:{port}/data.bin")).unwrap();
+        let t = FtpTransport::with_provider_and_tls(Arc::new(TcpProvider), default_tls);
+        let error = t.head(&url, 0).await.unwrap_err().to_string();
+        assert!(error.contains("TLS"), "{error}");
     }
 
     #[tokio::test]

@@ -58,6 +58,9 @@ rusqlite = { version = "0.39", features = ["bundled"] }
 base64 = "0.22"
 # Read-only XML DOM for DASH manifests (net-10).
 roxmltree = "0.20"
+# SSH/SFTP client with host-key verification over Tor (net-11).
+russh = { version = "0.64", default-features = false, features = ["ring", "rsa"] }
+russh-sftp = "3"
 async-trait = "0.1"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
@@ -73,6 +76,10 @@ md-5 = "0.10"
 zip = { version = "2", default-features = false, features = ["deflate"] }
 sevenz-rust = "0.6"
 eframe = { version = "0.37.0", default-features = false, features = ["default_fonts", "glow", "x11", "wayland"] }
+
+[dev-dependencies]
+rand = "0.10"
+rcgen = "0.14"
 
 [profile.release]
 lto = true
