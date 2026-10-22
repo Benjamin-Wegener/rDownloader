@@ -133,7 +133,8 @@ impl TlsConnector {
 /// is as private as TLS to a normal site.
 pub fn is_onion_host(host: &str) -> bool {
     let host = host.trim_end_matches('.').to_ascii_lowercase();
-    host.strip_suffix(".onion").is_some_and(|name| !name.is_empty())
+    host.strip_suffix(".onion")
+        .is_some_and(|name| !name.is_empty())
 }
 
 /// Connection target of a URL: port and whether TLS is needed.
@@ -534,7 +535,9 @@ mod tests {
 
     #[test]
     fn onion_hosts_are_recognised() {
-        assert!(is_onion_host("duckduckgogg42xjoc72x3sjasowoarfbgcmvfimaftt6twagswzczad.onion"));
+        assert!(is_onion_host(
+            "duckduckgogg42xjoc72x3sjasowoarfbgcmvfimaftt6twagswzczad.onion"
+        ));
         assert!(is_onion_host("Sub.Example.ONION."));
         assert!(!is_onion_host("example.com"));
         assert!(!is_onion_host("notonion"));
@@ -544,7 +547,15 @@ mod tests {
 
     #[test]
     fn plain_http_to_onion_needs_no_tls() {
-        let url = Url::parse("http://duckduckgogg42xjoc72x3sjasowoarfbgcmvfimaftt6twagswzczad.onion/").unwrap();
-        assert_eq!(connect_plan(&url).unwrap(), ConnectPlan { port: 80, tls: false });
+        let url =
+            Url::parse("http://duckduckgogg42xjoc72x3sjasowoarfbgcmvfimaftt6twagswzczad.onion/")
+                .unwrap();
+        assert_eq!(
+            connect_plan(&url).unwrap(),
+            ConnectPlan {
+                port: 80,
+                tls: false
+            }
+        );
     }
 }

@@ -232,8 +232,7 @@ mod tests {
         assert_ne!(a, c);
     }
 
-    const DIRECT_BRIDGE: &str =
-        "192.0.2.10:443 0123456789ABCDEF0123456789ABCDEF01234567";
+    const DIRECT_BRIDGE: &str = "192.0.2.10:443 0123456789ABCDEF0123456789ABCDEF01234567";
 
     #[test]
     fn parses_direct_bridge_lines_with_optional_prefix() {
@@ -243,7 +242,9 @@ mod tests {
 
     #[test]
     fn rejects_invalid_bridge_lines_with_line_numbers() {
-        let error = parse_bridge_line("not a bridge", 3).unwrap_err().to_string();
+        let error = parse_bridge_line("not a bridge", 3)
+            .unwrap_err()
+            .to_string();
         assert!(error.contains("bridge line #3"), "{error}");
     }
 

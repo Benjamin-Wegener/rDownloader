@@ -30,7 +30,10 @@ pub fn parse_urls(text: &str) -> Import {
         for token in line.split(|c: char| c.is_whitespace() || c == ',') {
             let token =
                 token.trim_matches(|c: char| matches!(c, '<' | '>' | '"' | '\'' | '(' | ')' | ';'));
-            if !["http://", "https://", "ftp://"].iter().any(|p| token.starts_with(p)) {
+            if !["http://", "https://", "ftp://"]
+                .iter()
+                .any(|p| token.starts_with(p))
+            {
                 continue;
             }
             match Url::parse(token) {
