@@ -142,7 +142,15 @@ curl -X POST http://127.0.0.1:8765/api/jobs/<id>/pause
 curl -X POST http://127.0.0.1:8765/api/jobs/<id>/resume
 curl -X POST http://127.0.0.1:8765/api/jobs/<id>/cancel
 curl -X DELETE http://127.0.0.1:8765/api/jobs/<id>
+curl -N http://127.0.0.1:8765/api/events
 ```
+
+`GET /api/events` is a [Server-Sent Events](https://html.spec.whatwg.org/multipage/server-sent-events.html)
+stream. It first sends the whole queue (`event: jobs`, JSON array, same shape as
+`GET /api/jobs`) and then a new event whenever a job is added, changes state or
+is removed. Comment lines keep the connection alive; browsers reconnect
+automatically (`retry: 3000`). With `rpc_token`, send the bearer header as usual
+(`-H 'Authorization: Bearer <token>'`).
 
 JSON-RPC 2.0 is available at `POST /rpc`; supported methods are `jobs.list`,
 `jobs.get`, `jobs.add`, `jobs.pause`, `jobs.resume`, `jobs.cancel`, `jobs.remove`

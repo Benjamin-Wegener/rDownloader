@@ -138,6 +138,7 @@
 "gui.toolbar.down" = "Ausgewählten Download eine Position nach unten verschieben"
 "gui.toolbar.to_bottom" = "Ausgewählten Download nach unten verschieben"
 "gui.toolbar.clear" = "Fertige Downloads aus der Liste entfernen"
+"gui.toolbar.settings" = "Einstellungen öffnen"
 "gui.overview.title" = "Übersicht"
 "gui.overview.links" = "Links"
 "gui.overview.running" = "Laufend"

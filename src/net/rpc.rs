@@ -8,12 +8,14 @@
 use std::convert::Infallible;
 use std::net::{IpAddr, SocketAddr};
 use std::sync::Arc;
+use std::time::Duration;
 
 use anyhow::{Context, Result};
 use async_trait::async_trait;
 use bytes::Bytes;
-use http_body_util::{BodyExt, Full};
-use hyper::body::Incoming;
+use http_body_util::combinators::BoxBody;
+use http_body_util::{BodyExt, Full, StreamBody};
+use hyper::body::{Frame, Incoming};
 use hyper::header::{
     AUTHORIZATION, CACHE_CONTROL, CONTENT_LENGTH, CONTENT_TYPE, HOST, ORIGIN, TRANSFER_ENCODING,
     WWW_AUTHENTICATE,
@@ -27,6 +29,7 @@ use serde::de::DeserializeOwned;
 use serde::Deserialize;
 use serde_json::{json, Value};
 use tokio::net::TcpListener;
+use tokio::sync::mpsc;
 use tracing::{debug, info};
 use uuid::Uuid;
 
@@ -61,7 +64,8 @@ pub trait JobControl: Send + Sync {
     fn remove_job(&self, id: Uuid) -> Result<(), String>;
 }
 
-type ApiResult = Result<Response<Full<Bytes>>, (StatusCode, String)>;
+type ApiBody = BoxBody<Bytes, Infallible>;
+type ApiResult = Result<Response<ApiBody>, (StatusCode, String)>;
 
 /// Binds `addr` and serves the control API until the process exits.
 pub async fn serve(
@@ -105,7 +109,7 @@ async fn handle(
     control: Arc<dyn JobControl>,
     token: Option<String>,
     local: SocketAddr,
-) -> Result<Response<Full<Bytes>>, Infallible> {
+) -> Result<Response<ApiBody>, Infallible> {
     let res = match check_guards(&req, local) {
         Err(error) => Err(error),
         Ok(()) if !authorized(&req, token.as_deref()) => {
@@ -254,7 +258,9 @@ async fn dispatch(req: Request<Incoming>, control: Arc<dyn JobControl>) -> ApiRe
                 "name": "rdownloader",
                 "version": env!("CARGO_PKG_VERSION"),
                 "api": "json-rpc-2.0",
-                "endpoints": ["/health", "/api/jobs", "/api/jobs/{id}", "/rpc"],
+                "endpoints": [
+                    "/health", "/api/jobs", "/api/jobs/{id}", "/api/events", "/rpc"
+                ],
             }),
         )),
         (Method::GET, "/health") => Ok(json_response(StatusCode::OK, &json!({"status": "ok"}))),
@@ -262,6 +268,7 @@ async fn dispatch(req: Request<Incoming>, control: Arc<dyn JobControl>) -> ApiRe
             StatusCode::OK,
             &serde_json::to_value(control.list_jobs()).unwrap_or_else(|_| json!([])),
         )),
+        (Method::GET, "/api/events") => Ok(events_response(control)),
         (Method::POST, "/api/jobs") => add_job(req, control.as_ref()).await,
         (Method::POST, "/rpc") => handle_rpc(req, control.as_ref()).await,
         _ if path.starts_with("/api/jobs/") => {
@@ -405,14 +412,80 @@ fn parse_params<T: DeserializeOwned>(params: Value) -> Result<T, String> {
     serde_json::from_value(params).map_err(|_| t!("rpc.error.invalid_params"))
 }
 
-fn rpc_ok(id: Value, result: Value) -> Response<Full<Bytes>> {
+fn events_response(control: Arc<dyn JobControl>) -> Response<ApiBody> {
+    // `retry` tells EventSource clients how quickly to reconnect. The first event
+    // carries the current queue, so a client needs no separate GET.
+    let body = event_stream(control);
+    let mut response = Response::builder()
+        .status(StatusCode::OK)
+        .header(CONTENT_TYPE, "text/event-stream")
+        .header(CACHE_CONTROL, "no-cache")
+        .header("x-accel-buffering", "no");
+    for (name, value) in SECURITY_HEADERS {
+        response = response.header(*name, *value);
+    }
+    response.body(body).expect("valid event-stream response")
+}
+
+/// Streams the job list whenever it changes.
+///
+/// The server polls the shared queue instead of requiring every producer to
+/// publish events; the observable behaviour is the same and the daemon keeps a
+/// single source of truth.
+fn event_stream(control: Arc<dyn JobControl>) -> ApiBody {
+    let (tx, mut rx) = mpsc::channel::<Result<Frame<Bytes>, Infallible>>(8);
+    tokio::spawn(async move {
+        let snapshot =
+            || serde_json::to_string(&control.list_jobs()).unwrap_or_else(|_| "[]".to_string());
+        let mut last = snapshot();
+        let first = format!("retry: 3000\n\nevent: jobs\ndata: {last}\n\n");
+        if tx.send(Ok(Frame::data(Bytes::from(first)))).await.is_err() {
+            return;
+        }
+
+        let mut keep_alive = tokio::time::interval(Duration::from_secs(15));
+        keep_alive.tick().await;
+        keep_alive.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
+        let mut poll = tokio::time::interval(Duration::from_millis(400));
+        poll.tick().await;
+
+        loop {
+            tokio::select! {
+                _ = keep_alive.tick() => {
+                    if tx
+                        .send(Ok(Frame::data(Bytes::from_static(b": keep-alive\n\n"))))
+                        .await
+                        .is_err()
+                    {
+                        break;
+                    }
+                }
+                _ = poll.tick() => {
+                    let current = snapshot();
+                    if current != last {
+                        last = current;
+                        let event = format!("event: jobs\ndata: {last}\n\n");
+                        if tx.send(Ok(Frame::data(Bytes::from(event)))).await.is_err() {
+                            break;
+                        }
+                    }
+                }
+            }
+        }
+    });
+
+    let stream = futures::stream::poll_fn(move |cx| rx.poll_recv(cx));
+    StreamBody::new(stream).boxed()
+}
+
+fn rpc_ok(id: Value, result: Value) -> Response<ApiBody> {
     json_response(
         StatusCode::OK,
         &json!({"jsonrpc": "2.0", "id": id, "result": result}),
     )
 }
 
-fn rpc_error(id: Value, code: i32, message: &str) -> Response<Full<Bytes>> {
+fn rpc_error(id: Value, code: i32, message: &str) -> Response<ApiBody> {
     json_response(
         StatusCode::OK,
         &json!({
@@ -423,7 +496,7 @@ fn rpc_error(id: Value, code: i32, message: &str) -> Response<Full<Bytes>> {
     )
 }
 
-fn api_error(status: StatusCode, message: &str) -> Response<Full<Bytes>> {
+fn api_error(status: StatusCode, message: &str) -> Response<ApiBody> {
     let mut response = json_response(status, &json!({"error": message}));
     if status == StatusCode::UNAUTHORIZED {
         response
@@ -433,7 +506,7 @@ fn api_error(status: StatusCode, message: &str) -> Response<Full<Bytes>> {
     response
 }
 
-fn json_response(status: StatusCode, value: &Value) -> Response<Full<Bytes>> {
+fn json_response(status: StatusCode, value: &Value) -> Response<ApiBody> {
     let body = serde_json::to_vec(value).unwrap_or_else(|_| b"{}".to_vec());
     let mut response = Response::builder()
         .status(status)
@@ -444,7 +517,7 @@ fn json_response(status: StatusCode, value: &Value) -> Response<Full<Bytes>> {
         response = response.header(*name, *value);
     }
     response
-        .body(Full::new(Bytes::from(body)))
+        .body(Full::new(Bytes::from(body)).boxed())
         .expect("valid response")
 }
 
@@ -924,6 +997,56 @@ mod tests {
         )
         .await;
         assert_eq!(status, 404, "empty POST without Content-Type is allowed");
+    }
+
+    #[tokio::test]
+    async fn events_stream_the_queue_and_follow_changes() {
+        let (addr, control) = start(None).await;
+        let id = control.list_jobs()[0].id;
+
+        let mut stream = TcpStream::connect(addr).await.unwrap();
+        stream
+            .write_all(b"GET /api/events HTTP/1.1\r\nHost: localhost\r\n\r\n")
+            .await
+            .unwrap();
+
+        let first =
+            tokio::time::timeout(Duration::from_secs(2), read_until(&mut stream, "file.bin"))
+                .await
+                .expect("initial event arrives");
+        assert!(first.contains("200 OK"), "{first}");
+        assert!(first.contains("text/event-stream"), "{first}");
+        assert!(first.contains("event: jobs"), "{first}");
+
+        control.pause_job(id).unwrap();
+        let update =
+            tokio::time::timeout(Duration::from_secs(3), read_until(&mut stream, "Paused"))
+                .await
+                .expect("changed job is pushed");
+        assert!(update.contains("event: jobs"), "{update}");
+    }
+
+    #[tokio::test]
+    async fn events_require_the_bearer_token() {
+        let (addr, _control) = start(Some("secret")).await;
+        let (status, _) = request(addr, "GET", "/api/events", None, None).await;
+        assert_eq!(status, 401);
+    }
+
+    async fn read_until(stream: &mut tokio::net::TcpStream, needle: &str) -> String {
+        let mut buf = Vec::new();
+        let mut chunk = [0u8; 4096];
+        loop {
+            let n = stream.read(&mut chunk).await.unwrap();
+            if n == 0 {
+                return String::from_utf8_lossy(&buf).into_owned();
+            }
+            buf.extend_from_slice(&chunk[..n]);
+            let text = String::from_utf8_lossy(&buf);
+            if text.contains(needle) {
+                return text.into_owned();
+            }
+        }
     }
 
     #[tokio::test]

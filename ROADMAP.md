@@ -163,7 +163,7 @@ Abgleich mit aria2, JDownloader, yt-dlp und der Arti-Dokumentation. Reihenfolge 
 - [x] 🟠 **Headless Daemon & RPC/Web-API**: JSON-RPC 2.0 + REST für Fernsteuerung ohne TUI (`src/net/rpc.rs`, `--daemon`)
   - [x] Queue-Liste, Status, Hinzufügen, Pause/Resume/Cancel/Remove über `POST /rpc` und `/api/jobs`
   - [x] Optionaler Bearer-Token (`rpc_token`), Loopback-Bindung ohne Token erzwungen
-  - [ ] Live-Events für Fernsteuerung: Server-Sent Events statt WebSocket (`net-17`)
+  - [x] Live-Events für Fernsteuerung: Server-Sent Events statt WebSocket (`net-17`)
 - [ ] 🟠 **Grafische Oberfläche** (Nutzerwunsch 2026-10-22: richtiges Programmfenster statt TUI, kein Server). Entscheidung: **egui/eframe** – reines Rust, ein Fenster auf macOS/Linux/Windows, nutzt dieselbe Engine und denselben Zustand wie die TUI im selben Prozess. Das Fenster ist der Standard, wenn ein Display da ist; `--tui` erzwingt das Terminal.
   - [x] gui-1: Fenster mit Downloads (Fortschritt, Geschwindigkeit, ETA, Details, Pause/Fortsetzen/Abbrechen/Entfernen), Link-Eingabe und Zwischenablage, History, Tor-Status, Captcha-Dialog
   - [x] gui-2: Fensterrahmen (Toolbar, Reiter, Übersichtspanel, Befehlsleiste, Fußzeile), Layout siehe `docs/gui-layout.md` (Clean-Room, Referenz-Screenshot nur lokal)

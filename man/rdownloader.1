@@ -116,6 +116,9 @@ controls a job, and
 .BR DELETE " /api/jobs/" id
 removes it. JSON-RPC 2.0 is served at
 .BR POST " /rpc" .
+.B GET /api/events
+streams the queue as Server-Sent Events: one snapshot event on connect and a
+new event whenever a job changes.
 .B GET /health
 reports readiness. Without
 .B rpc_token
