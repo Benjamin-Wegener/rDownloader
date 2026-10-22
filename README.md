@@ -115,7 +115,7 @@ All keys are optional.
 
 | Key | Default | Meaning |
 | --- | --- | --- |
-| `max_parts` | `10` | parts per download |
+| `max_parts` | `3` | parts per download |
 | `max_retries` | `3` | retries per part |
 | `max_speed_kib` | `0` | global speed limit in KiB/s, `0` = unlimited |
 | `[[schedule]]` | none | time windows (`days`, `from`, `to`, `speed_kib` or `pause = true`, local time; first match wins) that change the speed limit or pause downloads |

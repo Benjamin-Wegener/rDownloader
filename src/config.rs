@@ -125,7 +125,7 @@ fn default_tor_clients() -> usize {
     10
 }
 fn default_max_parts() -> usize {
-    10
+    3
 }
 fn default_ua() -> String {
     "rdownloader/0.1".into()
