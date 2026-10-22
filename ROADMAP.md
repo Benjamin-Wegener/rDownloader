@@ -142,7 +142,7 @@ Abgleich mit aria2, JDownloader, yt-dlp und der Arti-Dokumentation. Reihenfolge 
   - [ ] WebSocket-Unterstützung für Live-Events
 - [ ] 🟠 **Grafische Oberfläche** (Nutzerwunsch 2026-10-22: richtiges Programmfenster statt TUI, kein Server). Entscheidung: **egui/eframe** – reines Rust, ein Fenster auf macOS/Linux/Windows, nutzt dieselbe Engine und denselben Zustand wie die TUI im selben Prozess. Das Fenster ist der Standard, wenn ein Display da ist; `--tui` erzwingt das Terminal.
   - [x] gui-1: Fenster mit Downloads (Fortschritt, Geschwindigkeit, ETA, Details, Pause/Fortsetzen/Abbrechen/Entfernen), Link-Eingabe und Zwischenablage, History, Tor-Status, Captcha-Dialog
-  - [ ] gui-2: LinkGrabber, Einstellungen, Datei-Import-Dialog, Tray-Symbol
+  - [ ] gui-2: Oberfläche im Stil eines Clean-Room-JDownloader ausbauen, **wartet auf Referenz-Screenshots des Nutzers** (siehe AGENTS.md, Clean-Room-Regeln). Voraussichtlich: Pakete/Gruppen in der Queue, Tabellenansicht mit Spalten (Name, Größe, Host, Status, ETA, Geschwindigkeit), LinkGrabber-Tab mit Online-Prüfung und Filtern, Kontextmenüs, Statusleiste mit Gesamtgeschwindigkeit, Einstellungen, Datei-Import-Dialog, Tray-Symbol
   - [ ] gui-3: App-Paket (macOS `.app` mit Icon, Windows/Linux), Autostart
 - [x] ⛔ GUI-Entscheidung: egui gewählt; Browser-WebUI und Tauri verworfen (der Nutzer wollte ein Fenster, keinen Server)
 - [ ] 🟢 Tray-Integration, Browser-Extension-Brücke

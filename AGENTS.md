@@ -34,6 +34,14 @@ Der Hauptordner bleibt dabei **unverändert** – gearbeitet wird in einem Workt
 - Logs für Entwickler (`tracing`) bleiben Englisch und werden nicht übersetzt.
 - Bestehende deutsche Texte im Code werden in Schritt i18n-2 umgestellt; in Dateien, die du ohnehin änderst, direkt mitziehen.
 
+## Clean-Room-Regeln (Ziel: ein JDownloader-ähnlicher Download-Manager, komplett neu geschrieben)
+Die Oberfläche und die Bedienkonzepte sollen sich an JDownloader orientieren (Pakete, Link-Sammler, Tabellenansicht, Kontextmenüs, Statusleiste). Damit das ein echter Clean-Room bleibt:
+- **Erlaubt:** sichtbares Verhalten, öffentliche Dokumentation, vom Nutzer gelieferte Screenshots als Referenz für Aufbau und Funktionsumfang, eigene Ideen und eigene Tests.
+- **Verboten:** JDownloader-Quellcode oder dekompilierte `.jar`s ansehen, Icons/Grafiken/Logos/Themes, Texte oder Übersetzungen kopieren, den Namen oder das Logo „JDownloader“ in Programm, Hilfe oder Paketnamen verwenden (nur beschreibend in Dokumenten wie „inspiriert von“).
+- **Eigene Gestaltung:** eigener Name, eigene Icons, eigenes Farbschema, eigene Texte im Katalog. Funktionen werden aus dem *Verhalten* nachgebaut, nicht aus Code.
+- Referenz-Screenshots des Nutzers werden **nicht committet** (liegen lokal, z. B. `~/Pictures/rdl-reference/`); in Dokumenten wird nur beschrieben, was daraus gelernt wurde.
+- Der Schritt `gui-2` wartet auf die Screenshots (Abhängigkeit `wait-screenshots`). Freigabe durch den Nutzer: `touch .git/orch/done/wait-screenshots` im Hauptordner.
+
 ## Build-Umgebung (macOS ohne Xcode/CLT)
 Auf diesem Rechner gibt es keine Xcode Command Line Tools, nur ein macOS-SDK und Homebrew-LLVM. Vor jedem `cargo`-Aufruf (auch fmt, clippy, test):
 ```

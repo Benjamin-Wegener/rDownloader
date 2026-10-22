@@ -50,5 +50,5 @@ plugins-8	plugins	netrc-Zugangsdaten + Cookie-Import (Firefox/Chromium/Netscape-
 net-12	net	Daemon-API absichern gegen fremde Webseiten (CSRF/DNS-Rebinding): Host-/Origin-/Content-Type-Pruefung ohne Token, Sicherheits-Header, Tests	net-7
 net-11	net	SFTP (SSH-Client mit Host-Key-Pruefung) und FTPS ueber Tor	net-10
 gui-1	gui	Native GUI-Fenster (egui) mit derselben Engine, Standard wenn ein Display da ist; --tui fuer das Terminal	net-7
-gui-2	gui	GUI ausbauen: LinkGrabber, Einstellungen, Datei-Import-Dialog, Tray-Symbol	gui-1
+gui-2	gui	GUI nach Referenz-Screenshots ausbauen (Pakete, Tabellenansicht, LinkGrabber, Kontextmenue, Statusleiste, Einstellungen)	gui-1,wait-screenshots
 gui-3	gui	App-Paket: macOS .app mit Icon, Windows/Linux-Pakete, Autostart	gui-2
