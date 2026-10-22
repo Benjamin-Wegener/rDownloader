@@ -48,10 +48,10 @@ net-9	net	FTP/SFTP ueber Tor	net-8
 net-10	net	HLS/DASH: Segment-Downloads (parallele Fragmente, Zusammenfuegen)	net-9
 plugins-8	plugins	netrc-Zugangsdaten + Cookie-Import (Firefox/Chromium/Netscape-Format)	plugins-7
 net-12	net	Daemon-API absichern gegen fremde Webseiten (CSRF/DNS-Rebinding): Host-/Origin-/Content-Type-Pruefung ohne Token, Sicherheits-Header, Tests	net-7
-net-11	net	SFTP (SSH-Client mit Host-Key-Pruefung) und FTPS ueber Tor	net-10
 gui-1	gui	Native GUI-Fenster (egui) mit derselben Engine, Standard wenn ein Display da ist; --tui fuer das Terminal	net-7
 gui-2	gui	GUI-Rahmen nach docs/gui-layout.md: Toolbar, Reiter, Uebersichtspanel, Befehlsleiste, Fusszeile	gui-1
 gui-3	gui	GUI-Tabelle: Spalten (Name, Groesse, Host, Verbindung, Status, Tempo, Rest, Geladen, Fortschritt, Speicherort, Kommentar), Sortierung, Spaltenauswahl, Pakete im Datenmodell	gui-2
 gui-4	gui	GUI-Reiter Link-Sammler auf dem vorhandenen Sammler-Modell	gui-3
 gui-5	gui	GUI-Dialoge und Menues: Links-hinzufuegen-Dialog, Kontextmenue, Einstellungen, Dateiauswahl	gui-4
 gui-6	gui	App-Paket: macOS .app mit Icon, Windows/Linux-Pakete, Autostart	gui-5
+net-11	net	SFTP (SSH-Client mit Host-Key-Pruefung) und FTPS ueber Tor	net-10
