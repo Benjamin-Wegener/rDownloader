@@ -84,6 +84,10 @@ pub struct Config {
     #[serde(default = "default_retries")]
     pub max_retries: u32,
 
+    /// Whether rdownloader should automatically start when logging in
+    #[serde(default)]
+    pub autostart: bool,
+
     /// Tor logging level (error/warn/info/debug/trace)
     #[serde(default = "default_log_level")]
     pub log_level: String,
@@ -158,6 +162,7 @@ impl Default for Config {
             conditional_get: false,
             hooks: Default::default(),
             max_retries: default_retries(),
+            autostart: false,
             log_level: default_log_level(),
             language: None,
             rpc_listen: default_rpc_listen(),

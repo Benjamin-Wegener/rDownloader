@@ -5,6 +5,7 @@
 //! [`App`] model, and every button sends a [`UiCommand`] through the same channel
 //! the terminal UI uses. All visible text comes from the i18n catalog.
 
+pub mod autostart;
 mod icons;
 mod model;
 
@@ -1394,6 +1395,10 @@ impl GuiApp {
                     &mut self.settings_cfg.extract_delete_archives,
                     t!("gui.settings.extract_delete"),
                 );
+                ui.checkbox(
+                    &mut self.settings_cfg.autostart,
+                    t!("gui.settings.autostart"),
+                );
 
                 ui.separator();
                 ui.heading(t!("gui.settings.network"));
@@ -1484,6 +1489,8 @@ impl GuiApp {
             if let Ok(s) = toml::to_string_pretty(&self.settings_cfg) {
                 let _ = std::fs::write(&path, s);
             }
+            // Apply autostart setting to platform
+            let _ = autostart::set_autostart(self.settings_cfg.autostart);
             open = false;
         }
         if cancel {

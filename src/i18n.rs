@@ -48,6 +48,10 @@ const EN: &[(&str, &str)] = &[
         "Disable Tor completely (testing only - unsafe!)",
     ),
     (
+        "cli.arg.autostart",
+        "Enable or disable autostart on user login (on/off)",
+    ),
+    (
         "cli.arg.daemon",
         "Headless mode: serve the JSON-RPC/REST control API instead of the TUI",
     ),
@@ -747,6 +751,10 @@ const EN: &[(&str, &str)] = &[
     (
         "gui.settings.log_level",
         "Log level",
+    ),
+    (
+        "gui.settings.autostart",
+        "Start rdownloader automatically on login",
     ),
     (
         "gui.search.hint",

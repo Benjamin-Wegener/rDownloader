@@ -163,7 +163,7 @@ Abgleich mit aria2, JDownloader, yt-dlp und der Arti-Dokumentation. Reihenfolge 
   - [x] gui-3: Tabelle mit Spalten, Sortierung, Spaltenauswahl und Paketen im Datenmodell
   - [x] gui-4: Reiter Link-Sammler
   - [x] gui-5: Dialoge und Menüs (Links hinzufügen, Kontextmenü, Einstellungen, Dateiauswahl)
-  - [ ] gui-6: App-Paket (macOS `.app` mit Icon, Windows/Linux, Autostart)
+  - [x] gui-6: App-Paket (macOS `.app` mit Icon, Windows/Linux, Autostart)
 - [x] ⛔ GUI-Entscheidung: egui gewählt; Browser-WebUI und Tauri verworfen (der Nutzer wollte ein Fenster, keinen Server)
 - [ ] 🟢 Tray-Integration und Autostart (`gui-9`) · Browser-Extension-Brücke (geparkt)
 

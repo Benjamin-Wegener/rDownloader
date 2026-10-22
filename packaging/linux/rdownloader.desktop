@@ -1,0 +1,11 @@
+[Desktop Entry]
+Type=Application
+Name=RDownloader
+Comment=Clean-room high-performance download manager with Tor, chunking and link grabber
+Exec=rdownloader --gui %U
+Icon=rdownloader
+Terminal=false
+Categories=Network;FileTransfer;
+MimeType=x-scheme-handler/http;x-scheme-handler/https;
+StartupNotify=true
+StartupWMClass=rdownloader
