@@ -26,9 +26,9 @@ use tokio::sync::oneshot;
 
 pub(crate) mod detail;
 pub(crate) mod import;
-mod linkgrabber;
+pub mod linkgrabber;
 
-pub use linkgrabber::GrabberEvent;
+pub use linkgrabber::{GrabberEvent, LinkGrabber, LinkSource, Package};
 
 use crate::config;
 use crate::contract::{JobEvent, JobId};
@@ -38,7 +38,7 @@ use crate::t;
 use crate::tor::TorHealth;
 use crate::tracker::export::{self, ExportFormat};
 use crate::tracker::history::HistoryItem;
-use linkgrabber::{GrabberRow, LinkGrabber, LinkSource, Package};
+use linkgrabber::GrabberRow;
 
 #[derive(Clone, Copy, PartialEq, Debug)]
 pub enum AppTab {

@@ -18,6 +18,7 @@ use crate::download::{JobProgress, JobStatus};
 use crate::plugin::captcha::ChallengePayload;
 use crate::t;
 use crate::tor::TorHealth;
+use crate::ui::linkgrabber::{LinkSource, Package};
 use crate::ui::{detail, fmt_bytes, import, App, InputPrompt, MoveTo, SharedApp, UiCommand};
 use icons::Icon;
 use model::{
@@ -31,6 +32,7 @@ const REPAINT_EVERY: Duration = Duration::from_millis(250);
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 enum Tab {
     Downloads,
+    LinkGrabber,
     History,
 }
 
@@ -234,6 +236,7 @@ struct GuiApp {
     columns: ColumnConfig,
     sort: SortConfig,
     collapsed_packages: std::collections::HashSet<String>,
+    grabber_collapsed_packages: std::collections::HashSet<usize>,
 }
 
 impl GuiApp {
@@ -252,6 +255,7 @@ impl GuiApp {
             columns: ColumnConfig::default(),
             sort: SortConfig::default(),
             collapsed_packages: std::collections::HashSet::new(),
+            grabber_collapsed_packages: std::collections::HashSet::new(),
         }
     }
 
@@ -324,9 +328,18 @@ impl GuiApp {
         });
     }
 
-    fn tabs(&mut self, ui: &mut egui::Ui) {
+    fn tabs(&mut self, ui: &mut egui::Ui, app: &App) {
         ui.horizontal(|ui| {
             ui.selectable_value(&mut self.tab, Tab::Downloads, t!("gui.tab.downloads"));
+            let grabber_label = {
+                let count = app.grabber.links().len();
+                if count > 0 {
+                    format!("{} ({count})", t!("gui.tab.grabber"))
+                } else {
+                    t!("gui.tab.grabber")
+                }
+            };
+            ui.selectable_value(&mut self.tab, Tab::LinkGrabber, grabber_label);
             ui.selectable_value(&mut self.tab, Tab::History, t!("gui.tab.history"));
         });
     }
@@ -832,6 +845,251 @@ impl GuiApp {
             });
     }
 
+    fn link_grabber(&mut self, ui: &mut egui::Ui, app: &mut App) {
+        let counts = app.grabber.counts();
+
+        // Toolbar for the LinkGrabber tab
+        ui.horizontal(|ui| {
+            let can_start_all = counts.total > 0;
+            let can_start_sel = counts.selected > 0;
+
+            if ui
+                .add_enabled(
+                    can_start_all,
+                    egui::Button::new(t!("gui.grabber.start_all")),
+                )
+                .clicked()
+            {
+                app.grabber.select_all(true);
+                let urls = app.grabber.take_selected();
+                if !urls.is_empty() {
+                    let s_urls = urls.into_iter().map(|u| u.to_string()).collect();
+                    Self::send(app, UiCommand::AddUrls(s_urls));
+                    self.tab = Tab::Downloads;
+                }
+            }
+
+            if ui
+                .add_enabled(
+                    can_start_sel,
+                    egui::Button::new(t!("gui.grabber.start_selected")),
+                )
+                .clicked()
+            {
+                let urls = app.grabber.take_selected();
+                if !urls.is_empty() {
+                    let s_urls = urls.into_iter().map(|u| u.to_string()).collect();
+                    Self::send(app, UiCommand::AddUrls(s_urls));
+                    self.tab = Tab::Downloads;
+                }
+            }
+
+            ui.separator();
+
+            if ui.button(t!("gui.grabber.select_all")).clicked() {
+                app.grabber.select_all(true);
+            }
+            if ui.button(t!("gui.grabber.deselect_all")).clicked() {
+                app.grabber.select_all(false);
+            }
+            if ui
+                .add_enabled(counts.total > 0, egui::Button::new(t!("gui.grabber.clear")))
+                .clicked()
+            {
+                app.grabber.clear();
+            }
+
+            ui.separator();
+
+            // Active filters indicators and clear button
+            let host_filter_count = app.grabber.filter().excluded_hosts.len();
+            let ext_filter_count = app.grabber.filter().excluded_extensions.len();
+            let total_filters = host_filter_count + ext_filter_count;
+
+            if total_filters > 0 {
+                ui.weak(t!("gui.grabber.filter.active", count = total_filters));
+                if ui.button(t!("gui.grabber.filter.clear")).clicked() {
+                    app.grabber.filter_mut().excluded_hosts.clear();
+                    app.grabber.filter_mut().excluded_extensions.clear();
+                }
+            }
+
+            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                ui.weak(t!(
+                    "gui.grabber.summary",
+                    selected = counts.selected,
+                    total = counts.total,
+                    filtered = counts.filtered
+                ));
+            });
+        });
+
+        ui.separator();
+
+        if app.grabber.is_empty() {
+            ui.add_space(40.0);
+            ui.vertical_centered(|ui| ui.weak(t!("gui.grabber.empty")));
+            return;
+        }
+
+        // Table / tree of packages and links
+        egui::ScrollArea::vertical()
+            .auto_shrink([false, false])
+            .show(ui, |ui| {
+                let dark = ui.visuals().dark_mode;
+                let packages_len = app.grabber.packages().len();
+
+                for pkg_idx in 0..packages_len {
+                    let is_collapsed = self.grabber_collapsed_packages.contains(&pkg_idx);
+                    let arrow = if is_collapsed { "▶ " } else { "▼ " };
+
+                    let (source_label, link_indices) = {
+                        let pkg = &app.grabber.packages()[pkg_idx];
+                        (package_label(pkg), pkg.links.clone())
+                    };
+
+                    let all_selected = !link_indices.is_empty()
+                        && link_indices
+                            .iter()
+                            .all(|&i| app.grabber.link(i).map(|l| l.selected).unwrap_or(false));
+
+                    let _any_selected = link_indices
+                        .iter()
+                        .any(|&i| app.grabber.link(i).map(|l| l.selected).unwrap_or(false));
+
+                    // Package Header Card
+                    let frame = egui::Frame::group(ui.style()).fill(if dark {
+                        egui::Color32::from_rgb(0x28, 0x2c, 0x34)
+                    } else {
+                        egui::Color32::from_rgb(0xe0, 0xe5, 0xee)
+                    });
+
+                    frame.show(ui, |ui| {
+                        ui.horizontal(|ui| {
+                            let mut checked = all_selected;
+                            if ui.checkbox(&mut checked, "").clicked() {
+                                app.grabber.toggle_package(pkg_idx);
+                            }
+
+                            let title = format!("{arrow}{source_label}");
+                            if ui
+                                .selectable_label(false, egui::RichText::new(title).strong())
+                                .clicked()
+                            {
+                                if is_collapsed {
+                                    self.grabber_collapsed_packages.remove(&pkg_idx);
+                                } else {
+                                    self.grabber_collapsed_packages.insert(pkg_idx);
+                                }
+                            }
+
+                            ui.weak(t!(
+                                "ui.linkgrabber.package_count",
+                                count = link_indices.len()
+                            ));
+
+                            ui.with_layout(
+                                egui::Layout::right_to_left(egui::Align::Center),
+                                |ui| {
+                                    if ui.button(t!("gui.grabber.remove")).clicked() {
+                                        app.grabber.remove_package(pkg_idx);
+                                    }
+                                },
+                            );
+                        });
+                    });
+
+                    // Child links
+                    if !is_collapsed {
+                        for &link_idx in &link_indices {
+                            let link = match app.grabber.link(link_idx) {
+                                Some(l) => l.clone(),
+                                None => continue,
+                            };
+
+                            let is_excluded = app.grabber.filter().is_excluded(&link);
+                            let host_excluded = app.grabber.filter().excludes_host(&link.host);
+                            let ext_excluded =
+                                app.grabber.filter().excludes_extension(&link.extension);
+
+                            let item_frame = egui::Frame::group(ui.style()).fill(if is_excluded {
+                                if dark {
+                                    egui::Color32::from_rgb(0x20, 0x1c, 0x1c)
+                                } else {
+                                    egui::Color32::from_rgb(0xf8, 0xee, 0xee)
+                                }
+                            } else {
+                                ui.visuals().widgets.noninteractive.bg_fill
+                            });
+
+                            item_frame.show(ui, |ui| {
+                                ui.horizontal(|ui| {
+                                    let mut sel = link.selected;
+                                    if ui.checkbox(&mut sel, "").clicked() {
+                                        app.grabber.toggle_link(link_idx);
+                                    }
+
+                                    let name_text = if is_excluded {
+                                        egui::RichText::new(&link.filename).strikethrough()
+                                    } else {
+                                        egui::RichText::new(&link.filename)
+                                    };
+                                    ui.label(name_text).on_hover_text(link.url.as_str());
+
+                                    if let Some(sz) = link.size {
+                                        ui.weak(fmt_bytes(sz));
+                                    }
+
+                                    // Host filter toggle
+                                    let host_label = if host_excluded {
+                                        format!("{}: [x]", link.host)
+                                    } else {
+                                        link.host.clone()
+                                    };
+                                    if ui
+                                        .small_button(host_label)
+                                        .on_hover_text(t!("gui.grabber.filter.host"))
+                                        .clicked()
+                                    {
+                                        app.grabber.filter_mut().toggle_host(&link.host);
+                                    }
+
+                                    // Extension filter toggle
+                                    if !link.extension.is_empty() {
+                                        let ext_label = if ext_excluded {
+                                            format!(".{}: [x]", link.extension)
+                                        } else {
+                                            format!(".{}", link.extension)
+                                        };
+                                        if ui
+                                            .small_button(ext_label)
+                                            .on_hover_text(t!("gui.grabber.filter.ext"))
+                                            .clicked()
+                                        {
+                                            app.grabber
+                                                .filter_mut()
+                                                .toggle_extension(&link.extension);
+                                        }
+                                    }
+
+                                    ui.with_layout(
+                                        egui::Layout::right_to_left(egui::Align::Center),
+                                        |ui| {
+                                            if ui.button(t!("gui.grabber.remove")).clicked() {
+                                                app.grabber.remove_link(link_idx);
+                                            }
+                                        },
+                                    );
+                                });
+                            });
+                            ui.add_space(2.0);
+                        }
+                    }
+                    ui.add_space(4.0);
+                }
+            });
+    }
+
     /// The "add links" window: paste text, links are picked out of it.
     fn add_dialog(&mut self, ctx: &egui::Context, app: &mut App) {
         if !self.add_open {
@@ -924,7 +1182,7 @@ impl GuiApp {
         let mut a = app.lock().unwrap();
 
         egui::Panel::top("toolbar").show(ui, |ui| self.toolbar(ui, &mut a));
-        egui::Panel::top("tabs").show(ui, |ui| self.tabs(ui));
+        egui::Panel::top("tabs").show(ui, |ui| self.tabs(ui, &a));
         // Bottom panels stack upwards in the order they are added.
         egui::Panel::bottom("footer").show(ui, |ui| self.footer(ui, &a));
         egui::Panel::bottom("commands").show(ui, |ui| self.command_bar(ui, &mut a));
@@ -933,6 +1191,7 @@ impl GuiApp {
         }
         egui::CentralPanel::default().show(ui, |ui| match self.tab {
             Tab::Downloads => self.downloads(ui, &mut a),
+            Tab::LinkGrabber => self.link_grabber(ui, &mut a),
             Tab::History => self.history(ui, &mut a),
         });
 
@@ -976,6 +1235,15 @@ fn filter_text(filter: StateFilter) -> String {
         StateFilter::Paused => t!("gui.filter.paused"),
         StateFilter::Finished => t!("gui.filter.finished"),
         StateFilter::Failed => t!("gui.filter.failed"),
+    }
+}
+
+fn package_label(package: &Package) -> String {
+    match &package.source {
+        LinkSource::Manual => t!("ui.linkgrabber.package_manual"),
+        LinkSource::Clipboard => t!("ui.linkgrabber.package_clipboard"),
+        LinkSource::File(name) => t!("ui.linkgrabber.package_file", name = name),
+        LinkSource::Crawl(page) => t!("ui.linkgrabber.package_crawl", page = page.clone()),
     }
 }
 
@@ -1305,5 +1573,43 @@ mod tests {
         let pkg_id = t!("gui.package.default");
         gui.collapsed_packages.insert(pkg_id);
         assert!(render(&mut gui, 2) > 0);
+    }
+
+    #[test]
+    fn link_grabber_tab_renders_and_interacts() {
+        let (app, _rx) = shared_app();
+        {
+            let mut a = app.lock().unwrap();
+            a.grabber.add_links(
+                LinkSource::Manual,
+                [
+                    url::Url::parse("https://alpha.test/archive.zip").unwrap(),
+                    url::Url::parse("https://beta.test/image.png").unwrap(),
+                ],
+            );
+        }
+        let mut gui = GuiApp::new(app.clone());
+        gui.tab = Tab::LinkGrabber;
+        assert!(render(&mut gui, 2) > 0);
+
+        // Toggle collapse
+        gui.grabber_collapsed_packages.insert(0);
+        assert!(render(&mut gui, 1) > 0);
+        gui.grabber_collapsed_packages.clear();
+
+        // Filter host and extension
+        {
+            let mut a = app.lock().unwrap();
+            a.grabber.filter_mut().toggle_host("alpha.test");
+            a.grabber.filter_mut().toggle_extension("png");
+        }
+        assert!(render(&mut gui, 1) > 0);
+
+        // Clear and render empty grabber tab
+        {
+            let mut a = app.lock().unwrap();
+            a.grabber.clear();
+        }
+        assert!(render(&mut gui, 1) > 0);
     }
 }

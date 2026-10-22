@@ -440,6 +440,10 @@ const EN: &[(&str, &str)] = &[
         "Downloads",
     ),
     (
+        "gui.tab.grabber",
+        "Link grabber",
+    ),
+    (
         "gui.tab.history",
         "History",
     ),
@@ -622,6 +626,62 @@ const EN: &[(&str, &str)] = &[
     (
         "gui.scope.url",
         "Link",
+    ),
+    (
+        "gui.grabber.empty",
+        "No links in the grabber yet. Add links or crawl a page.",
+    ),
+    (
+        "gui.grabber.start_all",
+        "Start all downloads",
+    ),
+    (
+        "gui.grabber.start_selected",
+        "Start selected",
+    ),
+    (
+        "gui.grabber.select_all",
+        "Select all",
+    ),
+    (
+        "gui.grabber.deselect_all",
+        "Deselect all",
+    ),
+    (
+        "gui.grabber.clear",
+        "Clear all",
+    ),
+    (
+        "gui.grabber.filter.host",
+        "Filter host",
+    ),
+    (
+        "gui.grabber.filter.ext",
+        "Filter extension",
+    ),
+    (
+        "gui.grabber.filter.active",
+        "Active filters: {count}",
+    ),
+    (
+        "gui.grabber.filter.clear",
+        "Clear filters",
+    ),
+    (
+        "gui.grabber.filter.excluded",
+        "excluded",
+    ),
+    (
+        "gui.grabber.filter.included",
+        "included",
+    ),
+    (
+        "gui.grabber.remove",
+        "Remove",
+    ),
+    (
+        "gui.grabber.summary",
+        "{selected} of {total} selected · {filtered} filtered",
     ),
     (
         "gui.col.columns",
