@@ -3,7 +3,9 @@
 All notable changes are listed here. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/);
 versions follow [Semantic Versioning](https://semver.org/).
 
-## [0.1.0] - first release
+## [0.1.0] - first release (alpha)
+
+> Alpha: expect many bugs. Please report what you find.
 
 First public version. A clean-room download manager in Rust: everything goes through the Tor network.
 

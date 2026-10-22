@@ -1,4 +1,6 @@
-# rDownloader 0.1.0 - release notes
+# rDownloader 0.1.0 (alpha) - release notes
+
+**This is an alpha release. Many bugs are still to be expected; features may change or break.**
 
 The first public release. rDownloader downloads through the Tor network, splits files into parts that
 use separate circuits, resumes after crashes and comes with a desktop window, a terminal interface and

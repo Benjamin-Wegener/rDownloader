@@ -8,7 +8,8 @@ and can be resumed after a crash. It has a desktop window, a terminal interface,
 Inspired by the concepts of JDownloader (queue, link grabber, hoster plugins);
 no code was taken from it. JDownloader's Java plugins cannot be loaded.
 
-> Version 0.1.0 - the first release. Read the [known limitations](#known-limitations) and the
+> **Alpha software.** Version 0.1.0 is an early alpha: expect many bugs and rough edges, and do not rely on it for anything important yet.
+> It is the first release. Read the [known limitations](#known-limitations) and the
 > [threat model](docs/threat-model.md) before relying on it. See [CHANGELOG.md](CHANGELOG.md),
 > [ROADMAP.md](ROADMAP.md) for what is planned.
 
