@@ -1,9 +1,9 @@
 # rdownloader status
 
-Generated 2026-10-22 at commit 6b674a4 - regenerate with `scripts/status-md.sh`
+Generated 2026-10-22 at commit ec16fc2 - regenerate with `scripts/status-md.sh`
 
-`[###################-]` **46/48** steps done (96%), 1 in progress, 1 open
-Roadmap items: 55 checked, 20 open
+`[##################--]` **47/52** steps done (90%), 1 in progress, 4 open
+Roadmap items: 57 checked, 22 open
 
 ## core (14/14)
 
@@ -27,7 +27,7 @@ Roadmap items: 55 checked, 20 open
 - [x] `i18n-1` src/i18n.rs: String-Katalog (en), Schlüssel + benannte Platzhalter, Tests; Clap-Help darüber
 - [x] `i18n-2` Bestehende deutsche Strings/Kommentare/Docs im Code auf Englisch, UI-Texte in den Katalog
 
-## net (9/11)
+## net (9/12)
 
 - [x] `net-1` TLS über Arti-Stream (https-Connector, vertragsfrei)
 - [x] `net-2` TorTransport implementiert Vertrag A
@@ -39,6 +39,7 @@ Roadmap items: 55 checked, 20 open
 - [x] `net-8` Onion-Dienste: .onion-URLs (Arti-Feature onion-service-client) + Vanguards
 - [x] `net-9` FTP/SFTP ueber Tor
 - [~] `net-10` HLS/DASH: Segment-Downloads (parallele Fragmente, Zusammenfuegen) - **in progress**
+- [ ] `net-12` Daemon-API absichern gegen fremde Webseiten (CSRF/DNS-Rebinding): Host-/Origin-/Content-Type-Pruefung ohne Token, Sicherheits-Header, Tests
 - [ ] `net-11` SFTP (SSH-Client mit Host-Key-Pruefung) und FTPS ueber Tor
 
 ## plugins (8/8)
@@ -70,3 +71,9 @@ Roadmap items: 55 checked, 20 open
 - [x] `ui-5` Batch-Import (Datei, Clipboard)
 - [x] `ui-6` History + Export (CSV/JSON)
 - [x] `ui-7` LinkGrabber-Workflow: Entkoppeltes Sammeln, Filtern & Bestaetigen
+
+## gui (1/3)
+
+- [x] `gui-1` Native GUI-Fenster (egui) mit derselben Engine, Standard wenn ein Display da ist; --tui fuer das Terminal
+- [ ] `gui-2` GUI ausbauen: LinkGrabber, Einstellungen, Datei-Import-Dialog, Tray-Symbol
+- [ ] `gui-3` App-Paket: macOS .app mit Icon, Windows/Linux-Pakete, Autostart
