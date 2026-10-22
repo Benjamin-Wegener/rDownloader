@@ -1,9 +1,9 @@
 # rdownloader status
 
-Generated 2026-10-22 at commit 6eb3547 - regenerate with `scripts/status-md.sh`
+Generated 2026-10-22 at commit 6b674a4 - regenerate with `scripts/status-md.sh`
 
 `[###################-]` **46/48** steps done (96%), 1 in progress, 1 open
-Roadmap items: 54 checked, 23 open
+Roadmap items: 55 checked, 20 open
 
 ## core (14/14)
 
