@@ -1,9 +1,9 @@
 # rdownloader status
 
-Generated 2026-10-22 at commit f5c32ef - regenerate with `scripts/status-md.sh`
+Generated 2026-10-22 at commit 69f0cea - regenerate with `scripts/status-md.sh`
 
-`[#################---]` **57/67** steps done (85%), 2 in progress, 8 open
-Roadmap items: 64 checked, 20 open
+`[#################---]` **58/67** steps done (87%), 1 in progress, 8 open
+Roadmap items: 65 checked, 20 open
 
 ## core (15/19)
 
@@ -27,11 +27,11 @@ Roadmap items: 64 checked, 20 open
 - [ ] `core-18` Download-Regeln: Zielordner und Umbenennen nach Dateityp, Host oder Muster
 - [ ] `core-19` Duplikat-Erkennung (schon geladen per URL oder History) im Link-Sammler
 
-## i18n (2/3)
+## i18n (3/3)
 
 - [x] `i18n-1` src/i18n.rs: String-Katalog (en), Schlüssel + benannte Platzhalter, Tests; Clap-Help darüber
 - [x] `i18n-2` Bestehende deutsche Strings/Kommentare/Docs im Code auf Englisch, UI-Texte in den Katalog
-- [~] `i18n-3` Deutsche Uebersetzung als Sprachpaket (lang/de.toml), Sprache per Config/Umgebung, Test auf Vollstaendigkeit aller Schluessel - **in progress**
+- [x] `i18n-3` Deutsche Uebersetzung als Sprachpaket (lang/de.toml), Sprache per Config/Umgebung, Test auf Vollstaendigkeit aller Schluessel
 
 ## net (12/13)
 
