@@ -1,11 +1,11 @@
 # rdownloader status
 
-Generated 2026-10-22 at commit 69f0cea - regenerate with `scripts/status-md.sh`
+Generated 2026-10-22 at commit 233181a - regenerate with `scripts/status-md.sh`
 
-`[#################---]` **58/67** steps done (87%), 1 in progress, 8 open
-Roadmap items: 65 checked, 20 open
+`[#################---]` **59/67** steps done (88%), 2 in progress, 6 open
+Roadmap items: 66 checked, 19 open
 
-## core (15/19)
+## core (16/19)
 
 - [x] `core-9` Zentraler Dateinamen-Bereiniger fuer alle Quellen (Plugin/Container/URL): kein Pfad-Ausbruch, Windows-Reservenamen, Kollision -> automatisch umbenennen
 - [x] `core-1` src/contract.rs: Verträge A (Transport) + B (JobEvent/JobCommand), MockTransport, FakeJob
@@ -22,7 +22,7 @@ Roadmap items: 65 checked, 20 open
 - [x] `core-13` Mirrors (mehrere URLs pro Datei, Auswahl nach Geschwindigkeit) + Metalink-Block-Pruefsummen
 - [x] `core-14` Ereignis-Hooks (Start/Fertig/Fehler -> eigener Befehl) und Desktop-Benachrichtigung
 - [x] `core-15` HLS/DASH in die Engine einbinden: Manifest-URLs (.m3u8/.mpd) an net::SegmentDownloader routen (Fortschritt, Abbruch, Zielendung .ts/.mp4), toten Parser find_subsequence entfernen
-- [ ] `core-16` Scheduler-Zeitfenster und zeitabhaengige Geschwindigkeitslimits
+- [x] `core-16` Scheduler-Zeitfenster und zeitabhaengige Geschwindigkeitslimits
 - [ ] `core-17` Watch-Ordner: Linklisten, .dlc und .metalink in einem Ordner werden importiert (Link-Sammler, nie direkt Download)
 - [ ] `core-18` Download-Regeln: Zielordner und Umbenennen nach Dateityp, Host oder Muster
 - [ ] `core-19` Duplikat-Erkennung (schon geladen per URL oder History) im Link-Sammler
@@ -47,7 +47,7 @@ Roadmap items: 65 checked, 20 open
 - [x] `net-10` HLS/DASH: Segment-Downloads (parallele Fragmente, Zusammenfuegen)
 - [x] `net-12` Daemon-API absichern gegen fremde Webseiten (CSRF/DNS-Rebinding): Host-/Origin-/Content-Type-Pruefung ohne Token, Sicherheits-Header, Tests
 - [x] `net-11` SFTP (SSH-Client mit Host-Key-Pruefung) und FTPS ueber Tor
-- [ ] `net-17` Live-Events im Daemon per Server-Sent Events
+- [~] `net-17` Live-Events im Daemon per Server-Sent Events - **in progress**
 
 ## plugins (8/8)
 
