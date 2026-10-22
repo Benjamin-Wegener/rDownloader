@@ -1,11 +1,11 @@
 # rdownloader status
 
-Generated 2026-10-22 at commit 1a28519 - regenerate with `scripts/status-md.sh`
+Generated 2026-10-22 at commit 6eb3547 - regenerate with `scripts/status-md.sh`
 
-`[##################--]` **45/48** steps done (94%), 0 in progress, 3 open
-Roadmap items: 53 checked, 24 open
+`[###################-]` **46/48** steps done (96%), 1 in progress, 1 open
+Roadmap items: 54 checked, 23 open
 
-## core (13/14)
+## core (14/14)
 
 - [x] `core-9` Zentraler Dateinamen-Bereiniger fuer alle Quellen (Plugin/Container/URL): kein Pfad-Ausbruch, Windows-Reservenamen, Kollision -> automatisch umbenennen
 - [x] `core-1` src/contract.rs: Verträge A (Transport) + B (JobEvent/JobCommand), MockTransport, FakeJob
@@ -20,7 +20,7 @@ Roadmap items: 53 checked, 24 open
 - [x] `core-11` macOS-Quarantaene-Attribut (com.apple.quarantine) auf fertige Downloads setzen
 - [x] `core-12` Langsame Verbindungen kappen (lowest-speed-limit) + bedingtes Laden (If-Modified-Since)
 - [x] `core-13` Mirrors (mehrere URLs pro Datei, Auswahl nach Geschwindigkeit) + Metalink-Block-Pruefsummen
-- [ ] `core-14` Ereignis-Hooks (Start/Fertig/Fehler -> eigener Befehl) und Desktop-Benachrichtigung
+- [x] `core-14` Ereignis-Hooks (Start/Fertig/Fehler -> eigener Befehl) und Desktop-Benachrichtigung
 
 ## i18n (2/2)
 
@@ -38,7 +38,7 @@ Roadmap items: 53 checked, 24 open
 - [x] `net-7` Headless-Daemon & RPC-API (JSON-RPC/REST-Steuerung)
 - [x] `net-8` Onion-Dienste: .onion-URLs (Arti-Feature onion-service-client) + Vanguards
 - [x] `net-9` FTP/SFTP ueber Tor
-- [ ] `net-10` HLS/DASH: Segment-Downloads (parallele Fragmente, Zusammenfuegen)
+- [~] `net-10` HLS/DASH: Segment-Downloads (parallele Fragmente, Zusammenfuegen) - **in progress**
 - [ ] `net-11` SFTP (SSH-Client mit Host-Key-Pruefung) und FTPS ueber Tor
 
 ## plugins (8/8)
