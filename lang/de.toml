@@ -324,3 +324,5 @@
 "gui.settings.auto_extract" = "Archive automatisch entpacken (.zip, .7z, .rar)"
 "gui.settings.extract_delete" = "Archive nach dem Entpacken löschen"
 "gui.settings.log_level" = "Log-Stufe"
+"cli.arg.autostart" = "Autostart beim Anmelden ein- oder ausschalten (on/off)"
+"gui.settings.autostart" = "rdownloader beim Anmelden automatisch starten"

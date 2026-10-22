@@ -42,6 +42,9 @@ Die Oberfläche und die Bedienkonzepte sollen sich an JDownloader orientieren (P
 - Referenz-Screenshots des Nutzers werden **nicht committet** (liegen lokal, z. B. `~/Pictures/rdl-reference/`); in Dokumenten wird nur beschrieben, was daraus gelernt wurde.
 - Das Zielbild der Oberfläche steht in `docs/gui-layout.md` (eigene Beschreibung, keine fremden Inhalte).
 
+## Neue Texte brauchen zwei Einträge
+Jeder neue Schlüssel in `src/i18n.rs` braucht **im selben Commit** den deutschen Text in `lang/de.toml` (gleiche Platzhalter). Der Test `german_catalog_is_complete_and_keeps_placeholders` hält master sonst rot.
+
 ## Build-Umgebung (macOS ohne Xcode/CLT)
 Auf diesem Rechner gibt es keine Xcode Command Line Tools, nur ein macOS-SDK und Homebrew-LLVM. Vor jedem `cargo`-Aufruf (auch fmt, clippy, test):
 ```
