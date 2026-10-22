@@ -77,6 +77,51 @@ pub fn links_in(text: &str) -> Vec<String> {
         .collect()
 }
 
+/// Shortcut actions of the window.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Shortcut {
+    AddLinks,
+    Settings,
+    About,
+    RemoveSelected,
+    TogglePauseSelected,
+}
+
+/// Maps a key press to an action. `typing` is true while a text field has the
+/// keyboard: then only the shortcuts with a command key work, so typing a space or
+/// pressing Delete in the search box never touches a download.
+pub fn shortcut_for(key: egui::Key, command: bool, typing: bool) -> Option<Shortcut> {
+    use egui::Key::*;
+    match (key, command) {
+        (N, true) => Some(Shortcut::AddLinks),
+        (Comma, true) => Some(Shortcut::Settings),
+        (F1, _) => Some(Shortcut::About),
+        (Delete, false) | (Backspace, false) if !typing => Some(Shortcut::RemoveSelected),
+        (Space, false) if !typing => Some(Shortcut::TogglePauseSelected),
+        _ => None,
+    }
+}
+
+/// Collects the links of dropped files: link lists, `.dlc`, `.ccf`, `.metalink`.
+/// Returns the links per file and a message for every file that could not be read.
+pub fn links_from_dropped(
+    paths: &[std::path::PathBuf],
+) -> (Vec<(String, Vec<url::Url>)>, Vec<String>) {
+    let (mut found, mut errors) = (Vec::new(), Vec::new());
+    for path in paths.iter().take(20) {
+        let name = path
+            .file_name()
+            .map(|n| n.to_string_lossy().into_owned())
+            .unwrap_or_default();
+        match import::import_file(path) {
+            Ok(imp) if !imp.urls.is_empty() => found.push((path.display().to_string(), imp.urls)),
+            Ok(_) => errors.push(t!("gui.drop.no_links", file = name)),
+            Err(e) => errors.push(t!("gui.drop.failed", file = name, error = format!("{e:#}"))),
+        }
+    }
+    (found, errors)
+}
+
 /// Which buttons make sense for a job in `status`.
 #[derive(Debug, PartialEq, Eq, Default)]
 pub struct Actions {
@@ -243,6 +288,7 @@ struct GuiApp {
     collapsed_packages: std::collections::HashSet<String>,
     grabber_collapsed_packages: std::collections::HashSet<usize>,
     settings_open: bool,
+    about_open: bool,
     settings_cfg: crate::config::Config,
     picker_open: bool,
     picker_path: std::path::PathBuf,
@@ -282,6 +328,7 @@ impl GuiApp {
             collapsed_packages: std::collections::HashSet::new(),
             grabber_collapsed_packages: std::collections::HashSet::new(),
             settings_open: false,
+            about_open: false,
             settings_cfg: initial_cfg,
             picker_open: false,
             picker_path: dirs::download_dir().unwrap_or_else(|| std::path::PathBuf::from(".")),
@@ -359,6 +406,13 @@ impl GuiApp {
             if icons::button(ui, Icon::Settings, &t!("gui.toolbar.settings"), true).clicked() {
                 self.settings_open = true;
                 self.settings_cfg = crate::config::load().unwrap_or_default();
+            }
+            if ui
+                .button("?")
+                .on_hover_text(t!("gui.about.title"))
+                .clicked()
+            {
+                self.about_open = true;
             }
         });
     }
@@ -491,7 +545,20 @@ impl GuiApp {
 
         if app.jobs.is_empty() {
             ui.add_space(40.0);
-            ui.vertical_centered(|ui| ui.weak(t!("gui.queue.empty")));
+            ui.vertical_centered(|ui| {
+                ui.weak(t!("gui.queue.empty"));
+                ui.add_space(6.0);
+                ui.weak(t!("gui.queue.empty_drop"));
+                // Tor takes a moment to connect; say so instead of looking idle.
+                let (text, tone) = tor_label(app.tor_health.as_ref());
+                if tone != Tone::Good {
+                    ui.add_space(6.0);
+                    ui.colored_label(tone_color(tone, ui.visuals().dark_mode), text);
+                    if app.tor_health.is_some() {
+                        ui.weak(t!("gui.queue.tor_wait"));
+                    }
+                }
+            });
             return;
         }
         if visible_jobs.is_empty() {
@@ -1616,6 +1683,98 @@ impl GuiApp {
         }
     }
 
+    /// Dropped files and keyboard shortcuts.
+    fn handle_input(&mut self, ctx: &egui::Context, app: &mut App) {
+        let dropped: Vec<std::path::PathBuf> = ctx.input(|i| {
+            i.raw
+                .dropped_files
+                .iter()
+                .map(|f| f.path().to_path_buf())
+                .collect()
+        });
+        if !dropped.is_empty() {
+            let (found, errors) = links_from_dropped(&dropped);
+            for (source, urls) in found {
+                app.collect_links(crate::ui::LinkSource::File(source), urls);
+            }
+            if let Some(first) = errors.first() {
+                app.status_msg = first.clone();
+            }
+            self.tab = Tab::LinkGrabber;
+        }
+
+        let typing = ctx.egui_wants_keyboard_input();
+        let pressed: Vec<(egui::Key, bool)> = ctx.input(|i| {
+            i.events
+                .iter()
+                .filter_map(|e| match e {
+                    egui::Event::Key {
+                        key,
+                        pressed: true,
+                        modifiers,
+                        repeat: false,
+                        ..
+                    } => Some((*key, modifiers.command)),
+                    _ => None,
+                })
+                .collect()
+        });
+        for (key, command) in pressed {
+            match shortcut_for(key, command, typing) {
+                Some(Shortcut::AddLinks) => self.add_open = true,
+                Some(Shortcut::Settings) => {
+                    self.settings_open = true;
+                    self.settings_cfg = crate::config::load().unwrap_or_default();
+                }
+                Some(Shortcut::About) => self.about_open = !self.about_open,
+                Some(Shortcut::RemoveSelected) => {
+                    if let Some(id) = self.selected {
+                        app.speeds.forget(id);
+                        Self::send(app, UiCommand::RemoveJob(id));
+                    }
+                }
+                Some(Shortcut::TogglePauseSelected) => {
+                    if let Some(job) = self
+                        .selected
+                        .and_then(|id| app.jobs.iter().find(|j| j.id == id))
+                    {
+                        let command = match job.status {
+                            JobStatus::Downloading => Some(UiCommand::PauseJob(job.id)),
+                            JobStatus::Paused => Some(UiCommand::ResumeJob(job.id)),
+                            _ => None,
+                        };
+                        if let Some(command) = command {
+                            Self::send(app, command);
+                        }
+                    }
+                }
+                None => {}
+            }
+        }
+    }
+
+    fn about_dialog(&mut self, ctx: &egui::Context) {
+        if !self.about_open {
+            return;
+        }
+        let mut open = true;
+        egui::Window::new(t!("gui.about.title"))
+            .open(&mut open)
+            .collapsible(false)
+            .resizable(false)
+            .anchor(egui::Align2::CENTER_CENTER, [0.0, -40.0])
+            .show(ctx, |ui| {
+                ui.heading("rdownloader");
+                ui.label(t!("gui.about.version", version = env!("CARGO_PKG_VERSION")));
+                ui.label(t!("gui.about.license"));
+                ui.add_space(6.0);
+                ui.weak(t!("gui.about.cleanroom"));
+                ui.add_space(6.0);
+                ui.weak(t!("gui.about.shortcuts"));
+            });
+        self.about_open = open;
+    }
+
     /// One frame of the window (separate from `eframe::App::ui` so tests can run it).
     fn show(&mut self, ui: &mut egui::Ui) {
         let app = self.app.clone();
@@ -1636,7 +1795,9 @@ impl GuiApp {
         });
 
         let ctx = ui.ctx().clone();
+        self.handle_input(&ctx, &mut a);
         self.add_dialog(&ctx, &mut a);
+        self.about_dialog(&ctx);
         self.settings_dialog(&ctx, &mut a);
         self.picker_dialog(&ctx);
         self.captcha_dialog(&ctx, &mut a);
@@ -2080,5 +2241,91 @@ mod tests {
         gui.picker_path = std::env::temp_dir();
         assert!(render(&mut gui, 2) > 0);
         gui.picker_open = false;
+    }
+
+    // ── polish: shortcuts, drop, about, first run ──
+
+    #[test]
+    fn shortcuts_respect_text_input() {
+        use egui::Key::*;
+        assert_eq!(shortcut_for(N, true, false), Some(Shortcut::AddLinks));
+        assert_eq!(
+            shortcut_for(N, true, true),
+            Some(Shortcut::AddLinks),
+            "command shortcuts work while typing"
+        );
+        assert_eq!(shortcut_for(Comma, true, false), Some(Shortcut::Settings));
+        assert_eq!(shortcut_for(F1, false, true), Some(Shortcut::About));
+        assert_eq!(
+            shortcut_for(Delete, false, false),
+            Some(Shortcut::RemoveSelected)
+        );
+        assert_eq!(
+            shortcut_for(Delete, false, true),
+            None,
+            "Delete in the search box must not remove a download"
+        );
+        assert_eq!(
+            shortcut_for(Space, false, true),
+            None,
+            "typing a space must not pause a download"
+        );
+        assert_eq!(
+            shortcut_for(Space, false, false),
+            Some(Shortcut::TogglePauseSelected)
+        );
+        assert_eq!(shortcut_for(A, false, false), None);
+    }
+
+    #[test]
+    fn dropped_link_lists_are_read() {
+        let dir = std::env::temp_dir().join(format!("rdl-drop-{}", Uuid::new_v4()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let good = dir.join("links.txt");
+        std::fs::write(&good, "http://a.test/1\nhttps://b.test/2\n").unwrap();
+        let empty = dir.join("empty.txt");
+        std::fs::write(&empty, "nothing here\n").unwrap();
+        let missing = dir.join("gone.txt");
+        let (found, errors) = links_from_dropped(&[good, empty, missing]);
+        assert_eq!(found.len(), 1);
+        assert_eq!(found[0].1.len(), 2);
+        assert_eq!(
+            errors.len(),
+            2,
+            "a file without links and an unreadable file are reported"
+        );
+        std::fs::remove_dir_all(dir).unwrap();
+        assert_eq!(links_from_dropped(&[]), (vec![], vec![]));
+    }
+
+    #[test]
+    fn about_dialog_and_first_run_render() {
+        let (app, _rx) = shared_app();
+        let mut gui = GuiApp::new(app);
+        let plain = render(&mut gui, 2);
+        gui.about_open = true;
+        assert!(render(&mut gui, 2) > plain, "the about window adds shapes");
+        gui.about_open = false;
+        // First run: empty queue, Tor still starting.
+        assert!(render(&mut gui, 2) > 0);
+    }
+
+    #[test]
+    fn the_minimum_window_size_is_usable() {
+        // Narrow and short windows must still render every panel without panicking.
+        let (app, _rx) = shared_app();
+        app.lock().unwrap().jobs = jobs_in_every_state();
+        let mut gui = GuiApp::new(app);
+        let ctx = egui::Context::default();
+        let input = egui::RawInput {
+            screen_rect: Some(egui::Rect::from_min_size(
+                egui::Pos2::ZERO,
+                egui::vec2(560.0, 360.0),
+            )),
+            ..Default::default()
+        };
+        let mut out = ctx.run_ui(input, |ui| gui.show(ui));
+        out.textures_delta.clear();
+        assert!(!out.shapes.is_empty());
     }
 }

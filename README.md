@@ -19,7 +19,7 @@ no code was taken from it. JDownloader's Java plugins cannot be loaded.
 - Optional checksum verification (MD5, SHA-1, SHA-256, SHA-512) when a hash is known
 - Mirrors: a Metalink file lists several URLs per file; parts are spread over them, faster mirrors are preferred, dead or wrong ones are dropped. Metalink piece checksums find damaged chunks, which are repaired from another mirror
 - Global speed limit (`max_speed_kib`)
-- Desktop window (egui): toolbar (resume / pause / stop all, move up and down, clear finished), queue with live progress, speed and ETA, per-download details, search with scope and state filter, an overview of totals (size, loaded, speed, time left, connections), add-links dialog, history and Tor status. It is the default when a display is available
+- Desktop window (egui; drag link lists onto it, shortcuts Ctrl/Cmd+N, Ctrl/Cmd+, and F1): toolbar (resume / pause / stop all, move up and down, clear finished), queue with live progress, speed and ETA, per-download details, search with scope and state filter, an overview of totals (size, loaded, speed, time left, connections), add-links dialog, history and Tor status. It is the default when a display is available
 - Terminal UI (`--tui`): queue with live progress, per-job details (parts, speed, ETA, Tor state), pause / resume / cancel / remove
 - Batch import of links from a text or M3U file, or from the clipboard
 - Link grabber: collect links separately (manually, from a file, the clipboard or a crawled page), filter them by host and file type, then confirm them into the download queue

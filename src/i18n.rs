@@ -921,6 +921,42 @@ const EN: &[(&str, &str)] = &[
         "{n} running",
     ),
     (
+        "gui.about.title",
+        "About rdownloader",
+    ),
+    (
+        "gui.about.version",
+        "Version {version}",
+    ),
+    (
+        "gui.about.license",
+        "Free software under the MIT license.",
+    ),
+    (
+        "gui.about.cleanroom",
+        "Written from scratch in Rust. Inspired by the workflow of classic download managers; no code, icons, images or texts of other programs are used.",
+    ),
+    (
+        "gui.about.shortcuts",
+        "Shortcuts: Ctrl/Cmd+N add links · Ctrl/Cmd+, settings · F1 this window · Space pause or resume the selected download · Delete remove it",
+    ),
+    (
+        "gui.drop.no_links",
+        "{file}: no links found",
+    ),
+    (
+        "gui.drop.failed",
+        "{file}: could not be read ({error})",
+    ),
+    (
+        "gui.queue.empty_drop",
+        "You can also drop a link list, .dlc or .metalink file onto this window.",
+    ),
+    (
+        "gui.queue.tor_wait",
+        "Downloads start as soon as Tor is connected.",
+    ),
+    (
         "ui.settings.title",
         "Settings",
     ),

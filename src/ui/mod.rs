@@ -201,7 +201,7 @@ impl App {
     }
 
     /// Collects links in the link grabber and reports the result in the status line.
-    fn collect_links(&mut self, source: LinkSource, urls: Vec<url::Url>) {
+    pub(crate) fn collect_links(&mut self, source: LinkSource, urls: Vec<url::Url>) {
         let added = self.grabber.add_links(source, urls);
         self.status_msg = if added.added == 0 {
             t!("ui.linkgrabber.duplicate_only")
