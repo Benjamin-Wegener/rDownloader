@@ -40,7 +40,7 @@ Die Oberfläche und die Bedienkonzepte sollen sich an JDownloader orientieren (P
 - **Verboten:** JDownloader-Quellcode oder dekompilierte `.jar`s ansehen, Icons/Grafiken/Logos/Themes, Texte oder Übersetzungen kopieren, den Namen oder das Logo „JDownloader“ in Programm, Hilfe oder Paketnamen verwenden (nur beschreibend in Dokumenten wie „inspiriert von“).
 - **Eigene Gestaltung:** eigener Name, eigene Icons, eigenes Farbschema, eigene Texte im Katalog. Funktionen werden aus dem *Verhalten* nachgebaut, nicht aus Code.
 - Referenz-Screenshots des Nutzers werden **nicht committet** (liegen lokal, z. B. `~/Pictures/rdl-reference/`); in Dokumenten wird nur beschrieben, was daraus gelernt wurde.
-- Der Schritt `gui-2` wartet auf die Screenshots (Abhängigkeit `wait-screenshots`). Freigabe durch den Nutzer: `touch .git/orch/done/wait-screenshots` im Hauptordner.
+- Das Zielbild der Oberfläche steht in `docs/gui-layout.md` (eigene Beschreibung, keine fremden Inhalte).
 
 ## Build-Umgebung (macOS ohne Xcode/CLT)
 Auf diesem Rechner gibt es keine Xcode Command Line Tools, nur ein macOS-SDK und Homebrew-LLVM. Vor jedem `cargo`-Aufruf (auch fmt, clippy, test):
