@@ -1137,7 +1137,6 @@ fn draw_settings(f: &mut Frame, area: Rect) {
         temp_dir = cfg.temp_dir().display().to_string(),
         download_dir = cfg.download_dir().display().to_string(),
         user_agent = cfg.user_agent.clone(),
-        connect_timeout = cfg.connect_timeout_secs.to_string(),
         read_timeout = cfg.read_timeout_secs.to_string(),
         max_retries = cfg.max_retries.to_string(),
         log_level = cfg.log_level.clone(),

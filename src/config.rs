@@ -37,10 +37,6 @@ pub struct Config {
     #[serde(default = "default_ua")]
     pub user_agent: String,
 
-    /// Connection timeout (seconds)
-    #[serde(default = "default_timeout")]
-    pub connect_timeout_secs: u64,
-
     /// Read timeout (seconds)
     #[serde(default = "default_read_timeout")]
     pub read_timeout_secs: u64,
@@ -142,7 +138,6 @@ impl Default for Config {
             temp_dir: None,
             download_dir: None,
             user_agent: default_ua(),
-            connect_timeout_secs: default_timeout(),
             read_timeout_secs: default_read_timeout(),
             max_concurrent_jobs: default_max_concurrent_jobs(),
             max_jobs_per_host: default_max_jobs_per_host(),

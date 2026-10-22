@@ -781,7 +781,7 @@ const EN: &[(&str, &str)] = &[
     ),
     (
         "ui.settings.body",
-        "Tor clients: {tor_clients}\nMax parts: {max_parts}\nTor data dir: {tor_data_dir}\nTemp dir: {temp_dir}\nDownload dir: {download_dir}\nUser agent: {user_agent}\nConnect timeout: {connect_timeout}s\nRead timeout: {read_timeout}s\nMax retries: {max_retries}\nLog level: {log_level}",
+        "Tor clients: {tor_clients}\nMax parts: {max_parts}\nTor data dir: {tor_data_dir}\nTemp dir: {temp_dir}\nDownload dir: {download_dir}\nUser agent: {user_agent}\nRead timeout: {read_timeout}s\nMax retries: {max_retries}\nLog level: {log_level}",
     ),
     ("ui.status.title", "Status"),
     ("ui.status.input_title", "Add URL"),

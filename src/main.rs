@@ -143,7 +143,7 @@ async fn main() -> Result<()> {
             Ok(tm) => {
                 let health = tm.health();
                 info!(
-                    "Tor ready (bootstrap {}%, healthy={})",
+                    "Tor client bootstrapped (bootstrap {}%, healthy={})",
                     health.bootstrap_percent(),
                     health.is_healthy()
                 );
