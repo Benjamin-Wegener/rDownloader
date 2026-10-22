@@ -152,10 +152,10 @@ Was automatisch geprüft ist und was noch **nicht** am echten System gesehen wur
 **Live geprüft (2026-10-22, Release-Binary über das echte Tor-Netz):**
 - HEAD auf einen echten `.onion`-Dienst (`tests/live_onion.rs`).
 - HTTPS-Download ohne bekannte Größe (`rfc9110.txt`, 502 941 Bytes): Hash identisch mit einer direkten Kopie.
+- FTP gegen `ftp.gnu.org` (1 033 297 Bytes, 2 Parts): Hash identisch. Der Server lehnte einzelne Versuche mit `425 Bad IP connecting` ab (siehe Limitationen); die Retries haben das aufgefangen.
 - HTTPS-Download mit 4 Parts und Ranges (`hello-2.12.1.tar.gz`, 1 033 297 Bytes): Hash identisch, Archiv gültig; ein echter Timeout wurde per Retry mit frischem Circuit aufgefangen.
 
 **Noch nicht live geprüft:**
-- [ ] 🟠 FTP gegen einen echten Server über Tor
 - [ ] 🟠 RAR-Entpacken mit `unrar`/`7zz` (auf der Entwicklungsmaschine ist keins installiert)
 - [ ] 🟠 TUI im echten Terminal: Detail-Ansicht, Import (`i`/`v`), LinkGrabber
 - [ ] 🟠 Linux- und Windows-Build sowie ein echter CI-Lauf auf GitHub (bisher nur lokal auf macOS)
@@ -175,6 +175,7 @@ Erledigt (infra-4): `reqwest` (inkl. `socks`), `indicatif` und `thiserror` entfe
 - JDs `.jar`-Plugins lassen sich clean-room **nicht** laden (Java + proprietäre API).
 - Manche Hoster brauchen JS zum Link-Auflösen – ohne Browser-Engine nicht sauber lösbar; Workaround: vorberechnete Endpunkte oder manuelle Eingabe.
 - Tor ist langsam – 10 Parallel-Circuits helfen nur, wenn der Hoster Ranges erlaubt und nicht der Guard der Flaschenhals ist.
+- FTP über Tor: Server, die den Datenkanal nur von derselben IP wie den Steuerkanal annehmen (z. B. vsftpd mit Standardeinstellung), lehnen Verbindungen ab, wenn Tor beide Streams über verschiedene Exits schickt (`425 Bad IP connecting`). Das ist Glückssache pro Versuch; die Retries lösen es meist nach 1-2 Versuchen, ein Download kann dadurch länger dauern oder bei Pech scheitern.
 - FTP (`ftp://`) ist unverschlüsselt: Login und Daten sind für das Exit-Relay lesbar. SFTP/FTPS fehlen noch.
 - `--no-tor` startet nur die Oberfläche; Downloads laufen ohne Tor bewusst nicht (kein direkter Fallback).
 - Arti hat noch keine volle C-Tor-Parität (Relay-Mode etc.); als Client produktionsreif (v2.7+).
