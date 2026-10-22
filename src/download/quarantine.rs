@@ -6,6 +6,7 @@
 //! Format: `0083;HEX_TIMESTAMP;AGENT_NAME;UUID`
 //! e.g. `0083;66a1b2c3;rDownloader;4B29E3DC-55B2-4F1E-9C3E-9419138B21AC`
 
+#[allow(unused_imports)] // only the macOS code paths use `bail` and `Context`
 use anyhow::{bail, Context, Result};
 use std::path::Path;
 

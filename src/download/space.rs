@@ -63,7 +63,7 @@ pub fn query_available_space(path: &Path) -> Result<DiskSpace> {
 }
 
 #[cfg(windows)]
-pub fn query_available_space(path: &Path) -> Result<DiskSpace> {
+pub fn query_available_space(_path: &Path) -> Result<DiskSpace> {
     // Basic fallback for Windows builds (can use GetDiskFreeSpaceExW if libc/winapi available)
     Ok(DiskSpace {
         available_bytes: u64::MAX,
@@ -154,7 +154,7 @@ pub fn preallocate_file(file: &File, size: u64) -> Result<()> {
         // Fallback
         file.set_len(size)
             .with_context(|| format!("set_len fallback failed for size {size}"))?;
-        return Ok(());
+        Ok(())
     }
 
     #[cfg(not(unix))]

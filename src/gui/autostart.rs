@@ -1,6 +1,8 @@
 //! Platform-specific autostart configuration (macOS LaunchAgent, Linux XDG desktop entry, Windows Registry).
 
-use anyhow::{Context, Result};
+use anyhow::Result;
+#[cfg(any(target_os = "macos", target_os = "linux"))]
+use anyhow::Context;
 use std::path::PathBuf;
 
 /// Path to the current executable.
@@ -159,11 +161,12 @@ fn check_windows_registry_autostart() -> bool {
     std::process::Command::new("cmd")
         .args(["/C", cmd])
         .output()
-        .map_or(false, |out| out.status.success())
+        .is_ok_and(|out| out.status.success())
 }
 
 #[cfg(test)]
 mod tests {
+    #[cfg(any(target_os = "macos", target_os = "linux"))]
     use super::*;
 
     #[test]
