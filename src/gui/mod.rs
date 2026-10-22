@@ -1069,14 +1069,8 @@ impl GuiApp {
             });
 
             row_rect = top_row.response.rect;
-            let row_response = top_row.response.interact(egui::Sense::click());
-            if row_response.clicked() {
+            if top_row.response.interact(egui::Sense::click()).clicked() {
                 row_clicked = true;
-            }
-            if matches!(item.status, JobStatus::Downloading | JobStatus::Merging) {
-                let history = app.speeds.history(item.id);
-                let tor = app.tor_health.as_ref();
-                row_response.on_hover_ui(|ui| hover_stats(ui, &item.raw, &history, tor));
             }
 
             if selected {
@@ -1147,6 +1141,14 @@ impl GuiApp {
         );
         if interact_resp.clicked() {
             self.selected = Some(item.id);
+        }
+        // This area lies over the whole row, so it is what the pointer hovers.
+        if matches!(item.status, JobStatus::Downloading | JobStatus::Merging) {
+            let history = app.speeds.history(item.id);
+            let tor = app.tor_health.as_ref();
+            interact_resp
+                .clone()
+                .on_hover_ui(|ui| hover_stats(ui, &item.raw, &history, tor));
         }
         interact_resp.context_menu(|ui| {
             self.selected = Some(item.id);
@@ -2701,6 +2703,52 @@ mod tests {
             out.textures_delta.clear();
             assert!(!out.shapes.is_empty());
         }
+    }
+
+    #[test]
+    fn hovering_a_running_download_shows_the_tooltip() {
+        let (app, _rx) = shared_app();
+        app.lock().unwrap().jobs = vec![JobProgress {
+            id: Uuid::from_u128(1),
+            url: "http://a.test/a".into(),
+            filename: "a.bin".into(),
+            total_bytes: 100,
+            bytes_done: 10,
+            parts: vec![],
+            status: JobStatus::Downloading,
+        }];
+        let mut gui = GuiApp::new(app);
+        let ctx = egui::Context::default();
+        let mut shown = false;
+        let mut time = 0.0;
+        'search: for (x, y) in (60..400)
+            .step_by(8)
+            .flat_map(|y| [60, 250, 400, 600, 800].map(|x| (x, y)))
+        {
+            for frame in 0..5 {
+                time += 0.4;
+                let mut input = egui::RawInput {
+                    time: Some(time),
+                    screen_rect: Some(egui::Rect::from_min_size(
+                        egui::Pos2::ZERO,
+                        egui::vec2(1000.0, 700.0),
+                    )),
+                    ..Default::default()
+                };
+                if frame == 0 {
+                    input
+                        .events
+                        .push(egui::Event::PointerMoved(egui::pos2(x as f32, y as f32)));
+                }
+                let mut out = ctx.run_ui(input, |ui| gui.show(ui));
+                out.textures_delta.clear();
+                if ctx.memory(|m| m.areas().top_layer_id(egui::Order::Tooltip).is_some()) {
+                    shown = true;
+                    break 'search;
+                }
+            }
+        }
+        assert!(shown, "no tooltip appeared over the running download");
     }
 
     #[test]
