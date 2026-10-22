@@ -612,9 +612,7 @@ async fn download_unknown_size(
 ) -> Result<()> {
     info!("Server reports no size: single-connection download without percentage");
     let control = control::get_or_create(job.id);
-    let temp_dir = crate::config::config()
-        .temp_dir()
-        .join(format!("job-{}", job.id));
+    let temp_dir = crate::config::config().job_temp_dir(job.id);
     fs::create_dir_all(&temp_dir).await?;
     let dest = temp_dir.join("part-000");
 
@@ -820,9 +818,7 @@ pub async fn run_job_with(
         info!("Server without Accept-Ranges - single-connection download");
     }
 
-    let temp_dir = crate::config::config()
-        .temp_dir()
-        .join(format!("job-{}", job.id));
+    let temp_dir = crate::config::config().job_temp_dir(job.id);
     fs::create_dir_all(&temp_dir).await?;
 
     // Check / initialize the resume state

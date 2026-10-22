@@ -116,7 +116,7 @@ All keys are optional.
 | `max_concurrent_jobs`, `max_jobs_per_host` | `3`, `2` | jobs running at once, overall and per host (`0` = unlimited) |
 | `auto_extract`, `extract_delete_archives` | `false` | unpack finished `.zip` / `.7z` / `.rar` (also multi-part) next to the download, optionally delete the archives afterwards |
 | `bridges` | `[]` | Tor bridge lines |
-| `download_dir`, `temp_dir`, `tor_data_dir` | platform defaults | where files and Tor state live |
+| `download_dir`, `temp_dir`, `tor_data_dir` | platform defaults | where files and Tor state live; partial downloads go to a permanent folder in the data directory (`.../rdownloader/partial`), not the OS temp folder, so a half-finished download survives a reboot |
 | `user_agent` | `rdownloader/0.1` | HTTP user agent |
 | `autostart` | `false` | start the window when you log in (also a switch in the settings dialog) |
 | `[hooks]` | none | programs to run on start, completion and error, and `notify` (see below) |

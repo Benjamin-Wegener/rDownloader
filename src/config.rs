@@ -214,10 +214,27 @@ impl Config {
         })
     }
 
+    /// Where partial downloads live. The default is a permanent folder in the user's
+    /// data directory: the system temp folder is cleaned up by the OS (reboot, age),
+    /// which would silently destroy the half of a big download.
     pub fn temp_dir(&self) -> PathBuf {
-        self.temp_dir
-            .clone()
-            .unwrap_or_else(|| std::env::temp_dir().join("rdownloader"))
+        self.temp_dir.clone().unwrap_or_else(|| {
+            dirs::data_dir()
+                .map(|d| d.join("rdownloader").join("partial"))
+                .unwrap_or_else(legacy_temp_dir)
+        })
+    }
+
+    /// Folder of the partial data of job `id`. Downloads started before the default
+    /// moved (to `legacy_temp_dir`) are found there and keep going.
+    pub fn job_temp_dir(&self, id: uuid::Uuid) -> PathBuf {
+        let current = self.temp_dir().join(format!("job-{id}"));
+        let legacy = legacy_temp_dir().join(format!("job-{id}"));
+        if self.temp_dir.is_none() && !current.exists() && legacy.exists() {
+            legacy
+        } else {
+            current
+        }
     }
 
     /// Directory with dynamically loaded WebAssembly plugins.
@@ -235,6 +252,11 @@ impl Config {
                 .join("rdownloader")
         })
     }
+}
+
+/// The old default for partial downloads (inside the system temp folder).
+pub fn legacy_temp_dir() -> PathBuf {
+    std::env::temp_dir().join("rdownloader")
 }
 
 static CONFIG: OnceLock<Config> = OnceLock::new();
@@ -307,5 +329,45 @@ mod serialization_tests {
             toml::from_str("[hooks]\non_complete = [\"/bin/true\"]\nnotify = true\n").unwrap();
         assert_eq!(cfg.hooks.on_complete, ["/bin/true"]);
         assert!(cfg.hooks.notify);
+    }
+
+    #[test]
+    fn partial_downloads_default_to_a_permanent_folder() {
+        let cfg = Config::default();
+        assert_ne!(cfg.temp_dir(), legacy_temp_dir(), "not the OS temp folder");
+        assert!(cfg.temp_dir().ends_with("partial"));
+        let own = Config {
+            temp_dir: Some(PathBuf::from("/data/tmp")),
+            ..Config::default()
+        };
+        assert_eq!(own.temp_dir(), PathBuf::from("/data/tmp"));
+        let id = uuid::Uuid::new_v4();
+        assert_eq!(
+            own.job_temp_dir(id),
+            PathBuf::from(format!("/data/tmp/job-{id}"))
+        );
+    }
+
+    #[test]
+    fn a_job_started_in_the_old_default_folder_is_still_found() {
+        let id = uuid::Uuid::new_v4();
+        let legacy = legacy_temp_dir().join(format!("job-{id}"));
+        std::fs::create_dir_all(&legacy).unwrap();
+        let cfg = Config::default();
+        assert_eq!(cfg.job_temp_dir(id), legacy, "resumes where it left off");
+        // A configured folder always wins.
+        let own = Config {
+            temp_dir: Some(PathBuf::from("/data/tmp")),
+            ..Config::default()
+        };
+        assert_eq!(
+            own.job_temp_dir(id),
+            PathBuf::from(format!("/data/tmp/job-{id}"))
+        );
+        std::fs::remove_dir_all(legacy).unwrap();
+        assert_eq!(
+            cfg.job_temp_dir(id),
+            cfg.temp_dir().join(format!("job-{id}"))
+        );
     }
 }
