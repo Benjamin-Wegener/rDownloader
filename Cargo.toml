@@ -3,6 +3,12 @@ name = "rdownloader"
 version = "0.1.0"
 edition = "2021"
 license = "MIT"
+authors = ["rdownloader contributors"]
+repository = "https://github.com/example/rdownloader"
+homepage = "https://github.com/example/rdownloader"
+keywords = ["download-manager", "tor", "arti", "hls", "dash"]
+categories = ["command-line-utilities", "network-programming"]
+readme = "README.md"
 description = "Clean-room Rust download manager with Tor (Arti), multi-part downloads, plugin system and TUI - inspired by JDownloader, no code taken."
 
 [dependencies]
