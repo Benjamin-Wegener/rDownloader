@@ -1,8 +1,8 @@
 //! Platform-specific autostart configuration (macOS LaunchAgent, Linux XDG desktop entry, Windows Registry).
 
-use anyhow::Result;
 #[cfg(any(target_os = "macos", target_os = "linux"))]
 use anyhow::Context;
+use anyhow::Result;
 use std::path::PathBuf;
 
 /// Path to the current executable.
