@@ -747,6 +747,10 @@ async fn run_tui(
                     // Removed downloads must not come back on the next start.
                     let _ = tracker_c.remove(id);
                 }
+                UiCommand::MoveJob(id, to) => {
+                    let mut jp = jobs_progress_c.lock().unwrap();
+                    ui::move_job(&mut jp, id, to);
+                }
                 UiCommand::RemoveHistory(id) => {
                     // The entry leaves the history and the tracker file.
                     let _ = tracker_c.remove(id);

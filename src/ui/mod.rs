@@ -63,6 +63,34 @@ pub enum UiCommand {
     RemoveJob(uuid::Uuid),
     /// Removes a finished download from the history.
     RemoveHistory(uuid::Uuid),
+    /// Change the position of a download in the queue list.
+    MoveJob(uuid::Uuid, MoveTo),
+}
+
+/// Where a download is moved to in the queue list.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum MoveTo {
+    Top,
+    Up,
+    Down,
+    Bottom,
+}
+
+/// Moves the job `id` inside `jobs`; does nothing if it is unknown or already there.
+pub fn move_job(jobs: &mut Vec<JobProgress>, id: uuid::Uuid, to: MoveTo) {
+    let Some(from) = jobs.iter().position(|j| j.id == id) else {
+        return;
+    };
+    let target = match to {
+        MoveTo::Top => 0,
+        MoveTo::Up => from.saturating_sub(1),
+        MoveTo::Down => (from + 1).min(jobs.len() - 1),
+        MoveTo::Bottom => jobs.len() - 1,
+    };
+    if target != from {
+        let job = jobs.remove(from);
+        jobs.insert(target, job);
+    }
 }
 
 /// Active interactive prompt state in the UI.
@@ -1758,5 +1786,33 @@ mod tests {
         assert!(text.contains("1.bin"), "link missing in the list: {text}");
         assert!(text.contains("2.html"), "link missing in the list: {text}");
         assert!(text.contains("a.test"), "host missing in the list: {text}");
+    }
+
+    #[test]
+    fn jobs_can_be_moved_in_the_queue() {
+        let mk = |n: u128| JobProgress {
+            id: Uuid::from_u128(n),
+            url: String::new(),
+            filename: String::new(),
+            total_bytes: 0,
+            bytes_done: 0,
+            parts: vec![],
+            status: JobStatus::Queued,
+        };
+        let order = |jobs: &[JobProgress]| jobs.iter().map(|j| j.id.as_u128()).collect::<Vec<_>>();
+        let mut jobs = vec![mk(1), mk(2), mk(3), mk(4)];
+        move_job(&mut jobs, Uuid::from_u128(3), MoveTo::Top);
+        assert_eq!(order(&jobs), [3, 1, 2, 4]);
+        move_job(&mut jobs, Uuid::from_u128(3), MoveTo::Up);
+        assert_eq!(order(&jobs), [3, 1, 2, 4], "already first");
+        move_job(&mut jobs, Uuid::from_u128(1), MoveTo::Down);
+        assert_eq!(order(&jobs), [3, 2, 1, 4]);
+        move_job(&mut jobs, Uuid::from_u128(3), MoveTo::Bottom);
+        assert_eq!(order(&jobs), [2, 1, 4, 3]);
+        move_job(&mut jobs, Uuid::from_u128(4), MoveTo::Up);
+        assert_eq!(order(&jobs), [2, 4, 1, 3]);
+        move_job(&mut jobs, Uuid::from_u128(99), MoveTo::Top);
+        assert_eq!(order(&jobs), [2, 4, 1, 3], "unknown job is ignored");
+        move_job(&mut Vec::new(), Uuid::from_u128(1), MoveTo::Down);
     }
 }

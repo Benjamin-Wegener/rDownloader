@@ -528,6 +528,130 @@ const EN: &[(&str, &str)] = &[
         "Cancel",
     ),
     (
+        "gui.toolbar.start",
+        "Resume all paused downloads",
+    ),
+    (
+        "gui.toolbar.pause",
+        "Pause all running downloads",
+    ),
+    (
+        "gui.toolbar.stop",
+        "Stop all active downloads",
+    ),
+    (
+        "gui.toolbar.to_top",
+        "Move selected download to the top",
+    ),
+    (
+        "gui.toolbar.up",
+        "Move selected download up",
+    ),
+    (
+        "gui.toolbar.down",
+        "Move selected download down",
+    ),
+    (
+        "gui.toolbar.to_bottom",
+        "Move selected download to the bottom",
+    ),
+    (
+        "gui.toolbar.clear",
+        "Remove finished downloads from the list",
+    ),
+    (
+        "gui.overview.title",
+        "Overview",
+    ),
+    (
+        "gui.overview.links",
+        "Links",
+    ),
+    (
+        "gui.overview.running",
+        "Running",
+    ),
+    (
+        "gui.overview.finished",
+        "Finished",
+    ),
+    (
+        "gui.overview.total",
+        "Total size",
+    ),
+    (
+        "gui.overview.loaded",
+        "Loaded",
+    ),
+    (
+        "gui.overview.remaining",
+        "Remaining",
+    ),
+    (
+        "gui.overview.speed",
+        "Speed",
+    ),
+    (
+        "gui.overview.eta",
+        "Time left",
+    ),
+    (
+        "gui.overview.connections",
+        "Open connections",
+    ),
+    (
+        "gui.value.none",
+        "–",
+    ),
+    (
+        "gui.add.title",
+        "Add links",
+    ),
+    (
+        "gui.search.hint",
+        "Search the list",
+    ),
+    (
+        "gui.scope.name",
+        "File name",
+    ),
+    (
+        "gui.scope.host",
+        "Host",
+    ),
+    (
+        "gui.scope.url",
+        "Link",
+    ),
+    (
+        "gui.filter.all",
+        "All downloads",
+    ),
+    (
+        "gui.filter.running",
+        "Running",
+    ),
+    (
+        "gui.filter.paused",
+        "Paused",
+    ),
+    (
+        "gui.filter.finished",
+        "Finished",
+    ),
+    (
+        "gui.filter.failed",
+        "Failed or stopped",
+    ),
+    (
+        "gui.queue.no_match",
+        "No download matches the search or filter.",
+    ),
+    (
+        "gui.footer.running",
+        "{n} running",
+    ),
+    (
         "ui.settings.title",
         "Settings",
     ),

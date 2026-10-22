@@ -5,16 +5,22 @@
 //! [`App`] model, and every button sends a [`UiCommand`] through the same channel
 //! the terminal UI uses. All visible text comes from the i18n catalog.
 
+mod icons;
+mod model;
+
 use anyhow::{anyhow, Result};
 use crossterm::event::KeyCode;
 use eframe::egui;
 use std::time::{Duration, Instant};
+use uuid::Uuid;
 
 use crate::download::{JobProgress, JobStatus};
 use crate::plugin::captcha::ChallengePayload;
 use crate::t;
 use crate::tor::TorHealth;
-use crate::ui::{detail, fmt_bytes, import, App, InputPrompt, SharedApp, UiCommand};
+use crate::ui::{detail, fmt_bytes, import, App, InputPrompt, MoveTo, SharedApp, UiCommand};
+use icons::Icon;
+use model::{SearchScope, StateFilter, Totals};
 
 /// How often the window redraws when nothing else triggers it (live progress).
 const REPAINT_EVERY: Duration = Duration::from_millis(250);
@@ -180,12 +186,47 @@ pub enum Tone {
     Bad,
 }
 
+/// What the toolbar buttons that act on many downloads do.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum Bulk {
+    StartPaused,
+    PauseRunning,
+    StopActive,
+    ClearFinished,
+}
+
+/// The commands for a bulk action over `jobs`.
+pub fn bulk_commands(jobs: &[JobProgress], action: Bulk) -> Vec<UiCommand> {
+    jobs.iter()
+        .filter_map(|j| match (action, &j.status) {
+            (Bulk::StartPaused, JobStatus::Paused) => Some(UiCommand::ResumeJob(j.id)),
+            (Bulk::PauseRunning, JobStatus::Downloading) => Some(UiCommand::PauseJob(j.id)),
+            (
+                Bulk::StopActive,
+                JobStatus::Queued
+                | JobStatus::Resolving
+                | JobStatus::Downloading
+                | JobStatus::Paused
+                | JobStatus::Merging,
+            ) => Some(UiCommand::CancelJob(j.id)),
+            (Bulk::ClearFinished, JobStatus::Done) => Some(UiCommand::RemoveJob(j.id)),
+            _ => None,
+        })
+        .collect()
+}
+
 // ───────────────────────── the window ─────────────────────────
 
 struct GuiApp {
     app: SharedApp,
     tab: Tab,
-    link_input: String,
+    selected: Option<Uuid>,
+    filter: StateFilter,
+    scope: SearchScope,
+    query: String,
+    add_open: bool,
+    add_text: String,
+    overview_open: bool,
     captcha_input: String,
 }
 
@@ -194,7 +235,13 @@ impl GuiApp {
         Self {
             app,
             tab: Tab::Downloads,
-            link_input: String::new(),
+            selected: None,
+            filter: StateFilter::All,
+            scope: SearchScope::Name,
+            query: String::new(),
+            add_open: false,
+            add_text: String::new(),
+            overview_open: true,
             captcha_input: String::new(),
         }
     }
@@ -218,76 +265,171 @@ impl GuiApp {
         }
     }
 
-    fn header(&mut self, ui: &mut egui::Ui, app: &App) {
+    fn bulk(app: &App, action: Bulk) {
+        for command in bulk_commands(&app.jobs, action) {
+            Self::send(app, command);
+        }
+    }
+
+    // ── frame parts ──
+
+    fn toolbar(&mut self, ui: &mut egui::Ui, app: &mut App) {
+        let has = |action| !bulk_commands(&app.jobs, action).is_empty();
+        let can_move = self
+            .selected
+            .is_some_and(|id| app.jobs.iter().any(|j| j.id == id));
+        let (start, pause, stop, clear) = (
+            has(Bulk::StartPaused),
+            has(Bulk::PauseRunning),
+            has(Bulk::StopActive),
+            has(Bulk::ClearFinished),
+        );
+
         ui.horizontal(|ui| {
-            ui.heading("rdownloader");
-            ui.add_space(12.0);
+            if icons::button(ui, Icon::Play, &t!("gui.toolbar.start"), start).clicked() {
+                Self::bulk(app, Bulk::StartPaused);
+            }
+            if icons::button(ui, Icon::Pause, &t!("gui.toolbar.pause"), pause).clicked() {
+                Self::bulk(app, Bulk::PauseRunning);
+            }
+            if icons::button(ui, Icon::Stop, &t!("gui.toolbar.stop"), stop).clicked() {
+                Self::bulk(app, Bulk::StopActive);
+            }
+            ui.separator();
+            for (icon, to, key) in [
+                (Icon::ToTop, MoveTo::Top, "gui.toolbar.to_top"),
+                (Icon::Up, MoveTo::Up, "gui.toolbar.up"),
+                (Icon::Down, MoveTo::Down, "gui.toolbar.down"),
+                (Icon::ToBottom, MoveTo::Bottom, "gui.toolbar.to_bottom"),
+            ] {
+                if icons::button(ui, icon, &t!(key), can_move).clicked() {
+                    if let Some(id) = self.selected {
+                        Self::send(app, UiCommand::MoveJob(id, to));
+                    }
+                }
+            }
+            ui.separator();
+            if icons::button(ui, Icon::Clear, &t!("gui.toolbar.clear"), clear).clicked() {
+                Self::bulk(app, Bulk::ClearFinished);
+            }
+        });
+    }
+
+    fn tabs(&mut self, ui: &mut egui::Ui) {
+        ui.horizontal(|ui| {
             ui.selectable_value(&mut self.tab, Tab::Downloads, t!("gui.tab.downloads"));
             ui.selectable_value(&mut self.tab, Tab::History, t!("gui.tab.history"));
+        });
+    }
+
+    fn overview(&self, ui: &mut egui::Ui, app: &App) {
+        let totals = Totals::compute(&app.jobs, |id| app.speeds.speed(id));
+        let eta = totals
+            .eta_secs
+            .map_or_else(|| t!("gui.value.none"), detail::fmt_eta);
+        let rows = [
+            (t!("gui.overview.links"), totals.links.to_string()),
+            (t!("gui.overview.running"), totals.running.to_string()),
+            (t!("gui.overview.finished"), totals.finished.to_string()),
+            (t!("gui.overview.total"), fmt_bytes(totals.total_bytes)),
+            (t!("gui.overview.loaded"), fmt_bytes(totals.loaded_bytes)),
+            (
+                t!("gui.overview.remaining"),
+                fmt_bytes(totals.remaining_bytes),
+            ),
+            (
+                t!("gui.overview.speed"),
+                detail::fmt_speed(totals.bytes_per_sec),
+            ),
+            (t!("gui.overview.eta"), eta),
+            (
+                t!("gui.overview.connections"),
+                totals.connections.to_string(),
+            ),
+        ];
+        ui.strong(t!("gui.overview.title"));
+        egui::Grid::new("overview")
+            .num_columns(6)
+            .spacing([18.0, 4.0])
+            .show(ui, |ui| {
+                for (n, (label, value)) in rows.iter().enumerate() {
+                    ui.weak(label);
+                    ui.label(value);
+                    if n % 3 == 2 {
+                        ui.end_row();
+                    }
+                }
+            });
+    }
+
+    fn command_bar(&mut self, ui: &mut egui::Ui, _app: &mut App) {
+        ui.horizontal(|ui| {
+            if ui.button(t!("gui.add.title")).clicked() {
+                self.add_open = true;
+            }
+            ui.add(
+                egui::TextEdit::singleline(&mut self.query)
+                    .hint_text(t!("gui.search.hint"))
+                    .desired_width((ui.available_width() - 330.0).max(120.0)),
+            );
+            egui::ComboBox::from_id_salt("scope")
+                .selected_text(scope_text(self.scope))
+                .width(110.0)
+                .show_ui(ui, |ui| {
+                    for scope in [SearchScope::Name, SearchScope::Host, SearchScope::Url] {
+                        ui.selectable_value(&mut self.scope, scope, scope_text(scope));
+                    }
+                });
+            egui::ComboBox::from_id_salt("filter")
+                .selected_text(filter_text(self.filter))
+                .width(130.0)
+                .show_ui(ui, |ui| {
+                    for filter in [
+                        StateFilter::All,
+                        StateFilter::Running,
+                        StateFilter::Paused,
+                        StateFilter::Finished,
+                        StateFilter::Failed,
+                    ] {
+                        ui.selectable_value(&mut self.filter, filter, filter_text(filter));
+                    }
+                });
+        });
+    }
+
+    fn footer(&mut self, ui: &mut egui::Ui, app: &App) {
+        ui.horizontal(|ui| {
+            if ui
+                .selectable_label(self.overview_open, t!("gui.overview.title"))
+                .clicked()
+            {
+                self.overview_open = !self.overview_open;
+            }
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                 let (text, tone) = tor_label(app.tor_health.as_ref());
-                let dark = ui.visuals().dark_mode;
-                let color = match (tone, dark) {
-                    (Tone::Good, true) => egui::Color32::from_rgb(0x4a, 0xde, 0x80),
-                    (Tone::Good, false) => egui::Color32::from_rgb(0x15, 0x80, 0x3d),
-                    (Tone::Warn, true) => egui::Color32::from_rgb(0xfb, 0xbf, 0x24),
-                    (Tone::Warn, false) => egui::Color32::from_rgb(0xb4, 0x53, 0x09),
-                    (Tone::Bad, true) => egui::Color32::from_rgb(0xf8, 0x71, 0x71),
-                    (Tone::Bad, false) => egui::Color32::from_rgb(0xb9, 0x1c, 0x1c),
-                };
-                ui.colored_label(color, text);
+                ui.colored_label(tone_color(tone, ui.visuals().dark_mode), text);
+                let totals = Totals::compute(&app.jobs, |id| app.speeds.speed(id));
+                ui.separator();
+                ui.weak(detail::fmt_speed(totals.bytes_per_sec));
+                ui.separator();
+                ui.weak(t!("gui.footer.running", n = totals.running));
             });
         });
     }
 
-    fn add_bar(&mut self, ui: &mut egui::Ui, app: &mut App) {
-        ui.horizontal(|ui| {
-            let width = (ui.available_width() - 280.0).max(160.0);
-            let edit = ui.add(
-                egui::TextEdit::singleline(&mut self.link_input)
-                    .hint_text(t!("gui.add.hint"))
-                    .desired_width(width),
-            );
-            let submit = edit.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter));
-            if (ui.button(t!("gui.add.button")).clicked() || submit)
-                && Self::add_links(app, &self.link_input)
-            {
-                self.link_input.clear();
-            }
-            if ui.button(t!("gui.add.clipboard")).clicked() {
-                let result = import::read_clipboard().map(|text| import::parse_urls(&text));
-                app.enqueue_import(result);
-            }
-        });
-    }
-
     fn downloads(&mut self, ui: &mut egui::Ui, app: &mut App) {
-        self.add_bar(ui, app);
-        ui.add_space(6.0);
-
-        let states = app
-            .jobs
-            .iter()
-            .filter(|j| {
-                matches!(
-                    j.status,
-                    JobStatus::Downloading | JobStatus::Resolving | JobStatus::Merging
-                )
-            })
-            .count();
-        let done = app
-            .jobs
-            .iter()
-            .filter(|j| matches!(j.status, JobStatus::Done))
-            .count();
-        if !app.jobs.is_empty() {
-            ui.weak(t!(
-                "gui.queue.summary",
-                active = states,
-                done = done,
-                total = app.jobs.len()
-            ));
+        if self
+            .selected
+            .is_some_and(|id| !app.jobs.iter().any(|j| j.id == id))
+        {
+            self.selected = None;
         }
+        let visible: Vec<JobProgress> = app
+            .jobs
+            .iter()
+            .filter(|j| model::matches(j, self.filter, self.scope, &self.query))
+            .cloned()
+            .collect();
 
         egui::ScrollArea::vertical()
             .auto_shrink([false, false])
@@ -297,14 +439,37 @@ impl GuiApp {
                     ui.vertical_centered(|ui| ui.weak(t!("gui.queue.empty")));
                     return;
                 }
+                if visible.is_empty() {
+                    ui.add_space(40.0);
+                    ui.vertical_centered(|ui| ui.weak(t!("gui.queue.no_match")));
+                    return;
+                }
                 let dark = ui.visuals().dark_mode;
-                let jobs = app.jobs.clone();
-                for job in &jobs {
+                for job in &visible {
                     let speed = app.speeds.speed(job.id);
-                    egui::Frame::group(ui.style()).show(ui, |ui| {
-                        ui.set_width(ui.available_width());
-                        self.job_card(ui, app, job, speed, dark);
+                    let selected = self.selected == Some(job.id);
+                    let accent = ui.visuals().selection.bg_fill;
+                    let frame = egui::Frame::group(ui.style()).stroke(if selected {
+                        egui::Stroke::new(2.0, accent)
+                    } else {
+                        ui.visuals().widgets.noninteractive.bg_stroke
                     });
+                    let response = frame
+                        .show(ui, |ui| {
+                            ui.set_width(ui.available_width());
+                            self.job_card(ui, app, job, speed, dark);
+                        })
+                        .response;
+                    if ui
+                        .interact(
+                            response.rect,
+                            ui.make_persistent_id(("row", job.id)),
+                            egui::Sense::click(),
+                        )
+                        .clicked()
+                    {
+                        self.selected = Some(job.id);
+                    }
                     ui.add_space(4.0);
                 }
             });
@@ -328,6 +493,7 @@ impl GuiApp {
                 .on_hover_text(&job.url);
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                 ui.colored_label(status_color(&job.status, dark), status_text(&job.status));
+                ui.weak(model::host_of(&job.url));
             });
         });
 
@@ -419,6 +585,53 @@ impl GuiApp {
             });
     }
 
+    /// The "add links" window: paste text, links are picked out of it.
+    fn add_dialog(&mut self, ctx: &egui::Context, app: &mut App) {
+        if !self.add_open {
+            return;
+        }
+        let mut open = true;
+        let mut text = std::mem::take(&mut self.add_text);
+        let mut submit = false;
+        let mut cancel = false;
+        egui::Window::new(t!("gui.add.title"))
+            .open(&mut open)
+            .collapsible(false)
+            .default_width(480.0)
+            .anchor(egui::Align2::CENTER_CENTER, [0.0, -40.0])
+            .show(ctx, |ui| {
+                ui.weak(t!("gui.add.hint"));
+                ui.add(
+                    egui::TextEdit::multiline(&mut text)
+                        .desired_rows(6)
+                        .desired_width(f32::INFINITY),
+                );
+                ui.horizontal(|ui| {
+                    if ui.button(t!("gui.add.clipboard")).clicked() {
+                        if let Ok(clip) = import::read_clipboard() {
+                            if !text.is_empty() && !text.ends_with('\n') {
+                                text.push('\n');
+                            }
+                            text.push_str(&clip);
+                        }
+                    }
+                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                        submit = ui.button(t!("gui.add.button")).clicked();
+                        cancel = ui.button(t!("gui.captcha.cancel")).clicked();
+                    });
+                });
+            });
+        if submit && Self::add_links(app, &text) {
+            text.clear();
+            open = false;
+        }
+        if cancel {
+            open = false;
+        }
+        self.add_text = text;
+        self.add_open = open;
+    }
+
     /// A plugin asked for a captcha answer; the answer goes back through the model.
     fn captcha_dialog(&mut self, ctx: &egui::Context, app: &mut App) {
         let InputPrompt::Captcha { challenge, .. } = &app.input_prompt else {
@@ -457,6 +670,29 @@ impl GuiApp {
             app.handle_key(KeyCode::Esc);
         }
     }
+
+    /// One frame of the window (separate from `eframe::App::ui` so tests can run it).
+    fn show(&mut self, ui: &mut egui::Ui) {
+        let app = self.app.clone();
+        let mut a = app.lock().unwrap();
+
+        egui::Panel::top("toolbar").show(ui, |ui| self.toolbar(ui, &mut a));
+        egui::Panel::top("tabs").show(ui, |ui| self.tabs(ui));
+        // Bottom panels stack upwards in the order they are added.
+        egui::Panel::bottom("footer").show(ui, |ui| self.footer(ui, &a));
+        egui::Panel::bottom("commands").show(ui, |ui| self.command_bar(ui, &mut a));
+        if self.overview_open {
+            egui::Panel::bottom("overview").show(ui, |ui| self.overview(ui, &a));
+        }
+        egui::CentralPanel::default().show(ui, |ui| match self.tab {
+            Tab::Downloads => self.downloads(ui, &mut a),
+            Tab::History => self.history(ui, &mut a),
+        });
+
+        let ctx = ui.ctx().clone();
+        self.add_dialog(&ctx, &mut a);
+        self.captcha_dialog(&ctx, &mut a);
+    }
 }
 
 impl eframe::App for GuiApp {
@@ -478,21 +714,32 @@ impl eframe::App for GuiApp {
     }
 }
 
-impl GuiApp {
-    /// One frame of the window (separate from `eframe::App::ui` so tests can run it).
-    fn show(&mut self, ui: &mut egui::Ui) {
-        let app = self.app.clone();
-        let mut a = app.lock().unwrap();
-        egui::CentralPanel::default().show(ui, |ui| {
-            self.header(ui, &a);
-            ui.separator();
-            match self.tab {
-                Tab::Downloads => self.downloads(ui, &mut a),
-                Tab::History => self.history(ui, &mut a),
-            }
-        });
-        let ctx = ui.ctx().clone();
-        self.captcha_dialog(&ctx, &mut a);
+fn scope_text(scope: SearchScope) -> String {
+    match scope {
+        SearchScope::Name => t!("gui.scope.name"),
+        SearchScope::Host => t!("gui.scope.host"),
+        SearchScope::Url => t!("gui.scope.url"),
+    }
+}
+
+fn filter_text(filter: StateFilter) -> String {
+    match filter {
+        StateFilter::All => t!("gui.filter.all"),
+        StateFilter::Running => t!("gui.filter.running"),
+        StateFilter::Paused => t!("gui.filter.paused"),
+        StateFilter::Finished => t!("gui.filter.finished"),
+        StateFilter::Failed => t!("gui.filter.failed"),
+    }
+}
+
+fn tone_color(tone: Tone, dark: bool) -> egui::Color32 {
+    match (tone, dark) {
+        (Tone::Good, true) => egui::Color32::from_rgb(0x4a, 0xde, 0x80),
+        (Tone::Good, false) => egui::Color32::from_rgb(0x15, 0x80, 0x3d),
+        (Tone::Warn, true) => egui::Color32::from_rgb(0xfb, 0xbf, 0x24),
+        (Tone::Warn, false) => egui::Color32::from_rgb(0xb4, 0x53, 0x09),
+        (Tone::Bad, true) => egui::Color32::from_rgb(0xf8, 0x71, 0x71),
+        (Tone::Bad, false) => egui::Color32::from_rgb(0xb9, 0x1c, 0x1c),
     }
 }
 
@@ -689,5 +936,104 @@ mod tests {
             rx.try_recv().unwrap(),
             UiCommand::AddUrls(vec!["http://a.test/1".into(), "http://a.test/2".into()])
         );
+    }
+
+    // ── frame: toolbar actions, dialog, filter, overview ──
+
+    fn jobs_in_every_state() -> Vec<JobProgress> {
+        [
+            JobStatus::Queued,
+            JobStatus::Downloading,
+            JobStatus::Paused,
+            JobStatus::Done,
+            JobStatus::Failed("x".into()),
+        ]
+        .into_iter()
+        .enumerate()
+        .map(|(i, status)| {
+            let mut j = job(status, 10, 100);
+            j.id = Uuid::from_u128(i as u128 + 1);
+            j.filename = format!("f{i}.bin");
+            j
+        })
+        .collect()
+    }
+
+    #[test]
+    fn bulk_actions_pick_the_right_downloads() {
+        let jobs = jobs_in_every_state();
+        let ids = |c: Vec<UiCommand>| c.into_iter().collect::<Vec<_>>();
+        assert_eq!(
+            ids(bulk_commands(&jobs, Bulk::StartPaused)),
+            vec![UiCommand::ResumeJob(Uuid::from_u128(3))]
+        );
+        assert_eq!(
+            ids(bulk_commands(&jobs, Bulk::PauseRunning)),
+            vec![UiCommand::PauseJob(Uuid::from_u128(2))]
+        );
+        assert_eq!(
+            ids(bulk_commands(&jobs, Bulk::ClearFinished)),
+            vec![UiCommand::RemoveJob(Uuid::from_u128(4))]
+        );
+        // Queued, running and paused downloads are stopped; finished and failed ones are left alone.
+        assert_eq!(
+            ids(bulk_commands(&jobs, Bulk::StopActive)),
+            vec![
+                UiCommand::CancelJob(Uuid::from_u128(1)),
+                UiCommand::CancelJob(Uuid::from_u128(2)),
+                UiCommand::CancelJob(Uuid::from_u128(3)),
+            ]
+        );
+        assert!(bulk_commands(&[], Bulk::StopActive).is_empty());
+    }
+
+    #[test]
+    fn the_add_dialog_renders_and_collapses() {
+        let (app, _rx) = shared_app();
+        let mut gui = GuiApp::new(app);
+        gui.add_open = true;
+        gui.add_text = "http://a.test/1".into();
+        assert!(render(&mut gui, 2) > 0);
+        assert!(gui.add_open, "stays open until submitted or cancelled");
+    }
+
+    #[test]
+    fn filters_and_search_render_without_matches() {
+        let (app, _rx) = shared_app();
+        app.lock().unwrap().jobs = jobs_in_every_state();
+        let mut gui = GuiApp::new(app);
+        gui.filter = StateFilter::Finished;
+        gui.query = "nothing like this".into();
+        assert!(render(&mut gui, 2) > 0);
+        gui.query.clear();
+        gui.scope = SearchScope::Host;
+        assert!(render(&mut gui, 1) > 0);
+    }
+
+    #[test]
+    fn overview_can_be_hidden_and_shown() {
+        let (app, _rx) = shared_app();
+        app.lock().unwrap().jobs = jobs_in_every_state();
+        let mut gui = GuiApp::new(app);
+        let shown = render(&mut gui, 2);
+        gui.overview_open = false;
+        let hidden = render(&mut gui, 2);
+        assert!(
+            shown > hidden,
+            "the overview panel draws shapes ({shown} vs {hidden})"
+        );
+    }
+
+    #[test]
+    fn a_selection_of_a_removed_download_is_dropped() {
+        let (app, _rx) = shared_app();
+        app.lock().unwrap().jobs = jobs_in_every_state();
+        let mut gui = GuiApp::new(app.clone());
+        gui.selected = Some(Uuid::from_u128(2));
+        render(&mut gui, 1);
+        assert_eq!(gui.selected, Some(Uuid::from_u128(2)));
+        app.lock().unwrap().jobs.clear();
+        render(&mut gui, 1);
+        assert_eq!(gui.selected, None);
     }
 }
