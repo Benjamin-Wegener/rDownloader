@@ -1,9 +1,9 @@
 # rdownloader status
 
-Generated 2026-10-22 at commit 233181a - regenerate with `scripts/status-md.sh`
+Generated 2026-10-22 at commit 2e6d007 - regenerate with `scripts/status-md.sh`
 
-`[#################---]` **59/67** steps done (88%), 2 in progress, 6 open
-Roadmap items: 66 checked, 19 open
+`[##################--]` **60/67** steps done (90%), 1 in progress, 6 open
+Roadmap items: 67 checked, 18 open
 
 ## core (16/19)
 
@@ -81,14 +81,14 @@ Roadmap items: 66 checked, 19 open
 - [x] `ui-6` History + Export (CSV/JSON)
 - [x] `ui-7` LinkGrabber-Workflow: Entkoppeltes Sammeln, Filtern & Bestaetigen
 
-## gui (5/9)
+## gui (6/9)
 
 - [x] `gui-1` Native GUI-Fenster (egui) mit derselben Engine, Standard wenn ein Display da ist; --tui fuer das Terminal
 - [x] `gui-2` GUI-Rahmen nach docs/gui-layout.md: Toolbar, Reiter, Uebersichtspanel, Befehlsleiste, Fusszeile
 - [x] `gui-3` GUI-Tabelle: Spalten (Name, Groesse, Host, Verbindung, Status, Tempo, Rest, Geladen, Fortschritt, Speicherort, Kommentar), Sortierung, Spaltenauswahl, Pakete im Datenmodell
 - [x] `gui-4` GUI-Reiter Link-Sammler auf dem vorhandenen Sammler-Modell
 - [x] `gui-5` GUI-Dialoge und Menues: Links-hinzufuegen-Dialog, Kontextmenue, Einstellungen, Dateiauswahl
-- [~] `gui-6` App-Paket: macOS .app mit Icon, Windows/Linux-Pakete, Autostart - **in progress**
+- [x] `gui-6` App-Paket: macOS .app mit Icon, Windows/Linux-Pakete, Autostart
 - [ ] `gui-7` Themes (hell, dunkel, automatisch, Akzentfarbe) und Einstellungsseite inkl. Sprachwahl
 - [ ] `gui-8` Zwischenablage-Ueberwachung (opt-in) speist den Link-Sammler, nie direkt den Download
 - [ ] `gui-9` Tray-Symbol, Autostart, Fenster in den Tray schliessen
