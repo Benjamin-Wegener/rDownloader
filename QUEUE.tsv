@@ -57,3 +57,13 @@ gui-6	gui	App-Paket: macOS .app mit Icon, Windows/Linux-Pakete, Autostart	gui-5
 net-11	net	SFTP (SSH-Client mit Host-Key-Pruefung) und FTPS ueber Tor	net-10
 core-15	core	HLS/DASH in die Engine einbinden: Manifest-URLs (.m3u8/.mpd) an net::SegmentDownloader routen (Fortschritt, Abbruch, Zielendung .ts/.mp4), toten Parser find_subsequence entfernen	net-10
 infra-7	infra	Aufraeumen: ungenutzte Config connect_timeout_secs (umsetzen oder entfernen), irrefuehrende Tor-Log-Zeile (bootstrap 85%, healthy=false), README/Roadmap an den echten Stand anpassen	-
+i18n-3	i18n	Deutsche Uebersetzung als Sprachpaket (lang/de.toml), Sprache per Config/Umgebung, Test auf Vollstaendigkeit aller Schluessel	-
+infra-8	infra	Paketierungsvorlagen: Cargo-Metadaten fuer crates.io, Homebrew-Formel, AUR-PKGBUILD, Scoop-Manifest (Veroeffentlichen von Hand)	infra-7
+core-16	core	Scheduler-Zeitfenster und zeitabhaengige Geschwindigkeitslimits	core-15
+core-17	core	Watch-Ordner: Linklisten, .dlc und .metalink in einem Ordner werden importiert (Link-Sammler, nie direkt Download)	core-16
+core-18	core	Download-Regeln: Zielordner und Umbenennen nach Dateityp, Host oder Muster	core-17
+core-19	core	Duplikat-Erkennung (schon geladen per URL oder History) im Link-Sammler	core-18,gui-4
+gui-7	gui	Themes (hell, dunkel, automatisch, Akzentfarbe) und Einstellungsseite inkl. Sprachwahl	gui-5,i18n-3
+gui-8	gui	Zwischenablage-Ueberwachung (opt-in) speist den Link-Sammler, nie direkt den Download	gui-4,gui-7
+gui-9	gui	Tray-Symbol, Autostart, Fenster in den Tray schliessen	gui-6
+net-17	net	Live-Events im Daemon per Server-Sent Events	net-11
