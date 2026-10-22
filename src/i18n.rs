@@ -1001,6 +1001,86 @@ const EN: &[(&str, &str)] = &[
         "Limit {limit}",
     ),
     (
+        "gui.settings.section.downloads",
+        "Downloads",
+    ),
+    (
+        "gui.settings.section.speed",
+        "Speed",
+    ),
+    (
+        "gui.settings.section.folders",
+        "Folders and files",
+    ),
+    (
+        "gui.settings.section.interface",
+        "Interface",
+    ),
+    (
+        "gui.settings.out_of_range",
+        "Allowed: {min} to {max}",
+    ),
+    (
+        "gui.unit.parts",
+        "parts",
+    ),
+    (
+        "gui.unit.downloads",
+        "downloads",
+    ),
+    (
+        "gui.unit.times",
+        "times",
+    ),
+    (
+        "gui.settings.reset",
+        "Reset to defaults",
+    ),
+    (
+        "gui.settings.reset_hint",
+        "Puts every setting back to its default. Nothing is saved until you press Save.",
+    ),
+    (
+        "gui.settings.restart_note",
+        "Changes apply the next time rDownloader starts, except the speed limit, which applies at once.",
+    ),
+    (
+        "gui.settings.tip.max_parts",
+        "How many connections one download uses at the same time. More is faster until the server or Tor is the limit.",
+    ),
+    (
+        "gui.settings.tip.concurrent",
+        "How many downloads run at once. 0 means no limit.",
+    ),
+    (
+        "gui.settings.tip.per_host",
+        "How many downloads may run at once from the same server. 0 means no limit.",
+    ),
+    (
+        "gui.settings.tip.retries",
+        "How often a failed connection is tried again before the download is marked as failed.",
+    ),
+    (
+        "gui.settings.tip.max_speed",
+        "Total speed of all downloads together. 0 means no limit. Applies at once.",
+    ),
+    (
+        "gui.settings.tip.min_speed",
+        "A connection slower than this for half a minute is dropped and rebuilt on a new route. 0 turns this off.",
+    ),
+    (
+        "gui.settings.tip.download_dir",
+        "Where finished downloads are saved.",
+    ),
+    (
+        "gui.settings.tip.temp_dir",
+        "Where partial downloads are kept. Leave empty for the default folder, which survives a restart.",
+    ),
+    (
+        "gui.settings.tip.log_level",
+        "How much detail is written to the log. Use info unless you are looking for a problem.",
+    ),
+    (
         "ui.settings.title",
         "Settings",
     ),

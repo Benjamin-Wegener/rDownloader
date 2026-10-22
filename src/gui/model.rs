@@ -671,6 +671,40 @@ pub fn limit_label(bytes_per_sec: u64) -> Option<String> {
     })
 }
 
+// ───────────────────────── number fields of the settings ─────────────────────────
+
+/// Why the text of a number field is not usable.
+#[derive(Debug, PartialEq, Eq)]
+pub enum NumberError {
+    Empty,
+    NotANumber,
+    OutOfRange,
+}
+
+/// The whole number in `text` if it lies in `min..=max`.
+pub fn parse_in_range(text: &str, min: u64, max: u64) -> Result<u64, NumberError> {
+    let text = text.trim();
+    if text.is_empty() {
+        return Err(NumberError::Empty);
+    }
+    let value: u64 = text.parse().map_err(|_| NumberError::NotANumber)?;
+    if (min..=max).contains(&value) {
+        Ok(value)
+    } else {
+        Err(NumberError::OutOfRange)
+    }
+}
+
+/// `value` moved by `delta` and kept inside `min..=max` (for the − and + buttons).
+pub fn stepped(value: u64, delta: i64, min: u64, max: u64) -> u64 {
+    let moved = if delta < 0 {
+        value.saturating_sub(delta.unsigned_abs())
+    } else {
+        value.saturating_add(delta as u64)
+    };
+    moved.clamp(min, max)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -969,5 +1003,35 @@ mod tests {
         assert_eq!(limit_label(0), None);
         assert_eq!(limit_label(5 * 1024 * 1024).as_deref(), Some("5 MB/s"));
         assert_eq!(limit_label(300 * 1024).as_deref(), Some("300 KB/s"));
+    }
+
+    #[test]
+    fn number_fields_accept_only_whole_numbers_in_range() {
+        assert_eq!(parse_in_range("8", 1, 32), Ok(8));
+        assert_eq!(parse_in_range(" 32 ", 1, 32), Ok(32));
+        assert_eq!(parse_in_range("0", 1, 32), Err(NumberError::OutOfRange));
+        assert_eq!(parse_in_range("33", 1, 32), Err(NumberError::OutOfRange));
+        assert_eq!(parse_in_range("", 0, 9), Err(NumberError::Empty));
+        for bad in ["abc", "-1", "1.5", "1e3", "０"] {
+            assert_eq!(
+                parse_in_range(bad, 0, 100),
+                Err(NumberError::NotANumber),
+                "{bad:?}"
+            );
+        }
+        assert_eq!(
+            parse_in_range("99999999999999999999999", 0, 100),
+            Err(NumberError::NotANumber)
+        );
+    }
+
+    #[test]
+    fn steppers_stay_in_range() {
+        assert_eq!(stepped(5, 1, 1, 10), 6);
+        assert_eq!(stepped(10, 1, 1, 10), 10);
+        assert_eq!(stepped(1, -1, 1, 10), 1);
+        assert_eq!(stepped(0, -5, 0, 10), 0);
+        assert_eq!(stepped(5, 100, 1, 10), 10);
+        assert_eq!(stepped(u64::MAX, 1, 0, 50), 50);
     }
 }

@@ -310,6 +310,12 @@ struct GuiApp {
     speed_unit: SpeedUnit,
     speed_error: bool,
     confirm_clean: bool,
+    /// Text of the number fields of the settings dialog.
+    num_parts: String,
+    num_concurrent: String,
+    num_per_host: String,
+    num_retries: String,
+    num_min_speed: String,
     about_open: bool,
     watch_clipboard: bool,
     last_clip: Option<String>,
@@ -357,6 +363,11 @@ impl GuiApp {
             speed_unit: SpeedUnit::KBps,
             speed_error: false,
             confirm_clean: false,
+            num_parts: String::new(),
+            num_concurrent: String::new(),
+            num_per_host: String::new(),
+            num_retries: String::new(),
+            num_min_speed: String::new(),
             about_open: false,
             watch_clipboard: crate::config::config().watch_clipboard,
             last_clip: None,
@@ -451,12 +462,33 @@ impl GuiApp {
     /// Opens the settings dialog with the values from the config file.
     fn open_settings(&mut self) {
         self.settings_cfg = crate::config::load().unwrap_or_default();
+        self.fill_setting_fields();
+        self.confirm_clean = false;
+        self.settings_open = true;
+    }
+
+    /// Puts the values of `settings_cfg` into the text fields of the dialog.
+    fn fill_setting_fields(&mut self) {
         let (text, unit) = model::split_kib(self.settings_cfg.max_speed_kib);
         self.speed_text = text;
         self.speed_unit = unit;
         self.speed_error = false;
-        self.confirm_clean = false;
-        self.settings_open = true;
+        self.num_parts = self.settings_cfg.max_parts.to_string();
+        self.num_concurrent = self.settings_cfg.max_concurrent_jobs.to_string();
+        self.num_per_host = self.settings_cfg.max_jobs_per_host.to_string();
+        self.num_retries = self.settings_cfg.max_retries.to_string();
+        self.num_min_speed = self.settings_cfg.min_speed_kib.to_string();
+    }
+
+    /// The typed numbers if every field holds a valid value (nothing is saved otherwise).
+    fn read_number_fields(&self) -> Option<(usize, usize, usize, u32, u64)> {
+        Some((
+            model::parse_in_range(&self.num_parts, 1, 32).ok()? as usize,
+            model::parse_in_range(&self.num_concurrent, 0, 100).ok()? as usize,
+            model::parse_in_range(&self.num_per_host, 0, 20).ok()? as usize,
+            model::parse_in_range(&self.num_retries, 0, 20).ok()? as u32,
+            model::parse_in_range(&self.num_min_speed, 0, 10_000).ok()?,
+        ))
     }
 
     fn tabs(&mut self, ui: &mut egui::Ui, app: &App) {
@@ -1480,6 +1512,51 @@ impl GuiApp {
     }
 
     /// Settings dialog with tabs: General, Network/Tor, Limits/Retries
+    /// One typed number field with − and + buttons, a unit and a hint when the text is not
+    /// a number in range. `text` is what is typed; the value is read back on save.
+    fn number_field(
+        ui: &mut egui::Ui,
+        text: &mut String,
+        range: (u64, u64),
+        step: u64,
+        unit: &str,
+    ) {
+        ui.horizontal(|ui| {
+            let current = model::parse_in_range(text, range.0, range.1);
+            if ui.small_button("−").clicked() {
+                let base = current.as_ref().copied().unwrap_or(range.0);
+                *text = model::stepped(base, -(step as i64), range.0, range.1).to_string();
+            }
+            let invalid = current.is_err();
+            let edit = ui.add(
+                egui::TextEdit::singleline(text)
+                    .desired_width(64.0)
+                    .align(egui::Align2::RIGHT_CENTER)
+                    .text_color_opt(invalid.then_some(egui::Color32::from_rgb(0xb9, 0x1c, 0x1c))),
+            );
+            if edit.lost_focus() && invalid {
+                // Leaving the field with nonsense: show the nearest usable value again.
+                let fixed = text
+                    .trim()
+                    .parse::<u64>()
+                    .unwrap_or(range.0)
+                    .clamp(range.0, range.1);
+                *text = fixed.to_string();
+            }
+            if ui.small_button("+").clicked() {
+                let base = model::parse_in_range(text, range.0, range.1).unwrap_or(range.0);
+                *text = model::stepped(base, step as i64, range.0, range.1).to_string();
+            }
+            ui.weak(unit);
+            if model::parse_in_range(text, range.0, range.1).is_err() {
+                ui.colored_label(
+                    egui::Color32::from_rgb(0xb9, 0x1c, 0x1c),
+                    t!("gui.settings.out_of_range", min = range.0, max = range.1),
+                );
+            }
+        });
+    }
+
     fn settings_dialog(&mut self, ctx: &egui::Context, app: &mut App) {
         if !self.settings_open {
             return;
@@ -1487,165 +1564,279 @@ impl GuiApp {
         let mut open = true;
         let mut save = false;
         let mut cancel = false;
+        let mut reset = false;
         let mut browse_download = false;
         let mut browse_temp = false;
+        // Enter saves and Esc closes, like in any dialog (not while a drop-down is open).
+        let (enter, escape) = ctx.input(|i| {
+            (
+                i.key_pressed(egui::Key::Enter),
+                i.key_pressed(egui::Key::Escape),
+            )
+        });
+        if escape && !ctx.egui_is_using_pointer() {
+            cancel = true;
+        }
+        let max_height = (ctx.content_rect().height() - 140.0).max(200.0);
 
         egui::Window::new(t!("gui.settings.title"))
             .open(&mut open)
             .collapsible(false)
-            .default_width(540.0)
+            .default_width(560.0)
             .anchor(egui::Align2::CENTER_CENTER, [0.0, -20.0])
             .show(ctx, |ui| {
-                ui.heading(t!("gui.settings.general"));
-                ui.horizontal(|ui| {
-                    ui.label(t!("gui.settings.download_dir"));
-                    let mut dir_str = self
-                        .settings_cfg
-                        .download_dir
-                        .as_ref()
-                        .map(|p| p.to_string_lossy().to_string())
-                        .unwrap_or_default();
-                    if ui.text_edit_singleline(&mut dir_str).changed() {
-                        self.settings_cfg.download_dir = if dir_str.trim().is_empty() {
-                            None
-                        } else {
-                            Some(std::path::PathBuf::from(dir_str.trim()))
-                        };
-                    }
-                    if ui.button(t!("gui.add.browse")).clicked() {
-                        browse_download = true;
-                    }
-                });
-
-                ui.horizontal(|ui| {
-                    ui.label(t!("gui.settings.temp_dir"));
-                    let mut temp_str = self
-                        .settings_cfg
-                        .temp_dir
-                        .as_ref()
-                        .map(|p| p.to_string_lossy().to_string())
-                        .unwrap_or_default();
-                    if ui.text_edit_singleline(&mut temp_str).changed() {
-                        self.settings_cfg.temp_dir = if temp_str.trim().is_empty() {
-                            None
-                        } else {
-                            Some(std::path::PathBuf::from(temp_str.trim()))
-                        };
-                    }
-                    if ui.button(t!("gui.add.browse")).clicked() {
-                        browse_temp = true;
-                    }
-                });
-
-                ui.checkbox(
-                    &mut self.settings_cfg.auto_extract,
-                    t!("gui.settings.auto_extract"),
-                );
-                ui.checkbox(
-                    &mut self.settings_cfg.extract_delete_archives,
-                    t!("gui.settings.extract_delete"),
-                );
-                ui.checkbox(
-                    &mut self.settings_cfg.autostart,
-                    t!("gui.settings.autostart"),
-                );
-                ui.checkbox(
-                    &mut self.settings_cfg.watch_clipboard,
-                    t!("gui.clipboard.watch"),
-                );
-                ui.separator();
-                ui.weak(t!("gui.partial.hint"));
-                let label = if self.confirm_clean {
-                    t!("gui.partial.confirm")
-                } else {
-                    t!("gui.partial.clean")
-                };
-                if ui.button(label).clicked() {
-                    if self.confirm_clean {
-                        Self::send(app, UiCommand::CleanPartial);
-                    }
-                    self.confirm_clean = !self.confirm_clean;
-                }
-
-                ui.separator();
-                ui.heading(t!("gui.settings.network"));
-                ui.horizontal(|ui| {
-                    ui.label(t!("gui.settings.max_parts"));
-                    ui.add(egui::DragValue::new(&mut self.settings_cfg.max_parts).range(1..=32));
-                });
-                ui.horizontal(|ui| {
-                    ui.label(t!("gui.settings.log_level"));
-                    egui::ComboBox::from_id_salt("log_level")
-                        .selected_text(&self.settings_cfg.log_level)
-                        .show_ui(ui, |ui| {
-                            for lvl in ["error", "warn", "info", "debug", "trace"] {
-                                ui.selectable_value(
-                                    &mut self.settings_cfg.log_level,
-                                    lvl.to_string(),
-                                    lvl,
+                egui::ScrollArea::vertical()
+                    .max_height(max_height)
+                    .show(ui, |ui| {
+                        // ── Downloads ──
+                        ui.heading(t!("gui.settings.section.downloads"));
+                        egui::Grid::new("settings_downloads")
+                            .num_columns(2)
+                            .spacing([16.0, 8.0])
+                            .show(ui, |ui| {
+                                ui.label(t!("gui.settings.max_parts"))
+                                    .on_hover_text(t!("gui.settings.tip.max_parts"));
+                                Self::number_field(
+                                    ui,
+                                    &mut self.num_parts,
+                                    (1, 32),
+                                    1,
+                                    &t!("gui.unit.parts"),
                                 );
+                                ui.end_row();
+                                ui.label(t!("gui.settings.max_concurrent_jobs"))
+                                    .on_hover_text(t!("gui.settings.tip.concurrent"));
+                                Self::number_field(
+                                    ui,
+                                    &mut self.num_concurrent,
+                                    (0, 100),
+                                    1,
+                                    &t!("gui.unit.downloads"),
+                                );
+                                ui.end_row();
+                                ui.label(t!("gui.settings.max_jobs_per_host"))
+                                    .on_hover_text(t!("gui.settings.tip.per_host"));
+                                Self::number_field(
+                                    ui,
+                                    &mut self.num_per_host,
+                                    (0, 20),
+                                    1,
+                                    &t!("gui.unit.downloads"),
+                                );
+                                ui.end_row();
+                                ui.label(t!("gui.settings.max_retries"))
+                                    .on_hover_text(t!("gui.settings.tip.retries"));
+                                Self::number_field(
+                                    ui,
+                                    &mut self.num_retries,
+                                    (0, 20),
+                                    1,
+                                    &t!("gui.unit.times"),
+                                );
+                                ui.end_row();
+                            });
+
+                        // ── Speed ──
+                        ui.add_space(6.0);
+                        ui.heading(t!("gui.settings.section.speed"));
+                        egui::Grid::new("settings_speed")
+                            .num_columns(2)
+                            .spacing([16.0, 8.0])
+                            .show(ui, |ui| {
+                                ui.label(t!("gui.settings.max_speed"))
+                                    .on_hover_text(t!("gui.settings.tip.max_speed"));
+                                ui.horizontal(|ui| {
+                                    let edit = ui.add(
+                                        egui::TextEdit::singleline(&mut self.speed_text)
+                                            .desired_width(64.0)
+                                            .align(egui::Align2::RIGHT_CENTER),
+                                    );
+                                    if edit.changed() {
+                                        self.speed_error = false;
+                                    }
+                                    egui::ComboBox::from_id_salt("speed_unit")
+                                        .selected_text(match self.speed_unit {
+                                            SpeedUnit::KBps => "KB/s",
+                                            SpeedUnit::MBps => "MB/s",
+                                        })
+                                        .width(70.0)
+                                        .show_ui(ui, |ui| {
+                                            ui.selectable_value(
+                                                &mut self.speed_unit,
+                                                SpeedUnit::KBps,
+                                                "KB/s",
+                                            );
+                                            ui.selectable_value(
+                                                &mut self.speed_unit,
+                                                SpeedUnit::MBps,
+                                                "MB/s",
+                                            );
+                                        });
+                                    if self.speed_error
+                                        || model::to_kib(&self.speed_text, self.speed_unit)
+                                            .is_none()
+                                    {
+                                        ui.colored_label(
+                                            egui::Color32::from_rgb(0xb9, 0x1c, 0x1c),
+                                            t!("gui.settings.speed_invalid"),
+                                        );
+                                    }
+                                });
+                                ui.end_row();
+                                ui.label(t!("gui.settings.min_speed"))
+                                    .on_hover_text(t!("gui.settings.tip.min_speed"));
+                                Self::number_field(
+                                    ui,
+                                    &mut self.num_min_speed,
+                                    (0, 10_000),
+                                    1,
+                                    "KB/s",
+                                );
+                                ui.end_row();
+                            });
+
+                        // ── Folders and files ──
+                        ui.add_space(6.0);
+                        ui.heading(t!("gui.settings.section.folders"));
+                        egui::Grid::new("settings_folders")
+                            .num_columns(2)
+                            .spacing([16.0, 8.0])
+                            .show(ui, |ui| {
+                                ui.label(t!("gui.settings.download_dir"))
+                                    .on_hover_text(t!("gui.settings.tip.download_dir"));
+                                ui.horizontal(|ui| {
+                                    let mut dir_str = self
+                                        .settings_cfg
+                                        .download_dir
+                                        .as_ref()
+                                        .map(|p| p.to_string_lossy().to_string())
+                                        .unwrap_or_default();
+                                    if ui
+                                        .add(
+                                            egui::TextEdit::singleline(&mut dir_str)
+                                                .desired_width(260.0),
+                                        )
+                                        .changed()
+                                    {
+                                        self.settings_cfg.download_dir =
+                                            (!dir_str.trim().is_empty())
+                                                .then(|| std::path::PathBuf::from(dir_str.trim()));
+                                    }
+                                    if ui.button(t!("gui.add.browse")).clicked() {
+                                        browse_download = true;
+                                    }
+                                });
+                                ui.end_row();
+                                ui.label(t!("gui.settings.temp_dir"))
+                                    .on_hover_text(t!("gui.settings.tip.temp_dir"));
+                                ui.horizontal(|ui| {
+                                    let mut temp_str = self
+                                        .settings_cfg
+                                        .temp_dir
+                                        .as_ref()
+                                        .map(|p| p.to_string_lossy().to_string())
+                                        .unwrap_or_default();
+                                    if ui
+                                        .add(
+                                            egui::TextEdit::singleline(&mut temp_str)
+                                                .desired_width(260.0),
+                                        )
+                                        .changed()
+                                    {
+                                        self.settings_cfg.temp_dir = (!temp_str.trim().is_empty())
+                                            .then(|| std::path::PathBuf::from(temp_str.trim()));
+                                    }
+                                    if ui.button(t!("gui.add.browse")).clicked() {
+                                        browse_temp = true;
+                                    }
+                                });
+                                ui.end_row();
+                            });
+                        ui.checkbox(
+                            &mut self.settings_cfg.auto_extract,
+                            t!("gui.settings.auto_extract"),
+                        );
+                        ui.add_enabled(
+                            self.settings_cfg.auto_extract,
+                            egui::Checkbox::new(
+                                &mut self.settings_cfg.extract_delete_archives,
+                                t!("gui.settings.extract_delete"),
+                            ),
+                        );
+                        ui.weak(t!("gui.partial.hint"));
+                        let label = if self.confirm_clean {
+                            t!("gui.partial.confirm")
+                        } else {
+                            t!("gui.partial.clean")
+                        };
+                        if ui.button(label).clicked() {
+                            if self.confirm_clean {
+                                Self::send(app, UiCommand::CleanPartial);
                             }
-                        });
-                });
+                            self.confirm_clean = !self.confirm_clean;
+                        }
+
+                        // ── Network ──
+                        ui.add_space(6.0);
+                        ui.heading(t!("gui.settings.network"));
+                        egui::Grid::new("settings_network")
+                            .num_columns(2)
+                            .spacing([16.0, 8.0])
+                            .show(ui, |ui| {
+                                ui.label(t!("gui.settings.log_level"))
+                                    .on_hover_text(t!("gui.settings.tip.log_level"));
+                                egui::ComboBox::from_id_salt("log_level")
+                                    .selected_text(&self.settings_cfg.log_level)
+                                    .show_ui(ui, |ui| {
+                                        for lvl in ["error", "warn", "info", "debug", "trace"] {
+                                            ui.selectable_value(
+                                                &mut self.settings_cfg.log_level,
+                                                lvl.to_string(),
+                                                lvl,
+                                            );
+                                        }
+                                    });
+                                ui.end_row();
+                            });
+
+                        // ── Interface ──
+                        ui.add_space(6.0);
+                        ui.heading(t!("gui.settings.section.interface"));
+                        ui.checkbox(
+                            &mut self.settings_cfg.autostart,
+                            t!("gui.settings.autostart"),
+                        );
+                        ui.checkbox(
+                            &mut self.settings_cfg.watch_clipboard,
+                            t!("gui.clipboard.watch"),
+                        )
+                        .on_hover_text(t!("gui.clipboard.watch_hint"));
+
+                        ui.add_space(8.0);
+                        ui.weak(t!("gui.settings.restart_note"));
+                    });
 
                 ui.separator();
-                ui.heading(t!("gui.settings.limits"));
                 ui.horizontal(|ui| {
-                    ui.label(t!("gui.settings.max_concurrent_jobs"));
-                    ui.add(
-                        egui::DragValue::new(&mut self.settings_cfg.max_concurrent_jobs)
-                            .range(0..=100),
-                    );
-                });
-                ui.horizontal(|ui| {
-                    ui.label(t!("gui.settings.max_jobs_per_host"));
-                    ui.add(
-                        egui::DragValue::new(&mut self.settings_cfg.max_jobs_per_host)
-                            .range(0..=20),
-                    );
-                });
-                ui.horizontal(|ui| {
-                    ui.label(t!("gui.settings.max_speed"));
-                    let edit = ui
-                        .add(egui::TextEdit::singleline(&mut self.speed_text).desired_width(70.0));
-                    if edit.changed() {
-                        self.speed_error = false;
+                    if ui
+                        .button(t!("gui.settings.reset"))
+                        .on_hover_text(t!("gui.settings.reset_hint"))
+                        .clicked()
+                    {
+                        reset = true;
                     }
-                    egui::ComboBox::from_id_salt("speed_unit")
-                        .selected_text(match self.speed_unit {
-                            SpeedUnit::KBps => "KB/s",
-                            SpeedUnit::MBps => "MB/s",
-                        })
-                        .width(70.0)
-                        .show_ui(ui, |ui| {
-                            ui.selectable_value(&mut self.speed_unit, SpeedUnit::KBps, "KB/s");
-                            ui.selectable_value(&mut self.speed_unit, SpeedUnit::MBps, "MB/s");
-                        });
-                    if self.speed_error {
-                        ui.colored_label(
-                            egui::Color32::from_rgb(0xb9, 0x1c, 0x1c),
-                            t!("gui.settings.speed_invalid"),
-                        );
-                    }
-                });
-                ui.horizontal(|ui| {
-                    ui.label(t!("gui.settings.min_speed"));
-                    ui.add(
-                        egui::DragValue::new(&mut self.settings_cfg.min_speed_kib)
-                            .range(0..=10_000),
-                    );
-                });
-                ui.horizontal(|ui| {
-                    ui.label(t!("gui.settings.max_retries"));
-                    ui.add(egui::DragValue::new(&mut self.settings_cfg.max_retries).range(0..=20));
-                });
-
-                ui.add_space(8.0);
-                ui.horizontal(|ui| {
-                    save = ui.button(t!("gui.settings.save")).clicked();
-                    cancel = ui.button(t!("gui.settings.cancel")).clicked();
+                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                        save = ui.button(t!("gui.settings.save")).clicked();
+                        cancel |= ui.button(t!("gui.settings.cancel")).clicked();
+                    });
                 });
             });
+        save |= enter;
+
+        if reset {
+            self.settings_cfg = crate::config::Config::default();
+            self.fill_setting_fields();
+        }
 
         if browse_download {
             self.picker_target_settings = true;
@@ -1680,8 +1871,18 @@ impl GuiApp {
         } else {
             true
         };
-        let save = save && speed_ok;
-        if save {
+        let numbers = if save {
+            self.read_number_fields()
+        } else {
+            None
+        };
+        let save = save && speed_ok && numbers.is_some();
+        if let (true, Some((parts, concurrent, per_host, retries, min_speed))) = (save, numbers) {
+            self.settings_cfg.max_parts = parts;
+            self.settings_cfg.max_concurrent_jobs = concurrent;
+            self.settings_cfg.max_jobs_per_host = per_host;
+            self.settings_cfg.max_retries = retries;
+            self.settings_cfg.min_speed_kib = min_speed;
             // Takes effect at once, also for downloads that are running.
             crate::download::limiter::global()
                 .set_base(self.settings_cfg.max_speed_kib.saturating_mul(1024));
@@ -2546,5 +2747,72 @@ mod tests {
         let mut gui = GuiApp::new(app);
         gui.watch_clipboard = true;
         assert!(render(&mut gui, 3) > 0);
+    }
+
+    // ── settings dialog ──
+
+    #[test]
+    fn settings_fields_are_filled_validated_and_reset() {
+        let (app, _rx) = shared_app();
+        let mut gui = GuiApp::new(app);
+        gui.settings_cfg.max_parts = 8;
+        gui.settings_cfg.max_speed_kib = 5120;
+        gui.fill_setting_fields();
+        assert_eq!(gui.num_parts, "8");
+        assert_eq!(
+            (gui.speed_text.as_str(), gui.speed_unit),
+            ("5", SpeedUnit::MBps)
+        );
+        assert_eq!(gui.read_number_fields().map(|n| n.0), Some(8));
+
+        // One bad field blocks saving everything.
+        gui.num_retries = "many".into();
+        assert!(gui.read_number_fields().is_none());
+        gui.num_retries = "3".into();
+        gui.num_parts = "99".into();
+        assert!(gui.read_number_fields().is_none(), "out of range");
+        gui.num_parts = "4".into();
+        assert_eq!(
+            gui.read_number_fields(),
+            Some((
+                4,
+                gui.num_concurrent.parse().unwrap(),
+                gui.num_per_host.parse().unwrap(),
+                3,
+                gui.num_min_speed.parse().unwrap()
+            ))
+        );
+
+        // Reset puts the defaults back into the fields.
+        gui.settings_cfg = crate::config::Config::default();
+        gui.fill_setting_fields();
+        assert_eq!(
+            gui.num_parts,
+            crate::config::Config::default().max_parts.to_string()
+        );
+    }
+
+    #[test]
+    fn settings_dialog_renders_with_invalid_input_at_the_minimum_size() {
+        let (app, _rx) = shared_app();
+        let mut gui = GuiApp::new(app);
+        gui.open_settings();
+        gui.num_parts = "abc".into();
+        gui.speed_text = "fast".into();
+        let input = egui::RawInput {
+            screen_rect: Some(egui::Rect::from_min_size(
+                egui::Pos2::ZERO,
+                egui::vec2(560.0, 360.0),
+            )),
+            ..Default::default()
+        };
+        let ctx = egui::Context::default();
+        let mut out = ctx.run_ui(input, |ui| gui.show(ui));
+        out.textures_delta.clear();
+        assert!(!out.shapes.is_empty());
+        assert!(
+            gui.settings_open,
+            "invalid input must not close the dialog by itself"
+        );
     }
 }
