@@ -705,6 +705,27 @@ pub fn stepped(value: u64, delta: i64, min: u64, max: u64) -> u64 {
     moved.clamp(min, max)
 }
 
+// ───────────────────────── text editing (right-click menu) ─────────────────────────
+
+/// Byte offset of the `n`-th character (clamped to the end).
+fn byte_at(text: &str, n: usize) -> usize {
+    text.char_indices().nth(n).map_or(text.len(), |(i, _)| i)
+}
+
+/// The characters `from..to` of `text` (character positions, `from <= to`).
+pub fn chars_between(text: &str, from: usize, to: usize) -> &str {
+    let (a, b) = (byte_at(text, from), byte_at(text, to.max(from)));
+    &text[a..b]
+}
+
+/// Replaces the characters `from..to` with `insert` and returns the character position after it.
+/// With `from == to` this inserts at the cursor.
+pub fn replace_chars(text: &mut String, from: usize, to: usize, insert: &str) -> usize {
+    let (a, b) = (byte_at(text, from), byte_at(text, to.max(from)));
+    text.replace_range(a..b, insert);
+    from.min(text.chars().count()) + insert.chars().count()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1033,5 +1054,29 @@ mod tests {
         assert_eq!(stepped(0, -5, 0, 10), 0);
         assert_eq!(stepped(5, 100, 1, 10), 10);
         assert_eq!(stepped(u64::MAX, 1, 0, 50), 50);
+    }
+
+    #[test]
+    fn text_editing_works_on_characters_not_bytes() {
+        let mut t = String::from("héllo wörld");
+        assert_eq!(chars_between(&t, 1, 5), "éllo");
+        assert_eq!(chars_between(&t, 6, 99), "wörld");
+        assert_eq!(chars_between(&t, 5, 2), "", "a reversed range is empty");
+        // Paste over a selection.
+        let end = replace_chars(&mut t, 6, 11, "http://a.test/ü");
+        assert_eq!(t, "héllo http://a.test/ü");
+        assert_eq!(end, 6 + 15);
+        // Insert at the cursor.
+        let mut u = String::from("ab");
+        assert_eq!(replace_chars(&mut u, 1, 1, "XY"), 3);
+        assert_eq!(u, "aXYb");
+        // Past the end appends; deleting a selection (cut).
+        let mut v = String::from("abc");
+        replace_chars(&mut v, 50, 50, "!");
+        assert_eq!(v, "abc!");
+        replace_chars(&mut v, 0, 2, "");
+        assert_eq!(v, "c!");
+        let mut e = String::new();
+        assert_eq!(replace_chars(&mut e, 0, 0, "x"), 1);
     }
 }

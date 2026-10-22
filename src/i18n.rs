@@ -1081,6 +1081,30 @@ const EN: &[(&str, &str)] = &[
         "How much detail is written to the log. Use info unless you are looking for a problem.",
     ),
     (
+        "gui.text.cut",
+        "Cut",
+    ),
+    (
+        "gui.text.copy",
+        "Copy",
+    ),
+    (
+        "gui.text.paste",
+        "Paste",
+    ),
+    (
+        "gui.text.select_all",
+        "Select all",
+    ),
+    (
+        "gui.text.clear",
+        "Clear",
+    ),
+    (
+        "gui.history.again",
+        "Download again",
+    ),
+    (
         "ui.settings.title",
         "Settings",
     ),

@@ -27,6 +27,9 @@ use model::{
     SortDirection, SpeedUnit, StateFilter, Totals,
 };
 
+/// Identifies the add-links window (its width is checked by a test).
+const ADD_DIALOG_ID: &str = "add_links_dialog";
+
 /// How often the window redraws when nothing else triggers it (live progress).
 const REPAINT_EVERY: Duration = Duration::from_millis(250);
 
@@ -560,11 +563,12 @@ impl GuiApp {
                 // Start from the current content so old clipboard text is not imported.
                 self.last_clip = None;
             }
-            ui.add(
+            let search = ui.add(
                 egui::TextEdit::singleline(&mut self.query)
                     .hint_text(t!("gui.search.hint"))
                     .desired_width((ui.available_width() - 520.0).max(100.0)),
             );
+            Self::text_menu(&search, &mut self.query);
             egui::ComboBox::from_id_salt("scope")
                 .selected_text(scope_text(self.scope))
                 .width(110.0)
@@ -1140,9 +1144,17 @@ impl GuiApp {
                             duration = detail::fmt_eta(item.duration_secs),
                             speed = detail::fmt_speed(item.avg_bytes_per_sec)
                         ));
-                        if ui.button(t!("gui.history.remove")).clicked() {
-                            Self::send(app, UiCommand::RemoveHistory(item.id));
-                        }
+                        ui.horizontal(|ui| {
+                            // A cancelled or failed download can be started again from here.
+                            let again =
+                                matches!(item.status, JobStatus::Cancelled | JobStatus::Failed(_));
+                            if again && ui.button(t!("gui.history.again")).clicked() {
+                                Self::send(app, UiCommand::ResumeJob(item.id));
+                            }
+                            if ui.button(t!("gui.history.remove")).clicked() {
+                                Self::send(app, UiCommand::RemoveHistory(item.id));
+                            }
+                        });
                     });
                     ui.add_space(4.0);
                 }
@@ -1395,6 +1407,85 @@ impl GuiApp {
     }
 
     /// The "add links" window: paste text, links are picked out of it, choose folder/package.
+    /// Right-click menu of a text field: cut, copy, paste, select all and clear.
+    fn text_menu(response: &egui::Response, text: &mut String) {
+        let id = response.id;
+        response.context_menu(|ui| {
+            let range =
+                egui::TextEdit::load_state(ui.ctx(), id).and_then(|s| s.cursor.char_range());
+            let sel = range.map(|r| {
+                let (a, b) = (r.primary.index.0, r.secondary.index.0);
+                (a.min(b), a.max(b))
+            });
+            let selected = sel.filter(|(a, b)| a != b);
+            if ui
+                .add_enabled(selected.is_some(), egui::Button::new(t!("gui.text.cut")))
+                .clicked()
+            {
+                if let Some((a, b)) = selected {
+                    ui.ctx()
+                        .copy_text(model::chars_between(text, a, b).to_string());
+                    model::replace_chars(text, a, b, "");
+                }
+                ui.close();
+            }
+            if ui
+                .add_enabled(!text.is_empty(), egui::Button::new(t!("gui.text.copy")))
+                .clicked()
+            {
+                let copied = match selected {
+                    Some((a, b)) => model::chars_between(text, a, b).to_string(),
+                    None => text.clone(),
+                };
+                ui.ctx().copy_text(copied);
+                ui.close();
+            }
+            if ui.button(t!("gui.text.paste")).clicked() {
+                if let Ok(clip) = import::read_clipboard() {
+                    let (a, b) =
+                        sel.unwrap_or_else(|| (text.chars().count(), text.chars().count()));
+                    let end = model::replace_chars(text, a, b, &clip);
+                    if let Some(mut state) = egui::TextEdit::load_state(ui.ctx(), id) {
+                        state
+                            .cursor
+                            .set_char_range(Some(egui::text::CCursorRange::one(
+                                egui::text::CCursor::new(end),
+                            )));
+                        egui::TextEdit::store_state(ui.ctx(), id, state);
+                    }
+                }
+                ui.close();
+            }
+            if ui
+                .add_enabled(
+                    !text.is_empty(),
+                    egui::Button::new(t!("gui.text.select_all")),
+                )
+                .clicked()
+            {
+                if let Some(mut state) = egui::TextEdit::load_state(ui.ctx(), id) {
+                    let end = text.chars().count();
+                    state
+                        .cursor
+                        .set_char_range(Some(egui::text::CCursorRange::two(
+                            egui::text::CCursor::new(0),
+                            egui::text::CCursor::new(end),
+                        )));
+                    egui::TextEdit::store_state(ui.ctx(), id, state);
+                }
+                response.request_focus();
+                ui.close();
+            }
+            if ui
+                .add_enabled(!text.is_empty(), egui::Button::new(t!("gui.text.clear")))
+                .clicked()
+            {
+                text.clear();
+                ui.close();
+            }
+        });
+    }
+
     fn add_dialog(&mut self, ctx: &egui::Context, app: &mut App) {
         if !self.add_open {
             return;
@@ -1406,27 +1497,33 @@ impl GuiApp {
         let mut browse = false;
 
         egui::Window::new(t!("gui.add.title"))
+            .id(egui::Id::unique(ADD_DIALOG_ID))
             .open(&mut open)
             .collapsible(false)
-            .default_width(520.0)
+            .resizable(false)
             .anchor(egui::Align2::CENTER_CENTER, [0.0, -40.0])
             .show(ctx, |ui| {
+                // A fixed width: fields that fill "the available width" would otherwise make the
+                // window grow a little with every frame.
+                ui.set_width(520.0);
                 ui.weak(t!("gui.add.hint"));
-                ui.add(
+                let links_field = ui.add(
                     egui::TextEdit::multiline(&mut text)
                         .desired_rows(6)
-                        .desired_width(f32::INFINITY),
+                        .desired_width(ui.available_width()),
                 );
+                Self::text_menu(&links_field, &mut text);
 
                 ui.add_space(4.0);
 
                 // Save directory row
                 ui.horizontal(|ui| {
                     ui.label(t!("gui.add.save_to"));
-                    ui.add(
+                    let r = ui.add(
                         egui::TextEdit::singleline(&mut self.add_save_to)
-                            .desired_width(ui.available_width() - 80.0),
+                            .desired_width((ui.available_width() - 90.0).max(80.0)),
                     );
+                    Self::text_menu(&r, &mut self.add_save_to);
                     if ui.button(t!("gui.add.browse")).clicked() {
                         browse = true;
                     }
@@ -1435,15 +1532,16 @@ impl GuiApp {
                 // Package & Comment row
                 ui.horizontal(|ui| {
                     ui.label(t!("gui.add.package"));
-                    ui.add(
-                        egui::TextEdit::singleline(&mut self.add_package)
-                            .desired_width((ui.available_width() - 150.0).max(80.0)),
+                    let r = ui.add(
+                        egui::TextEdit::singleline(&mut self.add_package).desired_width(150.0),
                     );
+                    Self::text_menu(&r, &mut self.add_package);
                     ui.label(t!("gui.add.comment"));
-                    ui.add(
+                    let r = ui.add(
                         egui::TextEdit::singleline(&mut self.add_comment)
-                            .desired_width(ui.available_width()),
+                            .desired_width((ui.available_width() - 8.0).max(80.0)),
                     );
+                    Self::text_menu(&r, &mut self.add_comment);
                 });
 
                 // Checkbox: direct to queue or into link grabber
@@ -2814,5 +2912,59 @@ mod tests {
             gui.settings_open,
             "invalid input must not close the dialog by itself"
         );
+    }
+
+    #[test]
+    fn the_add_dialog_keeps_its_width() {
+        let (app, _rx) = shared_app();
+        let mut gui = GuiApp::new(app);
+        gui.add_open = true;
+        gui.add_text = "http://a.test/a-very-long-link-".repeat(20);
+        let ctx = egui::Context::default();
+        let id = egui::Id::unique(ADD_DIALOG_ID);
+        let mut widths = Vec::new();
+        for _ in 0..8 {
+            let mut out = ctx.run_ui(egui::RawInput::default(), |ui| gui.show(ui));
+            out.textures_delta.clear();
+            widths.push(ctx.memory(|m| m.area_rect(id)).map(|r| r.width()));
+        }
+        let first = widths
+            .iter()
+            .flatten()
+            .next()
+            .copied()
+            .expect("the dialog was shown");
+        assert!(first < 620.0, "a sensible width, got {first}");
+        for w in widths.iter().flatten() {
+            assert!(
+                (w - first).abs() < 0.5,
+                "the dialog must not grow or shrink: {widths:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn history_offers_to_download_again_for_cancelled_entries() {
+        use crate::tracker::history::HistoryItem;
+        let (app, mut rx) = shared_app();
+        let id = Uuid::new_v4();
+        app.lock().unwrap().history = vec![HistoryItem {
+            id,
+            filename: "a.bin".into(),
+            url: "http://a.test/a.bin".into(),
+            output: "/tmp/a.bin".into(),
+            status: JobStatus::Cancelled,
+            total_bytes: 10,
+            bytes_done: 5,
+            parts: 1,
+            started_at: chrono::Utc::now(),
+            finished_at: chrono::Utc::now(),
+            duration_secs: 1,
+            avg_bytes_per_sec: 5,
+        }];
+        let mut gui = GuiApp::new(app);
+        gui.tab = Tab::History;
+        assert!(render(&mut gui, 2) > 0);
+        assert!(rx.try_recv().is_err(), "rendering alone sends nothing");
     }
 }
