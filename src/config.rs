@@ -76,6 +76,10 @@ pub struct Config {
     #[serde(default)]
     pub conditional_get: bool,
 
+    /// Programs to run on download events and desktop notifications (`[hooks]`).
+    #[serde(default)]
+    pub hooks: crate::download::hooks::HooksConfig,
+
     /// Max retries per part
     #[serde(default = "default_retries")]
     pub max_retries: u32,
@@ -147,6 +151,7 @@ impl Default for Config {
             max_speed_kib: 0,
             min_speed_kib: default_min_speed_kib(),
             conditional_get: false,
+            hooks: Default::default(),
             max_retries: default_retries(),
             log_level: default_log_level(),
             rpc_listen: default_rpc_listen(),
@@ -235,4 +240,27 @@ pub fn init() -> Result<&'static Config> {
     let cfg = load()?;
     let _ = CONFIG.set(cfg);
     Ok(CONFIG.get().unwrap())
+}
+
+#[cfg(test)]
+mod serialization_tests {
+    use super::*;
+
+    /// The first start writes the default config as TOML; a table placed before
+    /// plain values would make that fail.
+    #[test]
+    fn default_config_roundtrips_through_toml() {
+        let text = toml::to_string_pretty(&Config::default()).expect("default config serialises");
+        let back: Config = toml::from_str(&text).expect("and parses again");
+        assert_eq!(back.hooks, Config::default().hooks);
+        assert_eq!(back.max_parts, Config::default().max_parts);
+    }
+
+    #[test]
+    fn hooks_section_is_read_from_a_config_file() {
+        let cfg: Config =
+            toml::from_str("[hooks]\non_complete = [\"/bin/true\"]\nnotify = true\n").unwrap();
+        assert_eq!(cfg.hooks.on_complete, ["/bin/true"]);
+        assert!(cfg.hooks.notify);
+    }
 }

@@ -135,6 +135,24 @@ curl -X POST http://127.0.0.1:8765/rpc \
 `GET /health` returns `{"status":"ok"}`. The API has no TLS; keep it on loopback
 or tunnel it through Tor/a reverse proxy if remote access is needed.
 
+## Hooks and notifications
+
+Run your own program when a download starts, finishes or fails, and optionally get a desktop notification
+(macOS: `osascript`, Linux: `notify-send`). In the config file:
+
+```toml
+[hooks]
+on_complete = ["/Users/me/bin/after-download.sh"]   # program and fixed arguments, no shell
+on_error    = ["/usr/local/bin/alert"]
+on_start    = []
+notify      = true
+```
+
+The program gets the details as environment variables (`RDL_EVENT`, `RDL_JOB_ID`, `RDL_URL`, `RDL_FILE`,
+`RDL_FILENAME`, `RDL_SIZE`, `RDL_ERROR`) and as two trailing arguments (job id, file path). It is started
+directly, never through a shell. **Quote the variables in your own scripts**: file names come from servers.
+Hooks run in the background, are stopped after 60 seconds and never delay a download.
+
 ## Security
 
 What rdownloader protects, and what it does not, is described in [docs/threat-model.md](docs/threat-model.md).

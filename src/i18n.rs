@@ -505,6 +505,18 @@ const EN: &[(&str, &str)] = &[
         "Connection ended early: received {received} of {expected} bytes",
     ),
     (
+        "hook.notify.complete",
+        "Download finished",
+    ),
+    (
+        "hook.notify.error",
+        "Download failed",
+    ),
+    (
+        "hook.notify.error_body",
+        "{file}: {error}",
+    ),
+    (
         "download.error.pieces_corrupt",
         "{count} damaged piece(s) could not be repaired",
     ),

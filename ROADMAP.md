@@ -107,7 +107,7 @@ CI früh starten (parallel zu M1), Rest nach M2.
 - [x] 🟠 **Auto-Extract Engine**: Automatisches Entpacken von Multi-Part-Archiven (`.rar`, `.zip`, `.7z`) nach Download & Hash-Verifikation
 - [x] 🟠 **Job-Scheduler & Per-Host Limits**: Max. gleichzeitige Jobs und parallele Jobs pro Hoster (`max_concurrent_jobs`, `max_jobs_per_host`)
 - [ ] 🟢 Scheduler-Zeitfenster (Downloads nur zu bestimmten Uhrzeiten)
-- [ ] 🟢 Watch-Ordner · RSS-Reader · Desktop-Notifications
+- [ ] 🟢 Watch-Ordner · RSS-Reader
 
 ## Lücken aus der Recherche (2026-10-22)
 Abgleich mit aria2, JDownloader, yt-dlp und der Arti-Dokumentation. Reihenfolge = Priorität.
@@ -125,7 +125,7 @@ Abgleich mit aria2, JDownloader, yt-dlp und der Arti-Dokumentation. Reihenfolge 
 - [x] 🟠 Langsame Verbindungen kappen und neu aufbauen (`lowest-speed-limit`-Prinzip), bei Tor besonders nützlich (core-12)
 - [x] 🟢 Bedingtes Laden (Vergleich mit `Last-Modified` aus dem Größen-Request, `conditional_get`) (core-12)
 - [x] 🟠 Mirrors: mehrere URLs pro Datei (Verteilung auf die Parts, Auswahl nach gemessener Geschwindigkeit, Ausfall-/Falsch-Erkennung); Metalink-Stückprüfsummen mit Reparatur defekter Stücke (core-13)
-- [ ] 🟢 Ereignis-Hooks bei Start/Fertig/Fehler und Desktop-Benachrichtigung (core-14)
+- [x] 🟢 Ereignis-Hooks bei Start/Fertig/Fehler (ohne Shell, Umgebungsvariablen, Zeitlimit) und Desktop-Benachrichtigung (macOS/Linux) (core-14)
 - [x] 🟢 `~/.netrc`-Zugangsdaten und Cookie-Import aus Browsern (Firefox/Chromium/Netscape, plugins-8)
 
 **Protokolle & Inhalte**

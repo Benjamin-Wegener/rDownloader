@@ -23,6 +23,7 @@ use futures::StreamExt;
 pub mod checksum;
 pub mod conditional;
 pub mod extract;
+pub mod hooks;
 pub mod limiter;
 pub mod mirror;
 pub mod pieces;

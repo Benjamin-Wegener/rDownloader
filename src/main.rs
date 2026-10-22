@@ -833,6 +833,16 @@ fn start_job_background(
             .acquire(&download::scheduler::host_key(&job.url))
             .await;
 
+        let hooks = &config::config().hooks;
+        let hook_ctx = |size: u64, error: Option<String>| download::hooks::HookContext {
+            job_id: job.id,
+            url: job.url.to_string(),
+            file: job.output.clone(),
+            size,
+            error,
+        };
+        download::hooks::fire(download::hooks::HookEvent::Start, hook_ctx(0, None), hooks);
+
         let cancel = Arc::new(tokio::sync::Notify::new());
         let res = if let Some(tor) = tor {
             run_job(&job, tor, progress.clone(), cancel).await
@@ -852,6 +862,20 @@ fn start_job_background(
             } else {
                 jp.push(p.clone());
             }
+        }
+
+        let final_size = progress.lock().await.total_bytes;
+        match &res {
+            Ok(()) => download::hooks::fire(
+                download::hooks::HookEvent::Complete,
+                hook_ctx(final_size, None),
+                hooks,
+            ),
+            Err(e) => download::hooks::fire(
+                download::hooks::HookEvent::Error,
+                hook_ctx(final_size, Some(format!("{e:#}"))),
+                hooks,
+            ),
         }
 
         match res {
