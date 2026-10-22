@@ -111,7 +111,7 @@ CI früh starten (parallel zu M1), Rest nach M2.
 - [x] 🔴 **CI jetzt**: GitHub Actions mit `cargo fmt --check`, `clippy -D warnings`, `cargo test` (macOS + Linux)
 - [x] 🟠 Prebuilt-Binaries (macOS/Linux/Windows) via GitHub Releases (`.github/workflows/release.yml`)
 - [x] 🟠 Manpage + `--help` (clap), README mit Quickstart (Threat-Modell: docs/threat-model.md)
-- [ ] 🟠 **v0.1.0 veröffentlichen**: Tag `v0.1.0` liegt lokal; privates Repo `Benjamin-Wegener/rDownloader` ist angelegt, der Push scheitert am fehlenden `workflow`-Scope des GitHub-Tokens. Danach Repo auf öffentlich stellen
+- [ ] 🟠 **v0.1.0 veröffentlichen** (Doku fertig: CHANGELOG.md, docs/release-v0.1.0.md, THIRD_PARTY_LICENSES.md): Tag `v0.1.0` liegt lokal; privates Repo `Benjamin-Wegener/rDownloader` ist angelegt, der Push scheitert am fehlenden `workflow`-Scope des GitHub-Tokens. Danach Repo auf öffentlich stellen
 - [ ] 🟢 `cargo install` (crates.io), Homebrew-Tap / AUR / Scoop (`infra-8`: Vorlagen im Repo)
 
 ## M5 – Härtung, Automation & Headless (parallel) 🟢

@@ -3,13 +3,14 @@
 A clean-room download manager written in Rust. Every download goes through the
 Tor network (embedded [Arti](https://gitlab.torproject.org/tpo/core/arti), no
 external Tor daemon), is split into parts that each use their own circuit,
-and can be resumed after a crash. It has a terminal UI and a small plugin system.
+and can be resumed after a crash. It has a desktop window, a terminal interface, a headless daemon and a small plugin system.
 
 Inspired by the concepts of JDownloader (queue, link grabber, hoster plugins);
 no code was taken from it. JDownloader's Java plugins cannot be loaded.
 
-> Status: early development. See [STATUS.md](STATUS.md) for what is done and
-> [ROADMAP.md](ROADMAP.md) for what is planned.
+> Version 0.1.0 - the first release. Read the [known limitations](#known-limitations) and the
+> [threat model](docs/threat-model.md) before relying on it. See [CHANGELOG.md](CHANGELOG.md),
+> [STATUS.md](STATUS.md) for the state of the work and [ROADMAP.md](ROADMAP.md) for what is planned.
 
 ## Features
 
@@ -27,9 +28,20 @@ no code was taken from it. JDownloader's Java plugins cannot be loaded.
 - Plugin types: hoster, crawler, account (cookie sessions) and interactive captcha
 - Tor bridges for censored networks
 - FTP, FTPS and SFTP downloads over Tor, with resume: `ftp://` (plain, see the threat model), `ftps://` (implicit TLS, port 990), `ftpes://` (explicit TLS, port 21) and `sftp://` (SSH, port 22). SFTP verifies the server key against `~/.ssh/known_hosts` and refuses unknown or changed keys; without a password in the URL it uses an unencrypted key from `~/.ssh` (`id_ed25519`, `id_ecdsa`, `id_rsa`). FTPS checks certificates against the WebPKI roots. Some FTP servers only accept the data connection from the same IP as the control connection and need a retry or two over Tor
-- HLS/DASH segment engine (library code; not yet connected to the download queue, tracked as core-15): own manifest parsers (master playlists, `SegmentTemplate`/`SegmentList`/`SegmentBase`), parallel fragment downloads over Tor and ordered merge; encrypted HLS and DRM-protected DASH are rejected
+- HLS/DASH streams: a `.m3u8` or `.mpd` link goes to the segment engine, with own manifest parsers (master playlists, `SegmentTemplate`/`SegmentList`/`SegmentBase`), parallel fragment downloads over Tor and ordered merge; encrypted HLS and DRM-protected DASH are rejected
 - `.onion` addresses (onion services) work like any other URL; plain `http://` is fine there because the connection is end-to-end encrypted by Tor
 - Interface text comes from a string catalog (English built in, translations can be added without code changes)
+
+## Install
+
+Download the archive for your system from the releases page and check it against `SHA256SUMS.txt`
+(`shasum -a 256 -c SHA256SUMS.txt`). Packaging recipes for Homebrew, AUR and Scoop are in `packaging/`.
+
+## Quick start
+
+1. Start `rdownloader`. The window opens; the Tor state is shown at the bottom right, downloads begin as soon as it reads "connected".
+2. Press **Add links** (Ctrl/Cmd+N), paste one or more links and confirm. Or drop a link list, `.dlc` or `.metalink` file onto the window: the links go to the **Link grabber** first, where you pick what to download.
+3. Watch progress in the list; open **Details** on a download for parts, speed and Tor state. Pause, resume, cancel and remove with the buttons or Space and Delete.
 
 ## Build
 
@@ -103,7 +115,9 @@ All keys are optional.
 | `auto_extract`, `extract_delete_archives` | `false` | unpack finished `.zip` / `.7z` / `.rar` (also multi-part) next to the download, optionally delete the archives afterwards |
 | `bridges` | `[]` | Tor bridge lines |
 | `download_dir`, `temp_dir`, `tor_data_dir` | platform defaults | where files and Tor state live |
-| `user_agent`, `connect_timeout_secs`, `read_timeout_secs` | | HTTP behaviour |
+| `user_agent` | `rdownloader/0.1` | HTTP user agent |
+| `autostart` | `false` | start the window when you log in (also a switch in the settings dialog) |
+| `[hooks]` | none | programs to run on start, completion and error, and `notify` (see below) |
 | `log_level` | `info` | log level (`RUST_LOG` overrides it) |
 | `language` | `en` | interface language: `en` or `de` (`RDOWNLOADER_LANG` overrides it) |
 | `rpc_listen` | `127.0.0.1:8765` | listen address of the headless RPC server |
@@ -171,6 +185,24 @@ The program gets the details as environment variables (`RDL_EVENT`, `RDL_JOB_ID`
 directly, never through a shell. **Quote the variables in your own scripts**: file names come from servers.
 Hooks run in the background, are stopped after 60 seconds and never delay a download.
 
+## Known limitations
+
+- Anonymity is only as good as Tor; plain `http://` and `ftp://` are visible to the exit relay.
+- Downloads need Tor: `--no-tor` only starts the interface.
+- RAR archives are unpacked by an external tool (`unrar`, `7zz`/`7z` or `bsdtar`); it is not tested on this release.
+- Encrypted HLS and DRM-protected DASH streams are refused. Some hosters need a browser or a captcha that cannot be solved here.
+- FTP over Tor may need a retry or two on servers that tie the data connection to one IP.
+- Local state (download list, resume data, partial files) is not encrypted: use full-disk encryption.
+- Not part of 0.1.0: pluggable transports (obfs4, snowflake), RSS feeds, a system tray icon.
+
+## Safe use
+
+- Prefer `https://` links; use `http://` and `ftp://` only for files you do not mind being seen.
+- Leave `auto_extract` off unless you trust the archives; downloaded files are untrusted input.
+- Do not expose the daemon (`--daemon`) beyond your machine without `rpc_token`, and never share the token.
+- Treat hook scripts like any program: they receive file names from servers, so quote them.
+- Report vulnerabilities privately, see `SECURITY.md`.
+
 ## Security
 
 What rdownloader protects, and what it does not, is described in [docs/threat-model.md](docs/threat-model.md).
@@ -184,4 +216,4 @@ Work is organised through [AGENTS.md](AGENTS.md) (steps, areas, build environmen
 
 ## License
 
-[MIT](LICENSE)
+[MIT](LICENSE). The licenses of the Rust crates used are listed in [THIRD_PARTY_LICENSES.md](THIRD_PARTY_LICENSES.md). rdownloader is written from scratch; it contains no code, icons, images or texts of other download managers.
