@@ -1,8 +1,8 @@
 # rdownloader status
 
-Generated 2026-10-22 at commit 82eae69 - regenerate with `scripts/status-md.sh`
+Generated 2026-10-22 at commit bd77f5a - regenerate with `scripts/status-md.sh`
 
-`[#################---]` **61/71** steps done (86%), 3 in progress, 7 open
+`[#################---]` **62/71** steps done (87%), 2 in progress, 7 open
 Roadmap items: 68 checked, 18 open
 
 ## core (16/19)
@@ -93,9 +93,9 @@ Roadmap items: 68 checked, 18 open
 - [ ] `gui-8` Zwischenablage-Ueberwachung (opt-in) speist den Link-Sammler, nie direkt den Download
 - [ ] `gui-9` Tray-Symbol, Autostart, Fenster in den Tray schliessen
 
-## rel (1/4)
+## rel (2/4)
 
 - [x] `rel-1` Release-CI: ci.yml/release.yml auf ubuntu+macos+windows mit GUI-Abhaengigkeiten (Linux: x11/wayland-Pakete), fmt streng (continue-on-error weg), Cargo.toml repository/homepage auf Benjamin-Wegener/rDownloader, cargo-deny (Lizenzen+Advisories) als CI-Job, Release-Artefakte mit SHA256SUMS
-- [~] `rel-2` v0.1.0-Haertung der Engine: alle Parser (Manifeste, Metalink, DLC, FTP, Zeitplan, Config) mit kaputten/feindlichen Eingaben fuzz-aehnlich testen, keine Panics (unwrap/expect/Indexierung pruefen), Fehlerpfade (Platte voll, Zielordner nicht schreibbar, Tor nicht bootstrapbar) mit klaren Meldungen, ersten Start ohne Config pruefen - **in progress**
+- [x] `rel-2` v0.1.0-Haertung der Engine: alle Parser (Manifeste, Metalink, DLC, FTP, Zeitplan, Config) mit kaputten/feindlichen Eingaben fuzz-aehnlich testen, keine Panics (unwrap/expect/Indexierung pruefen), Fehlerpfade (Platte voll, Zielordner nicht schreibbar, Tor nicht bootstrapbar) mit klaren Meldungen, ersten Start ohne Config pruefen
 - [~] `rel-3` v0.1.0-Politur des Fensters: Erststart (leere Liste, Tor-Bootstrap sichtbar, Hinweis bei Fehlern), Tastenkuerzel, Fokusreihenfolge, Mindestgroesse, Hell/Dunkel lesbar, Fenster-Smoke-Test, Hilfe/Ueber-Dialog mit Version und Lizenz, Drag&Drop von Links und Linklisten - **in progress**
 - [ ] `rel-4` v0.1.0-Doku: CHANGELOG.md, Release Notes, README gegen den Code abgleichen (jede Behauptung pruefen), bekannte Limitationen, THIRD_PARTY_LICENSES (aus Cargo.lock), Clean-Room-Hinweis, Schnellstart mit Screenshots-Platzhaltern, Sicherheitshinweise fuer Nutzer
