@@ -8,6 +8,7 @@
 mod config;
 mod contract;
 mod download;
+mod gui;
 mod i18n;
 pub mod net;
 mod plugin;
@@ -60,6 +61,14 @@ struct Cli {
     #[arg(long)]
     daemon: bool,
 
+    /// Open the desktop window (the default when a display is available).
+    #[arg(long, conflicts_with = "tui")]
+    gui: bool,
+
+    /// Use the terminal interface instead of the window.
+    #[arg(long)]
+    tui: bool,
+
     #[arg(long)]
     no_tor: bool,
 }
@@ -74,7 +83,28 @@ fn cli_command() -> clap::Command {
         .mut_arg("output", |a| a.help(t!("cli.arg.output")))
         .mut_arg("headless", |a| a.help(t!("cli.arg.headless")))
         .mut_arg("daemon", |a| a.help(t!("cli.arg.daemon")))
+        .mut_arg("gui", |a| a.help(t!("cli.arg.gui")))
+        .mut_arg("tui", |a| a.help(t!("cli.arg.tui")))
         .mut_arg("no_tor", |a| a.help(t!("cli.arg.no_tor")))
+}
+
+/// Which interface shows the queue.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+enum Frontend {
+    Tui,
+    Gui,
+}
+
+/// The window is the default; the terminal UI is used on request or when there is
+/// no display (for example over SSH).
+fn choose_frontend(gui: bool, tui: bool, display_available: bool) -> Frontend {
+    if tui {
+        Frontend::Tui
+    } else if gui || display_available {
+        Frontend::Gui
+    } else {
+        Frontend::Tui
+    }
 }
 
 #[tokio::main]
@@ -83,6 +113,7 @@ async fn main() -> Result<()> {
         i18n::set_language(&lang);
     }
     let cli = Cli::from_arg_matches(&cli_command().get_matches())?;
+    let frontend = choose_frontend(cli.gui, cli.tui, gui::display_available());
 
     // Load config
     let cfg = config::init()?;
@@ -267,6 +298,7 @@ async fn main() -> Result<()> {
                 tracker,
                 tor,
                 cfg,
+                frontend,
             )
             .await
         }
@@ -284,6 +316,7 @@ async fn main() -> Result<()> {
             tracker,
             tor,
             cfg,
+            frontend,
         )
         .await
     }
@@ -586,6 +619,7 @@ async fn run_tui(
     tracker: Tracker,
     tor: Option<Arc<TorManager>>,
     cfg: &config::Config,
+    frontend: Frontend,
 ) -> Result<()> {
     let app: SharedApp = Arc::new(Mutex::new(App::new(
         ui_cmd_tx,
@@ -740,12 +774,18 @@ async fn run_tui(
         });
     }
 
-    // TUI on the main thread (blocking)
-    // crossterm needs the main thread on macOS
-    tokio::task::spawn_blocking(move || {
-        let _ = ui::run(app_for_tui);
-    })
-    .await?;
+    match frontend {
+        // TUI: blocking loop on a helper thread.
+        Frontend::Tui => {
+            tokio::task::spawn_blocking(move || {
+                let _ = ui::run(app_for_tui);
+            })
+            .await?;
+        }
+        // Window: must run on the main thread (macOS); the downloads keep running
+        // on the runtime's worker threads meanwhile.
+        Frontend::Gui => gui::run(app_for_tui)?,
+    }
 
     Ok(())
 }
@@ -1076,5 +1116,26 @@ mod tests {
         assert!(jobs.lock().unwrap().is_empty());
 
         let _ = std::fs::remove_dir_all(dir);
+    }
+}
+
+#[cfg(test)]
+mod frontend_tests {
+    use super::*;
+
+    #[test]
+    fn the_window_is_the_default_with_a_display() {
+        assert_eq!(choose_frontend(false, false, true), Frontend::Gui);
+    }
+
+    #[test]
+    fn without_a_display_the_terminal_ui_is_used() {
+        assert_eq!(choose_frontend(false, false, false), Frontend::Tui);
+    }
+
+    #[test]
+    fn flags_override_the_default() {
+        assert_eq!(choose_frontend(false, true, true), Frontend::Tui);
+        assert_eq!(choose_frontend(true, false, false), Frontend::Gui);
     }
 }

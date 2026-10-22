@@ -24,8 +24,8 @@ use std::time::Duration;
 use std::time::Instant;
 use tokio::sync::oneshot;
 
-mod detail;
-mod import;
+pub(crate) mod detail;
+pub(crate) mod import;
 mod linkgrabber;
 
 pub use linkgrabber::GrabberEvent;
@@ -155,7 +155,7 @@ impl App {
     }
 
     /// Queues every URL of a batch import and reports the outcome in the status line.
-    fn enqueue_import(&mut self, result: anyhow::Result<import::Import>) {
+    pub(crate) fn enqueue_import(&mut self, result: anyhow::Result<import::Import>) {
         self.status_msg = match result {
             Err(e) => t!("ui.status.import_failed", error = e),
             Ok(imp) if imp.urls.is_empty() => t!("ui.status.import_none"),
@@ -424,7 +424,7 @@ impl App {
         }
     }
 
-    fn handle_key(&mut self, code: KeyCode) {
+    pub(crate) fn handle_key(&mut self, code: KeyCode) {
         if self.input_mode {
             match code {
                 KeyCode::Esc => {

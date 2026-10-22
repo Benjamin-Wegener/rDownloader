@@ -140,11 +140,11 @@ Abgleich mit aria2, JDownloader, yt-dlp und der Arti-Dokumentation. Reihenfolge 
   - [x] Queue-Liste, Status, Hinzufügen, Pause/Resume/Cancel/Remove über `POST /rpc` und `/api/jobs`
   - [x] Optionaler Bearer-Token (`rpc_token`), Loopback-Bindung ohne Token erzwungen
   - [ ] WebSocket-Unterstützung für Live-Events
-- [ ] 🟠 **Grafische Oberfläche** (Nutzerwunsch 2026-10-22: GUI statt TUI). Entscheidung: zuerst eine **Web-GUI**, die der Daemon selbst ausliefert (keine neuen schweren Abhängigkeiten, läuft auf macOS/Linux/Windows und per Fernzugriff, wiederverwendbar in einem Fenster-Wrapper). Danach optional eine native App darum.
-  - [ ] gui-1: Seite mit Queue, Hinzufügen, Pause/Resume/Abbrechen/Entfernen, Tor-Status; `--gui` startet den Daemon und öffnet den Browser; Schutz der API gegen fremde Webseiten (Host-/Origin-/Content-Type-Prüfung)
-  - [ ] gui-2: Details je Download, History, Einstellungen, LinkGrabber
-  - [ ] gui-3: native App-Hülle (Tauri/wry), Tray, Autostart
-- [x] ⛔ GUI-Entscheidung egui vs. Tauri vs. Browser-WebUI: Web-GUI zuerst (siehe oben); egui verworfen (große Abhängigkeiten, doppelte Oberfläche)
+- [ ] 🟠 **Grafische Oberfläche** (Nutzerwunsch 2026-10-22: richtiges Programmfenster statt TUI, kein Server). Entscheidung: **egui/eframe** – reines Rust, ein Fenster auf macOS/Linux/Windows, nutzt dieselbe Engine und denselben Zustand wie die TUI im selben Prozess. Das Fenster ist der Standard, wenn ein Display da ist; `--tui` erzwingt das Terminal.
+  - [x] gui-1: Fenster mit Downloads (Fortschritt, Geschwindigkeit, ETA, Details, Pause/Fortsetzen/Abbrechen/Entfernen), Link-Eingabe und Zwischenablage, History, Tor-Status, Captcha-Dialog
+  - [ ] gui-2: LinkGrabber, Einstellungen, Datei-Import-Dialog, Tray-Symbol
+  - [ ] gui-3: App-Paket (macOS `.app` mit Icon, Windows/Linux), Autostart
+- [x] ⛔ GUI-Entscheidung: egui gewählt; Browser-WebUI und Tauri verworfen (der Nutzer wollte ein Fenster, keinen Server)
 - [ ] 🟢 Tray-Integration, Browser-Extension-Brücke
 
 ---

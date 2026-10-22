@@ -35,6 +35,14 @@ const EN: &[(&str, &str)] = &[
         "CLI mode only (no TUI), log continuously",
     ),
     (
+        "cli.arg.gui",
+        "Open the desktop window (default when a display is available)",
+    ),
+    (
+        "cli.arg.tui",
+        "Use the terminal interface instead of the window",
+    ),
+    (
         "cli.arg.no_tor",
         "Disable Tor completely (testing only - unsafe!)",
     ),
@@ -426,6 +434,98 @@ const EN: &[(&str, &str)] = &[
     (
         "ui.import.title",
         "Import links from file",
+    ),
+    (
+        "gui.tab.downloads",
+        "Downloads",
+    ),
+    (
+        "gui.tab.history",
+        "History",
+    ),
+    (
+        "gui.add.hint",
+        "Paste one or more links (http, https, ftp)",
+    ),
+    (
+        "gui.add.button",
+        "Add",
+    ),
+    (
+        "gui.add.clipboard",
+        "Paste from clipboard",
+    ),
+    (
+        "gui.tor.off",
+        "Tor: off",
+    ),
+    (
+        "gui.tor.ready",
+        "Tor: connected",
+    ),
+    (
+        "gui.tor.starting",
+        "Tor: starting ({percent}%)",
+    ),
+    (
+        "gui.tor.blocked",
+        "Tor: blocked",
+    ),
+    (
+        "gui.queue.empty",
+        "No downloads yet. Paste a link above.",
+    ),
+    (
+        "gui.queue.summary",
+        "{active} active · {done} done · {total} total",
+    ),
+    (
+        "gui.action.pause",
+        "Pause",
+    ),
+    (
+        "gui.action.resume",
+        "Resume",
+    ),
+    (
+        "gui.action.cancel",
+        "Cancel",
+    ),
+    (
+        "gui.action.remove",
+        "Remove",
+    ),
+    (
+        "gui.job.parts",
+        "{n} parts",
+    ),
+    (
+        "gui.job.eta",
+        "ETA {eta}",
+    ),
+    (
+        "gui.job.details",
+        "Details",
+    ),
+    (
+        "gui.history.remove",
+        "Remove from history",
+    ),
+    (
+        "gui.captcha.title",
+        "Captcha required",
+    ),
+    (
+        "gui.captcha.asks",
+        "{host} asks:",
+    ),
+    (
+        "gui.captcha.submit",
+        "Submit",
+    ),
+    (
+        "gui.captcha.cancel",
+        "Cancel",
     ),
     (
         "ui.settings.title",

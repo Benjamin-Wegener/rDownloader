@@ -19,7 +19,8 @@ no code was taken from it. JDownloader's Java plugins cannot be loaded.
 - Optional checksum verification (MD5, SHA-1, SHA-256, SHA-512) when a hash is known
 - Mirrors: a Metalink file lists several URLs per file; parts are spread over them, faster mirrors are preferred, dead or wrong ones are dropped. Metalink piece checksums find damaged chunks, which are repaired from another mirror
 - Global speed limit (`max_speed_kib`)
-- Terminal UI: queue with live progress, per-job details (parts, speed, ETA, Tor state), pause / resume / cancel / remove
+- Desktop window (egui): queue with live progress, speed and ETA, per-download details, pause / resume / cancel / remove, history, Tor status. It is the default when a display is available
+- Terminal UI (`--tui`): queue with live progress, per-job details (parts, speed, ETA, Tor state), pause / resume / cancel / remove
 - Batch import of links from a text or M3U file, or from the clipboard
 - Link grabber: collect links separately (manually, from a file, the clipboard or a crawled page), filter them by host and file type, then confirm them into the download queue
 - Session restore: unfinished downloads come back after a restart
@@ -44,7 +45,8 @@ the build at Homebrew LLVM and a standalone macOS SDK.
 ## Usage
 
 ```sh
-rdownloader                         # start the TUI
+rdownloader                         # open the window (terminal UI if there is no display)
+rdownloader --tui                   # force the terminal UI
 rdownloader URL                     # download a URL, showing progress in the TUI
 rdownloader --headless -p 4 -o ~/Downloads URL
 rdownloader --daemon                # JSON-RPC/REST control API (no TUI)
@@ -54,12 +56,13 @@ rdownloader --daemon                # JSON-RPC/REST control API (no TUI)
 | --- | --- |
 | `-p, --parts N` | parts per download (1-10) |
 | `-o, --output PATH` | target file or directory |
-| `--headless` | no TUI, log to the terminal |
+| `--gui` / `--tui` | open the window (default with a display) / use the terminal UI |
+| `--headless` | no UI, log to the terminal |
 | `--daemon` | no TUI; serve the JSON-RPC/REST control API |
 | `-t, --tor-clients N` | deprecated and ignored: one Tor client isolates every part |
 | `--no-tor` | do not start Tor (testing only; downloads need Tor and will not run) |
 
-TUI keys:
+Terminal UI keys (`--tui`):
 
 | Key | Action |
 | --- | --- |
