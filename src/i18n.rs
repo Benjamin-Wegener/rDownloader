@@ -624,6 +624,70 @@ const EN: &[(&str, &str)] = &[
         "Link",
     ),
     (
+        "gui.col.columns",
+        "Columns",
+    ),
+    (
+        "gui.col.name",
+        "Name",
+    ),
+    (
+        "gui.col.size",
+        "Size",
+    ),
+    (
+        "gui.col.host",
+        "Host",
+    ),
+    (
+        "gui.col.connection",
+        "Connection",
+    ),
+    (
+        "gui.col.status",
+        "Status",
+    ),
+    (
+        "gui.col.speed",
+        "Speed",
+    ),
+    (
+        "gui.col.eta",
+        "ETA",
+    ),
+    (
+        "gui.col.loaded",
+        "Loaded",
+    ),
+    (
+        "gui.col.progress",
+        "Progress",
+    ),
+    (
+        "gui.col.save_to",
+        "Save to",
+    ),
+    (
+        "gui.col.comment",
+        "Comment",
+    ),
+    (
+        "gui.package.default",
+        "Various downloads",
+    ),
+    (
+        "gui.package.items",
+        "{count} files",
+    ),
+    (
+        "gui.connection.tor",
+        "Tor",
+    ),
+    (
+        "gui.connection.direct",
+        "Direct",
+    ),
+    (
         "gui.filter.all",
         "All downloads",
     ),

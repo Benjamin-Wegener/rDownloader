@@ -143,7 +143,7 @@ Abgleich mit aria2, JDownloader, yt-dlp und der Arti-Dokumentation. Reihenfolge 
 - [ ] 🟠 **Grafische Oberfläche** (Nutzerwunsch 2026-10-22: richtiges Programmfenster statt TUI, kein Server). Entscheidung: **egui/eframe** – reines Rust, ein Fenster auf macOS/Linux/Windows, nutzt dieselbe Engine und denselben Zustand wie die TUI im selben Prozess. Das Fenster ist der Standard, wenn ein Display da ist; `--tui` erzwingt das Terminal.
   - [x] gui-1: Fenster mit Downloads (Fortschritt, Geschwindigkeit, ETA, Details, Pause/Fortsetzen/Abbrechen/Entfernen), Link-Eingabe und Zwischenablage, History, Tor-Status, Captcha-Dialog
   - [x] gui-2: Fensterrahmen (Toolbar, Reiter, Übersichtspanel, Befehlsleiste, Fußzeile), Layout siehe `docs/gui-layout.md` (Clean-Room, Referenz-Screenshot nur lokal)
-  - [ ] gui-3: Tabelle mit Spalten, Sortierung, Spaltenauswahl und Paketen im Datenmodell
+  - [x] gui-3: Tabelle mit Spalten, Sortierung, Spaltenauswahl und Paketen im Datenmodell
   - [ ] gui-4: Reiter Link-Sammler
   - [ ] gui-5: Dialoge und Menüs (Links hinzufügen, Kontextmenü, Einstellungen, Dateiauswahl)
   - [ ] gui-6: App-Paket (macOS `.app` mit Icon, Windows/Linux, Autostart)

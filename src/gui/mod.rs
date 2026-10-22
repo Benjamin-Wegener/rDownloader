@@ -20,7 +20,10 @@ use crate::t;
 use crate::tor::TorHealth;
 use crate::ui::{detail, fmt_bytes, import, App, InputPrompt, MoveTo, SharedApp, UiCommand};
 use icons::Icon;
-use model::{SearchScope, StateFilter, Totals};
+use model::{
+    build_and_sort_packages, ColumnConfig, ColumnId, GuiItem, GuiPackage, SearchScope, SortConfig,
+    SortDirection, StateFilter, Totals,
+};
 
 /// How often the window redraws when nothing else triggers it (live progress).
 const REPAINT_EVERY: Duration = Duration::from_millis(250);
@@ -228,6 +231,9 @@ struct GuiApp {
     add_text: String,
     overview_open: bool,
     captcha_input: String,
+    columns: ColumnConfig,
+    sort: SortConfig,
+    collapsed_packages: std::collections::HashSet<String>,
 }
 
 impl GuiApp {
@@ -243,6 +249,9 @@ impl GuiApp {
             add_text: String::new(),
             overview_open: true,
             captcha_input: String::new(),
+            columns: ColumnConfig::default(),
+            sort: SortConfig::default(),
+            collapsed_packages: std::collections::HashSet::new(),
         }
     }
 
@@ -424,124 +433,362 @@ impl GuiApp {
         {
             self.selected = None;
         }
-        let visible: Vec<JobProgress> = app
+
+        let visible_jobs: Vec<JobProgress> = app
             .jobs
             .iter()
             .filter(|j| model::matches(j, self.filter, self.scope, &self.query))
             .cloned()
             .collect();
 
+        if app.jobs.is_empty() {
+            ui.add_space(40.0);
+            ui.vertical_centered(|ui| ui.weak(t!("gui.queue.empty")));
+            return;
+        }
+        if visible_jobs.is_empty() {
+            ui.add_space(40.0);
+            ui.vertical_centered(|ui| ui.weak(t!("gui.queue.no_match")));
+            return;
+        }
+
+        // Convert visible jobs to GuiItems and group into packages
+        let default_save = app.export_dir.to_str().unwrap_or("~/Downloads").to_string();
+        let items: Vec<GuiItem> = visible_jobs
+            .iter()
+            .map(|j| {
+                let speed = app.speeds.speed(j.id);
+                let conn = if app.tor_health.is_some() {
+                    t!("gui.connection.tor")
+                } else {
+                    t!("gui.connection.direct")
+                };
+                GuiItem::from_job(j, speed, &default_save, "", conn)
+            })
+            .collect();
+
+        let default_pkg_title = t!("gui.package.default");
+        let packages = build_and_sort_packages(items, self.sort, &default_pkg_title);
+
+        self.table_header(ui);
+
         egui::ScrollArea::vertical()
             .auto_shrink([false, false])
             .show(ui, |ui| {
-                if app.jobs.is_empty() {
-                    ui.add_space(40.0);
-                    ui.vertical_centered(|ui| ui.weak(t!("gui.queue.empty")));
-                    return;
-                }
-                if visible.is_empty() {
-                    ui.add_space(40.0);
-                    ui.vertical_centered(|ui| ui.weak(t!("gui.queue.no_match")));
-                    return;
-                }
-                let dark = ui.visuals().dark_mode;
-                for job in &visible {
-                    let speed = app.speeds.speed(job.id);
-                    let selected = self.selected == Some(job.id);
-                    let accent = ui.visuals().selection.bg_fill;
-                    let frame = egui::Frame::group(ui.style()).stroke(if selected {
-                        egui::Stroke::new(2.0, accent)
-                    } else {
-                        ui.visuals().widgets.noninteractive.bg_stroke
-                    });
-                    let response = frame
-                        .show(ui, |ui| {
-                            ui.set_width(ui.available_width());
-                            self.job_card(ui, app, job, speed, dark);
-                        })
-                        .response;
-                    if ui
-                        .interact(
-                            response.rect,
-                            ui.make_persistent_id(("row", job.id)),
-                            egui::Sense::click(),
-                        )
-                        .clicked()
-                    {
-                        self.selected = Some(job.id);
-                    }
-                    ui.add_space(4.0);
+                for pkg in &packages {
+                    self.package_row(ui, app, pkg);
                 }
             });
     }
 
-    fn job_card(
-        &mut self,
-        ui: &mut egui::Ui,
-        app: &mut App,
-        job: &JobProgress,
-        speed: u64,
-        dark: bool,
-    ) {
-        ui.horizontal(|ui| {
-            let name = if job.filename.is_empty() {
-                &job.url
-            } else {
-                &job.filename
-            };
-            ui.label(egui::RichText::new(name).strong())
-                .on_hover_text(&job.url);
-            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                ui.colored_label(status_color(&job.status, dark), status_text(&job.status));
-                ui.weak(model::host_of(&job.url));
+    fn table_header(&mut self, ui: &mut egui::Ui) {
+        let frame = egui::Frame::canvas(ui.style());
+        frame.show(ui, |ui| {
+            ui.horizontal(|ui| {
+                for col in ColumnId::ALL {
+                    if !self.columns.is_visible(col) {
+                        continue;
+                    }
+                    let title = t!(col.title_key());
+                    let label = if self.sort.column == col {
+                        let arrow = match self.sort.direction {
+                            SortDirection::Ascending => " ▲",
+                            SortDirection::Descending => " ▼",
+                        };
+                        format!("{title}{arrow}")
+                    } else {
+                        title
+                    };
+                    let button = egui::Button::new(egui::RichText::new(label).strong())
+                        .min_size(egui::vec2(col.default_width(), 20.0));
+                    if ui.add(button).clicked() {
+                        if self.sort.column == col {
+                            self.sort.direction = self.sort.direction.reverse();
+                        } else {
+                            self.sort.column = col;
+                            self.sort.direction = SortDirection::Ascending;
+                        }
+                    }
+                }
+
+                // Column selector popup button at the right end of the header
+                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                    ui.menu_button(t!("gui.col.columns"), |ui| {
+                        for col in ColumnId::ALL {
+                            let mut visible = self.columns.is_visible(col);
+                            let title = t!(col.title_key());
+                            if ui.checkbox(&mut visible, title).changed() {
+                                self.columns.set_visible(col, visible);
+                            }
+                        }
+                    });
+                });
+            });
+        });
+        ui.separator();
+    }
+
+    fn package_row(&mut self, ui: &mut egui::Ui, app: &mut App, pkg: &GuiPackage) {
+        let dark = ui.visuals().dark_mode;
+        let is_collapsed = self.collapsed_packages.contains(&pkg.id);
+        let arrow = if is_collapsed { "▶ " } else { "▼ " };
+
+        let frame = egui::Frame::group(ui.style()).fill(if dark {
+            egui::Color32::from_rgb(0x24, 0x27, 0x30)
+        } else {
+            egui::Color32::from_rgb(0xe5, 0xe9, 0xf0)
+        });
+
+        frame.show(ui, |ui| {
+            ui.horizontal(|ui| {
+                if self.columns.is_visible(ColumnId::Name) {
+                    ui.allocate_ui(egui::vec2(ColumnId::Name.default_width(), 20.0), |ui| {
+                        let text = format!("{arrow}{}", pkg.name);
+                        if ui
+                            .selectable_label(false, egui::RichText::new(text).strong())
+                            .clicked()
+                        {
+                            if is_collapsed {
+                                self.collapsed_packages.remove(&pkg.id);
+                            } else {
+                                self.collapsed_packages.insert(pkg.id.clone());
+                            }
+                        }
+                    });
+                }
+                if self.columns.is_visible(ColumnId::Size) {
+                    ui.allocate_ui(egui::vec2(ColumnId::Size.default_width(), 20.0), |ui| {
+                        ui.label(fmt_bytes(pkg.total_size()));
+                    });
+                }
+                if self.columns.is_visible(ColumnId::Host) {
+                    ui.allocate_ui(egui::vec2(ColumnId::Host.default_width(), 20.0), |ui| {
+                        ui.label(t!("gui.package.items", count = pkg.items.len()));
+                    });
+                }
+                if self.columns.is_visible(ColumnId::Connection) {
+                    ui.allocate_ui(
+                        egui::vec2(ColumnId::Connection.default_width(), 20.0),
+                        |ui| {
+                            ui.label("");
+                        },
+                    );
+                }
+                if self.columns.is_visible(ColumnId::Status) {
+                    ui.allocate_ui(egui::vec2(ColumnId::Status.default_width(), 20.0), |ui| {
+                        let st = pkg.status_summary();
+                        ui.colored_label(status_color(&st, dark), status_text(&st));
+                    });
+                }
+                if self.columns.is_visible(ColumnId::Speed) {
+                    ui.allocate_ui(egui::vec2(ColumnId::Speed.default_width(), 20.0), |ui| {
+                        let speed = pkg.total_speed();
+                        if speed > 0 {
+                            ui.label(detail::fmt_speed(speed));
+                        } else {
+                            ui.label("–");
+                        }
+                    });
+                }
+                if self.columns.is_visible(ColumnId::Eta) {
+                    ui.allocate_ui(egui::vec2(ColumnId::Eta.default_width(), 20.0), |ui| {
+                        if let Some(eta) = pkg.eta() {
+                            ui.label(detail::fmt_eta(eta));
+                        } else {
+                            ui.label("–");
+                        }
+                    });
+                }
+                if self.columns.is_visible(ColumnId::Loaded) {
+                    ui.allocate_ui(egui::vec2(ColumnId::Loaded.default_width(), 20.0), |ui| {
+                        ui.label(fmt_bytes(pkg.loaded_bytes()));
+                    });
+                }
+                if self.columns.is_visible(ColumnId::Progress) {
+                    ui.allocate_ui(egui::vec2(ColumnId::Progress.default_width(), 20.0), |ui| {
+                        let bar = match pkg.progress() {
+                            Some(f) => egui::ProgressBar::new(f).show_percentage(),
+                            None => egui::ProgressBar::new(0.0),
+                        };
+                        ui.add(bar);
+                    });
+                }
+                if self.columns.is_visible(ColumnId::SaveTo) {
+                    ui.allocate_ui(egui::vec2(ColumnId::SaveTo.default_width(), 20.0), |ui| {
+                        ui.label(&pkg.save_to);
+                    });
+                }
+                if self.columns.is_visible(ColumnId::Comment) {
+                    ui.allocate_ui(egui::vec2(ColumnId::Comment.default_width(), 20.0), |ui| {
+                        ui.label(&pkg.comment);
+                    });
+                }
             });
         });
 
-        let bar = match fraction(job) {
-            Some(f) => egui::ProgressBar::new(f).show_percentage(),
-            None => {
-                egui::ProgressBar::new(0.0).animate(matches!(job.status, JobStatus::Downloading))
+        if !is_collapsed {
+            for item in &pkg.items {
+                self.item_row(ui, app, item);
             }
-        };
-        ui.add(bar);
-        ui.weak(progress_line(job, speed));
-        if let JobStatus::Failed(error) = &job.status {
-            ui.colored_label(status_color(&job.status, dark), error);
         }
+    }
 
-        let actions = actions_for(&job.status);
-        ui.horizontal(|ui| {
-            if ui
-                .add_enabled(actions.pause, egui::Button::new(t!("gui.action.pause")))
-                .clicked()
-            {
-                Self::send(app, UiCommand::PauseJob(job.id));
-            }
-            if ui
-                .add_enabled(actions.resume, egui::Button::new(t!("gui.action.resume")))
-                .clicked()
-            {
-                Self::send(app, UiCommand::ResumeJob(job.id));
-            }
-            if ui
-                .add_enabled(actions.cancel, egui::Button::new(t!("gui.action.cancel")))
-                .clicked()
-            {
-                Self::send(app, UiCommand::CancelJob(job.id));
-            }
-            if ui
-                .add_enabled(actions.remove, egui::Button::new(t!("gui.action.remove")))
-                .clicked()
-            {
-                app.speeds.forget(job.id);
-                Self::send(app, UiCommand::RemoveJob(job.id));
-            }
+    fn item_row(&mut self, ui: &mut egui::Ui, app: &mut App, item: &GuiItem) {
+        let dark = ui.visuals().dark_mode;
+        let selected = self.selected == Some(item.id);
+        let accent = ui.visuals().selection.bg_fill;
+
+        let frame = egui::Frame::group(ui.style()).stroke(if selected {
+            egui::Stroke::new(2.0, accent)
+        } else {
+            ui.visuals().widgets.noninteractive.bg_stroke
         });
-        egui::CollapsingHeader::new(t!("gui.job.details"))
-            .id_salt(job.id)
+
+        let response = frame
             .show(ui, |ui| {
-                ui.monospace(detail::detail_text(job, speed, app.tor_health.as_ref()));
-            });
+                ui.horizontal(|ui| {
+                    if self.columns.is_visible(ColumnId::Name) {
+                        ui.allocate_ui(egui::vec2(ColumnId::Name.default_width(), 20.0), |ui| {
+                            let label = format!("   {}", item.name);
+                            ui.label(label).on_hover_text(&item.raw.url);
+                        });
+                    }
+                    if self.columns.is_visible(ColumnId::Size) {
+                        ui.allocate_ui(egui::vec2(ColumnId::Size.default_width(), 20.0), |ui| {
+                            if item.size > 0 {
+                                ui.label(fmt_bytes(item.size));
+                            } else {
+                                ui.label("–");
+                            }
+                        });
+                    }
+                    if self.columns.is_visible(ColumnId::Host) {
+                        ui.allocate_ui(egui::vec2(ColumnId::Host.default_width(), 20.0), |ui| {
+                            ui.label(&item.host);
+                        });
+                    }
+                    if self.columns.is_visible(ColumnId::Connection) {
+                        ui.allocate_ui(
+                            egui::vec2(ColumnId::Connection.default_width(), 20.0),
+                            |ui| {
+                                ui.label(&item.connection);
+                            },
+                        );
+                    }
+                    if self.columns.is_visible(ColumnId::Status) {
+                        ui.allocate_ui(egui::vec2(ColumnId::Status.default_width(), 20.0), |ui| {
+                            ui.colored_label(
+                                status_color(&item.status, dark),
+                                status_text(&item.status),
+                            );
+                        });
+                    }
+                    if self.columns.is_visible(ColumnId::Speed) {
+                        ui.allocate_ui(egui::vec2(ColumnId::Speed.default_width(), 20.0), |ui| {
+                            if item.speed > 0 {
+                                ui.label(detail::fmt_speed(item.speed));
+                            } else {
+                                ui.label("–");
+                            }
+                        });
+                    }
+                    if self.columns.is_visible(ColumnId::Eta) {
+                        ui.allocate_ui(egui::vec2(ColumnId::Eta.default_width(), 20.0), |ui| {
+                            if let Some(eta) = item.eta {
+                                ui.label(detail::fmt_eta(eta));
+                            } else {
+                                ui.label("–");
+                            }
+                        });
+                    }
+                    if self.columns.is_visible(ColumnId::Loaded) {
+                        ui.allocate_ui(egui::vec2(ColumnId::Loaded.default_width(), 20.0), |ui| {
+                            ui.label(fmt_bytes(item.loaded));
+                        });
+                    }
+                    if self.columns.is_visible(ColumnId::Progress) {
+                        ui.allocate_ui(
+                            egui::vec2(ColumnId::Progress.default_width(), 20.0),
+                            |ui| {
+                                let bar = match item.progress {
+                                    Some(f) => egui::ProgressBar::new(f).show_percentage(),
+                                    None => egui::ProgressBar::new(0.0)
+                                        .animate(matches!(item.status, JobStatus::Downloading)),
+                                };
+                                ui.add(bar);
+                            },
+                        );
+                    }
+                    if self.columns.is_visible(ColumnId::SaveTo) {
+                        ui.allocate_ui(egui::vec2(ColumnId::SaveTo.default_width(), 20.0), |ui| {
+                            ui.label(&item.save_to);
+                        });
+                    }
+                    if self.columns.is_visible(ColumnId::Comment) {
+                        ui.allocate_ui(egui::vec2(ColumnId::Comment.default_width(), 20.0), |ui| {
+                            ui.label(&item.comment);
+                        });
+                    }
+                });
+
+                if selected {
+                    ui.add_space(2.0);
+                    ui.weak(progress_line(&item.raw, item.speed));
+                    if let JobStatus::Failed(error) = &item.status {
+                        ui.colored_label(status_color(&item.status, dark), error);
+                    }
+                    let actions = actions_for(&item.status);
+                    ui.horizontal(|ui| {
+                        if ui
+                            .add_enabled(actions.pause, egui::Button::new(t!("gui.action.pause")))
+                            .clicked()
+                        {
+                            Self::send(app, UiCommand::PauseJob(item.id));
+                        }
+                        if ui
+                            .add_enabled(actions.resume, egui::Button::new(t!("gui.action.resume")))
+                            .clicked()
+                        {
+                            Self::send(app, UiCommand::ResumeJob(item.id));
+                        }
+                        if ui
+                            .add_enabled(actions.cancel, egui::Button::new(t!("gui.action.cancel")))
+                            .clicked()
+                        {
+                            Self::send(app, UiCommand::CancelJob(item.id));
+                        }
+                        if ui
+                            .add_enabled(actions.remove, egui::Button::new(t!("gui.action.remove")))
+                            .clicked()
+                        {
+                            app.speeds.forget(item.id);
+                            Self::send(app, UiCommand::RemoveJob(item.id));
+                        }
+                    });
+                    egui::CollapsingHeader::new(t!("gui.job.details"))
+                        .id_salt(item.id)
+                        .show(ui, |ui| {
+                            ui.monospace(detail::detail_text(
+                                &item.raw,
+                                item.speed,
+                                app.tor_health.as_ref(),
+                            ));
+                        });
+                }
+            })
+            .response;
+
+        if ui
+            .interact(
+                response.rect,
+                ui.make_persistent_id(("row", item.id)),
+                egui::Sense::click(),
+            )
+            .clicked()
+        {
+            self.selected = Some(item.id);
+        }
+        ui.add_space(2.0);
     }
 
     fn history(&mut self, ui: &mut egui::Ui, app: &mut App) {
@@ -1035,5 +1282,28 @@ mod tests {
         app.lock().unwrap().jobs.clear();
         render(&mut gui, 1);
         assert_eq!(gui.selected, None);
+    }
+
+    #[test]
+    fn table_columns_and_sorting_render() {
+        let (app, _rx) = shared_app();
+        app.lock().unwrap().jobs = jobs_in_every_state();
+        let mut gui = GuiApp::new(app);
+        // Test rendering with different sorting configs
+        gui.sort = SortConfig {
+            column: ColumnId::Size,
+            direction: SortDirection::Descending,
+        };
+        assert!(render(&mut gui, 2) > 0);
+
+        // Toggle columns visibility
+        gui.columns.toggle(ColumnId::Comment);
+        gui.columns.toggle(ColumnId::SaveTo);
+        assert!(render(&mut gui, 2) > 0);
+
+        // Test collapsed package
+        let pkg_id = t!("gui.package.default");
+        gui.collapsed_packages.insert(pkg_id);
+        assert!(render(&mut gui, 2) > 0);
     }
 }
