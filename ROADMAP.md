@@ -151,6 +151,8 @@ Was automatisch geprüft ist und was noch **nicht** am echten System gesehen wur
 
 **Live geprüft:** HEAD auf einen echten `.onion`-Dienst über Tor (`tests/live_onion.rs`, einmalig, 231 s inkl. Bootstrap).
 
+**Fund aus dem Live-Test (2026-10-22):** Der erste echte Download scheiterte an „Content-Length missing“: Cloudflare-Server senden auf HEAD keine Größe und bedienen keine Ranges. Behoben – Downloads ohne bekannte Größe laufen jetzt über eine Verbindung (Fortschritt in Bytes, Größe nach dem Ende bekannt).
+
 **Noch nicht live geprüft:**
 - [ ] 🔴 Kompletter Download (HTTPS, mehrere Parts) über das echte Tor-Netz mit dem Release-Binary. Der Versuch am 2026-10-22 scheiterte schon im Tor-Bootstrap (Verbindungen zu den Verzeichnisservern liefen in Timeouts bzw. wurden abgelehnt) – am Netz der Testumgebung, nicht nachweislich am Code. Die Engine wurde zuvor auf den `Transport`-Vertrag umgebaut (Parts liefen vorher ohne TLS), deshalb ist dieser Test wichtig
 - [ ] 🟠 FTP gegen einen echten Server über Tor

@@ -86,6 +86,8 @@ pub struct MockResource {
     pub filename: Option<String>,
     pub etag: Option<String>,
     pub last_modified: Option<String>,
+    /// Behave like a server that sends no `Content-Length` (no size, no ranges).
+    pub hide_size: bool,
 }
 
 impl MockResource {
@@ -96,6 +98,7 @@ impl MockResource {
             filename: None,
             etag: None,
             last_modified: None,
+            hide_size: false,
         }
     }
 }
@@ -150,9 +153,9 @@ impl MockTransport {
         ResponseHead {
             status,
             final_url: url.clone(),
-            content_length: Some(len),
-            total_size: Some(res.data.len() as u64),
-            accepts_ranges: res.accepts_ranges,
+            content_length: (!res.hide_size).then_some(len),
+            total_size: (!res.hide_size).then_some(res.data.len() as u64),
+            accepts_ranges: res.accepts_ranges && !res.hide_size,
             filename: res.filename.clone(),
             etag: res.etag.clone(),
             last_modified: res.last_modified.clone(),

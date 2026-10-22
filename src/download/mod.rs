@@ -126,11 +126,9 @@ impl DownloadJob {
 /// by the exit node, so this path cannot leak DNS.
 async fn resolve_size(transport: &dyn Transport, url: &url::Url) -> Result<ServerInfo> {
     let head = transport.head(url, 0).await?;
-    let total = head
-        .total_size
-        .context(t!("download.error.content_length_missing"))?;
+    // Many servers (CDNs, compressed or chunked responses) send no length at all.
     Ok(ServerInfo {
-        total,
+        total: head.total_size,
         accepts_ranges: head.accepts_ranges,
         etag: head.etag,
         last_modified: head.last_modified,
@@ -140,7 +138,8 @@ async fn resolve_size(transport: &dyn Transport, url: &url::Url) -> Result<Serve
 /// What the server reveals about the resource.
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct ServerInfo {
-    total: u64,
+    /// `None` when the server does not report a size.
+    total: Option<u64>,
     accepts_ranges: bool,
     etag: Option<String>,
     last_modified: Option<String>,
@@ -240,8 +239,8 @@ struct PartSpec {
     dest: PathBuf,
     /// Inclusive byte range; `None` = whole file without a Range header.
     range: Option<(u64, u64)>,
-    /// Size of the whole file; a mirror reporting another size is rejected.
-    expected_total: u64,
+    /// Size of the whole file, if known; a mirror reporting another size is rejected.
+    expected_total: Option<u64>,
 }
 
 /// Downloads a part (byte range) through `transport` and writes it to `dest`.
@@ -320,11 +319,7 @@ async fn download_part(
     let expected_len = response.head.content_length;
     // A mirror with another file size serves a different file: its bytes must
     // never be mixed into this download.
-    if response
-        .head
-        .total_size
-        .is_some_and(|t| t != expected_total)
-    {
+    if matches!((response.head.total_size, expected_total), (Some(t), Some(e)) if t != e) {
         return Err(mirror::MirrorMismatch.into());
     }
 
@@ -523,6 +518,197 @@ async fn verify_and_repair_pieces(
     Ok(())
 }
 
+/// Everything a finished transfer needs after its parts are on disk.
+struct FinishCtx<'a> {
+    job: &'a DownloadJob,
+    transport: &'a dyn Transport,
+    selector: &'a mirror::MirrorSelector,
+    progress: &'a Arc<Mutex<JobProgress>>,
+    temp_dir: &'a Path,
+    last_modified: Option<&'a str>,
+    accepts_ranges: bool,
+}
+
+/// Merges the part files into the output, verifies it (checksum, pieces), cleans up
+/// and marks the job done.
+async fn finalize_download(ctx: FinishCtx<'_>, part_paths: &[PathBuf], total: u64) -> Result<()> {
+    let job = ctx.job;
+    {
+        let mut p = ctx.progress.lock().await;
+        p.status = JobStatus::Merging;
+    }
+
+    merge_parts(part_paths, &job.output, total).await?;
+    conditional::apply_remote_time(&job.output, ctx.last_modified);
+
+    if let Some(expected) = &job.checksum {
+        if let Err(e) = checksum::verify_file(&job.output, expected).await {
+            // A corrupt file must not look like a finished download.
+            let _ = fs::remove_file(&job.output).await;
+            let mut p = ctx.progress.lock().await;
+            p.status = JobStatus::Failed(e.to_string());
+            return Err(e);
+        }
+        info!("Checksum verified: {expected}");
+    }
+
+    if let Some(table) = job.pieces.as_ref().filter(|p| p.fits(total)) {
+        if let Err(e) = verify_and_repair_pieces(
+            &job.output,
+            table,
+            total,
+            ctx.accepts_ranges,
+            ctx.transport,
+            ctx.selector,
+            job.id,
+        )
+        .await
+        {
+            let _ = fs::remove_file(&job.output).await;
+            let mut p = ctx.progress.lock().await;
+            p.status = JobStatus::Failed(e.to_string());
+            return Err(e);
+        }
+    }
+
+    // Clean up temp files
+    let _ = fs::remove_dir_all(ctx.temp_dir).await;
+
+    // Apply macOS Gatekeeper quarantine attribute (safe no-op on non-macOS)
+    let _ = quarantine::apply_quarantine(&job.output);
+
+    let mut p = ctx.progress.lock().await;
+    p.status = JobStatus::Done;
+    p.bytes_done = total;
+    info!("Download complete: {}", job.output.display());
+    Ok(())
+}
+
+/// Download of a file whose size the server does not report (typical for CDNs and
+/// compressed or chunked responses). Such servers rarely support ranges either, so
+/// this is one connection with retries from the start; progress shows bytes but no
+/// percentage. The size becomes known when the transfer ends.
+async fn download_unknown_size(
+    job: &DownloadJob,
+    transport: Arc<dyn Transport>,
+    selector: Arc<mirror::MirrorSelector>,
+    progress: Arc<Mutex<JobProgress>>,
+    cancel: Arc<tokio::sync::Notify>,
+    invalidate: Arc<dyn Fn(u64) + Send + Sync>,
+) -> Result<()> {
+    info!("Server reports no size: single-connection download without percentage");
+    let temp_dir = crate::config::config()
+        .temp_dir()
+        .join(format!("job-{}", job.id));
+    fs::create_dir_all(&temp_dir).await?;
+    let dest = temp_dir.join("part-000");
+
+    {
+        let mut p = progress.lock().await;
+        p.status = JobStatus::Downloading;
+        p.total_bytes = 0;
+        p.bytes_done = 0;
+        p.parts = vec![PartProgress {
+            index: 0,
+            bytes_done: 0,
+            total: 0,
+            status: PartStatus::Downloading,
+        }];
+    }
+
+    let bytes_done = Arc::new(AtomicU64::new(0));
+    let reporter = {
+        let (progress, bytes_done) = (progress.clone(), bytes_done.clone());
+        tokio::spawn(async move {
+            loop {
+                tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+                let mut p = progress.lock().await;
+                p.bytes_done = bytes_done.load(Ordering::Relaxed);
+                if p.status != JobStatus::Downloading {
+                    break;
+                }
+            }
+        })
+    };
+
+    let isolation = part_isolation(job.id, 0);
+    let part_bytes = Arc::new(AtomicU64::new(0));
+    let last_mirror = Arc::new(std::sync::atomic::AtomicUsize::new(usize::MAX));
+    let retry_policy = RetryPolicy::default();
+    let result = retry_policy
+        .retry_with_cancel(
+            &*cancel,
+            |_attempt| {
+                let (transport, selector, invalidate) =
+                    (transport.clone(), selector.clone(), invalidate.clone());
+                let (dest, bytes_done) = (dest.clone(), bytes_done.clone());
+                let (part_bytes, last_mirror) = (part_bytes.clone(), last_mirror.clone());
+                async move {
+                    let avoid = match last_mirror.load(Ordering::Relaxed) {
+                        usize::MAX => None,
+                        m => Some(m),
+                    };
+                    let idx = selector.pick(0, avoid);
+                    let spec = PartSpec {
+                        isolation,
+                        url: selector.url(idx).clone(),
+                        dest,
+                        range: None,
+                        expected_total: None,
+                    };
+                    let mut pb = part_bytes.load(Ordering::Relaxed);
+                    let started = std::time::Instant::now();
+                    let res = download_part(transport, spec, bytes_done, &mut pb).await;
+                    part_bytes.store(pb, Ordering::Relaxed);
+                    match &res {
+                        Ok(()) => selector.record_success(idx, pb, started.elapsed().as_secs_f64()),
+                        Err(_) => {
+                            selector.record_failure(idx);
+                            last_mirror.store(idx, Ordering::Relaxed);
+                            invalidate(isolation);
+                        }
+                    }
+                    res
+                }
+            },
+            |_, _, _| {},
+        )
+        .await;
+    reporter.abort();
+
+    if let Err(e) = result {
+        let mut p = progress.lock().await;
+        p.status = JobStatus::Failed(e.to_string());
+        return Err(e);
+    }
+
+    let total = fs::metadata(&dest).await.map(|m| m.len()).unwrap_or(0);
+    {
+        let mut p = progress.lock().await;
+        p.total_bytes = total;
+        p.bytes_done = total;
+        if let Some(part) = p.parts.get_mut(0) {
+            part.bytes_done = total;
+            part.total = total;
+            part.status = PartStatus::Done;
+        }
+    }
+    finalize_download(
+        FinishCtx {
+            job,
+            transport: &*transport,
+            selector: &selector,
+            progress: &progress,
+            temp_dir: &temp_dir,
+            last_modified: None,
+            accepts_ranges: false,
+        },
+        &[dest],
+        total,
+    )
+    .await
+}
+
 /// Runs a complete download job.
 pub async fn run_job(
     job: &DownloadJob,
@@ -577,7 +763,9 @@ pub async fn run_job_with(
         Some(info) => info,
         None => return Err(last_error.expect("at least one URL")),
     };
-    let total = info.total;
+    let Some(total) = info.total else {
+        return download_unknown_size(job, transport, selector, progress, cancel, invalidate).await;
+    };
 
     if let Some(local) = &job.existing_copy {
         if conditional::is_up_to_date(local, total, info.last_modified.as_deref()) {
@@ -721,7 +909,7 @@ pub async fn run_job_with(
                                 url,
                                 dest,
                                 range,
-                                expected_total: total,
+                                expected_total: Some(total),
                             };
                             let res = download_part(transport_c.clone(), spec, bd, &mut pb).await;
                             match &res {
@@ -856,55 +1044,20 @@ pub async fn run_job_with(
         anyhow::bail!(t!("download.error.incomplete"));
     }
 
-    {
-        let mut p = progress.lock().await;
-        p.status = JobStatus::Merging;
-    }
-
-    merge_parts(&part_paths, &job.output, total).await?;
-    conditional::apply_remote_time(&job.output, info.last_modified.as_deref());
-
-    if let Some(expected) = &job.checksum {
-        if let Err(e) = checksum::verify_file(&job.output, expected).await {
-            // A corrupt file must not look like a finished download.
-            let _ = fs::remove_file(&job.output).await;
-            let mut p = progress.lock().await;
-            p.status = JobStatus::Failed(e.to_string());
-            return Err(e);
-        }
-        info!("Checksum verified: {expected}");
-    }
-
-    if let Some(table) = job.pieces.as_ref().filter(|p| p.fits(total)) {
-        if let Err(e) = verify_and_repair_pieces(
-            &job.output,
-            table,
-            total,
-            info.accepts_ranges,
-            &*transport,
-            &selector,
-            job_id,
-        )
-        .await
-        {
-            let _ = fs::remove_file(&job.output).await;
-            let mut p = progress.lock().await;
-            p.status = JobStatus::Failed(e.to_string());
-            return Err(e);
-        }
-    }
-
-    // Clean up temp files
-    let _ = fs::remove_dir_all(&temp_dir).await;
-
-    // Apply macOS Gatekeeper quarantine attribute (safe no-op on non-macOS)
-    let _ = quarantine::apply_quarantine(&job.output);
-
-    let mut p = progress.lock().await;
-    p.status = JobStatus::Done;
-    p.bytes_done = total;
-    info!("Download complete: {}", job.output.display());
-    Ok(())
+    finalize_download(
+        FinishCtx {
+            job,
+            transport: &*transport,
+            selector: &selector,
+            progress: &progress,
+            temp_dir: &temp_dir,
+            last_modified: info.last_modified.as_deref(),
+            accepts_ranges: info.accepts_ranges,
+        },
+        &part_paths,
+        total,
+    )
+    .await
 }
 
 #[cfg(test)]
@@ -1402,5 +1555,62 @@ mod tests {
         mirror::hints::register(&primary, vec![mirror.clone()], None);
         let job = DownloadJob::new(primary, PathBuf::from("/tmp/x"), 2);
         assert_eq!(job.mirrors, vec![mirror]);
+    }
+
+    // ── servers that report no size ──
+
+    fn no_length_resource(data: &[u8]) -> MockResource {
+        let mut res = MockResource::new(data.to_vec());
+        res.hide_size = true;
+        res
+    }
+
+    #[tokio::test]
+    async fn download_without_content_length_completes() {
+        let data = payload(9_000);
+        let t = MockTransport::new()
+            .with_resource("http://x.test/f", no_length_resource(&data))
+            .with_chunk_size(1_000);
+        let (r, got, p) = run(t.clone(), "http://x.test/f", 4).await;
+        r.unwrap();
+        assert_eq!(got, data);
+        assert_eq!(p.status, JobStatus::Done);
+        assert_eq!(
+            p.total_bytes, 9_000,
+            "the size is known once the transfer ends"
+        );
+        let ranged = t
+            .requests()
+            .iter()
+            .filter(|r| {
+                matches!(
+                    r,
+                    crate::contract::RecordedRequest::Get { range: Some(_), .. }
+                )
+            })
+            .count();
+        assert_eq!(ranged, 0, "no Range request when the size is unknown");
+    }
+
+    #[tokio::test]
+    async fn download_without_content_length_survives_a_dropped_connection() {
+        let data = payload(4_000);
+        let t = MockTransport::new().with_resource("http://x.test/f", no_length_resource(&data));
+        t.truncate_next_body_after(700);
+        let (r, got, _) = run(t, "http://x.test/f", 2).await;
+        r.unwrap();
+        assert_eq!(
+            got, data,
+            "the retry restarts and delivers the complete file"
+        );
+    }
+
+    #[tokio::test]
+    async fn empty_response_without_length_is_an_empty_file() {
+        let t = MockTransport::new().with_resource("http://x.test/f", no_length_resource(b""));
+        let (r, got, p) = run(t, "http://x.test/f", 1).await;
+        r.unwrap();
+        assert!(got.is_empty());
+        assert_eq!(p.status, JobStatus::Done);
     }
 }
