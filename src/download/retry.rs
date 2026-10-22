@@ -2,6 +2,33 @@ use std::future::Future;
 use std::time::Duration;
 use tracing::warn;
 
+/// Lets connection attempts through one after the other, at least `spacing`
+/// apart, so many parts that retry together do not build all their circuits at once.
+pub struct ConnectPacer {
+    spacing: Duration,
+    next_slot: tokio::sync::Mutex<tokio::time::Instant>,
+}
+
+impl ConnectPacer {
+    pub fn new(spacing: Duration) -> Self {
+        Self {
+            spacing,
+            next_slot: tokio::sync::Mutex::new(tokio::time::Instant::now()),
+        }
+    }
+
+    /// Waits until it is this caller's turn. Callers are served in the order they
+    /// arrive; the lock is held while sleeping, which keeps that order.
+    pub async fn wait_turn(&self) {
+        let mut next = self.next_slot.lock().await;
+        let now = tokio::time::Instant::now();
+        if *next > now {
+            tokio::time::sleep_until(*next).await;
+        }
+        *next = tokio::time::Instant::now() + self.spacing;
+    }
+}
+
 /// Configuration for retry attempts with exponential backoff.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct RetryPolicy {
@@ -109,6 +136,31 @@ impl Default for RetryPolicy {
 
 #[cfg(test)]
 mod tests {
+    #[tokio::test]
+    async fn the_pacer_serves_callers_one_after_the_other() {
+        let pacer = std::sync::Arc::new(super::ConnectPacer::new(Duration::from_millis(60)));
+        let start = std::time::Instant::now();
+        let mut tasks = Vec::new();
+        for _ in 0..4 {
+            let p = pacer.clone();
+            tasks.push(tokio::spawn(async move {
+                p.wait_turn().await;
+                start.elapsed()
+            }));
+        }
+        let mut times = Vec::new();
+        for t in tasks {
+            times.push(t.await.unwrap());
+        }
+        times.sort();
+        for pair in times.windows(2) {
+            assert!(
+                pair[1] - pair[0] >= Duration::from_millis(50),
+                "grants too close together: {times:?}"
+            );
+        }
+    }
+
     use super::*;
     use std::sync::atomic::{AtomicU32, Ordering};
     use std::sync::Arc;

@@ -245,6 +245,9 @@ fn plan_parts(
         .collect()
 }
 
+/// Minimum time between two retried parts building a new circuit.
+const RETRY_CIRCUIT_SPACING: std::time::Duration = std::time::Duration::from_secs(2);
+
 /// Stream-isolation id for one part of a job.
 ///
 /// Parts of the same job get distinct ids, and ids are stable across restarts
@@ -926,6 +929,7 @@ pub async fn run_job_with(
         .map(|_| Arc::new(tokio::sync::Notify::new()))
         .collect();
 
+    let pacer = Arc::new(retry::ConnectPacer::new(RETRY_CIRCUIT_SPACING));
     for part in &plan {
         let (i, start, end) = (part.index, part.start, part.end);
         // A single part over the whole file needs no Range header.
@@ -941,6 +945,7 @@ pub async fn run_job_with(
         let control_c = control.clone();
         let live_c = live_counters[i].clone();
         let restart_c = restart_signals[i].clone();
+        let pacer_c = pacer.clone();
         let handle = tokio::spawn(async move {
             let part_bytes = Arc::new(AtomicU64::new(0));
             let last_mirror = Arc::new(std::sync::atomic::AtomicUsize::new(usize::MAX));
@@ -948,10 +953,11 @@ pub async fn run_job_with(
             retry_policy
                 .retry_with_cancel(
                     &*cancel_c,
-                    |_attempt| {
+                    |attempt| {
                         let transport_c = transport_c.clone();
                         let invalidate_c = invalidate_c.clone();
                         let selector_c = selector_c.clone();
+                        let pacer_c = pacer_c.clone();
                         let last_mirror = last_mirror.clone();
                         let dest = dest.clone();
                         let bd = bd.clone();
@@ -959,6 +965,10 @@ pub async fn run_job_with(
                         let (control_c, live_c, restart_c) =
                             (control_c.clone(), live_c.clone(), restart_c.clone());
                         async move {
+                            // Retries build their new circuits one after the other.
+                            if attempt > 0 {
+                                pacer_c.wait_turn().await;
+                            }
                             let avoid = match last_mirror.load(Ordering::Relaxed) {
                                 usize::MAX => None,
                                 m => Some(m),
