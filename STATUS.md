@@ -1,8 +1,8 @@
 # rdownloader status
 
-Generated 2026-10-22 at commit 18cf8b7 - regenerate with `scripts/status-md.sh`
+Generated 2026-10-22 at commit b325537 - regenerate with `scripts/status-md.sh`
 
-`[################----]` **54/67** steps done (81%), 0 in progress, 13 open
+`[################----]` **55/67** steps done (82%), 2 in progress, 10 open
 Roadmap items: 63 checked, 21 open
 
 ## core (15/19)
@@ -31,7 +31,7 @@ Roadmap items: 63 checked, 21 open
 
 - [x] `i18n-1` src/i18n.rs: String-Katalog (en), Schlüssel + benannte Platzhalter, Tests; Clap-Help darüber
 - [x] `i18n-2` Bestehende deutsche Strings/Kommentare/Docs im Code auf Englisch, UI-Texte in den Katalog
-- [ ] `i18n-3` Deutsche Uebersetzung als Sprachpaket (lang/de.toml), Sprache per Config/Umgebung, Test auf Vollstaendigkeit aller Schluessel
+- [~] `i18n-3` Deutsche Uebersetzung als Sprachpaket (lang/de.toml), Sprache per Config/Umgebung, Test auf Vollstaendigkeit aller Schluessel - **in progress**
 
 ## net (12/13)
 
@@ -60,7 +60,7 @@ Roadmap items: 63 checked, 21 open
 - [x] `plugins-7` WASM-Plugin-Laufzeit (Wasmtime-Sandbox unter Berechtigungsmodell)
 - [x] `plugins-8` netrc-Zugangsdaten + Cookie-Import (Firefox/Chromium/Netscape-Format)
 
-## infra (6/8)
+## infra (7/8)
 
 - [x] `infra-1` CI: GitHub Actions fmt, clippy -D warnings, test
 - [x] `infra-2` Test-Harness: lokaler HTTP-Server mit Range-Support + Abbruch-Simulation
@@ -68,7 +68,7 @@ Roadmap items: 63 checked, 21 open
 - [x] `infra-4` Cargo.toml-Aufräumen (ungenutzte Dependencies)
 - [x] `infra-5` Threat-Modell-Doku, README, Manpage
 - [x] `infra-6` Release-Binaries (GitHub Releases)
-- [ ] `infra-7` Aufraeumen: ungenutzte Config connect_timeout_secs (umsetzen oder entfernen), irrefuehrende Tor-Log-Zeile (bootstrap 85%, healthy=false), README/Roadmap an den echten Stand anpassen
+- [x] `infra-7` Aufraeumen: ungenutzte Config connect_timeout_secs (umsetzen oder entfernen), irrefuehrende Tor-Log-Zeile (bootstrap 85%, healthy=false), README/Roadmap an den echten Stand anpassen
 - [ ] `infra-8` Paketierungsvorlagen: Cargo-Metadaten fuer crates.io, Homebrew-Formel, AUR-PKGBUILD, Scoop-Manifest (Veroeffentlichen von Hand)
 
 ## ui (7/7)
@@ -87,7 +87,7 @@ Roadmap items: 63 checked, 21 open
 - [x] `gui-2` GUI-Rahmen nach docs/gui-layout.md: Toolbar, Reiter, Uebersichtspanel, Befehlsleiste, Fusszeile
 - [x] `gui-3` GUI-Tabelle: Spalten (Name, Groesse, Host, Verbindung, Status, Tempo, Rest, Geladen, Fortschritt, Speicherort, Kommentar), Sortierung, Spaltenauswahl, Pakete im Datenmodell
 - [x] `gui-4` GUI-Reiter Link-Sammler auf dem vorhandenen Sammler-Modell
-- [ ] `gui-5` GUI-Dialoge und Menues: Links-hinzufuegen-Dialog, Kontextmenue, Einstellungen, Dateiauswahl
+- [~] `gui-5` GUI-Dialoge und Menues: Links-hinzufuegen-Dialog, Kontextmenue, Einstellungen, Dateiauswahl - **in progress**
 - [ ] `gui-6` App-Paket: macOS .app mit Icon, Windows/Linux-Pakete, Autostart
 - [ ] `gui-7` Themes (hell, dunkel, automatisch, Akzentfarbe) und Einstellungsseite inkl. Sprachwahl
 - [ ] `gui-8` Zwischenablage-Ueberwachung (opt-in) speist den Link-Sammler, nie direkt den Download
