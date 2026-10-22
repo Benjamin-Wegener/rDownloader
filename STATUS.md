@@ -1,9 +1,9 @@
 # rdownloader status
 
-Generated 2026-10-22 at commit 66247a8 - regenerate with `scripts/status-md.sh`
+Generated 2026-10-22 at commit c329bf1 - regenerate with `scripts/status-md.sh`
 
-`[##################--]` **64/71** steps done (90%), 1 in progress, 6 open
-Roadmap items: 68 checked, 18 open
+`[##################--]` **65/71** steps done (92%), 0 in progress, 6 open
+Roadmap items: 69 checked, 17 open
 
 ## core (16/19)
 
@@ -33,7 +33,7 @@ Roadmap items: 68 checked, 18 open
 - [x] `i18n-2` Bestehende deutsche Strings/Kommentare/Docs im Code auf Englisch, UI-Texte in den Katalog
 - [x] `i18n-3` Deutsche Uebersetzung als Sprachpaket (lang/de.toml), Sprache per Config/Umgebung, Test auf Vollstaendigkeit aller Schluessel
 
-## net (12/13)
+## net (13/13)
 
 - [x] `net-1` TLS über Arti-Stream (https-Connector, vertragsfrei)
 - [x] `net-2` TorTransport implementiert Vertrag A
@@ -47,7 +47,7 @@ Roadmap items: 68 checked, 18 open
 - [x] `net-10` HLS/DASH: Segment-Downloads (parallele Fragmente, Zusammenfuegen)
 - [x] `net-12` Daemon-API absichern gegen fremde Webseiten (CSRF/DNS-Rebinding): Host-/Origin-/Content-Type-Pruefung ohne Token, Sicherheits-Header, Tests
 - [x] `net-11` SFTP (SSH-Client mit Host-Key-Pruefung) und FTPS ueber Tor
-- [~] `net-17` Live-Events im Daemon per Server-Sent Events - **in progress**
+- [x] `net-17` Live-Events im Daemon per Server-Sent Events
 
 ## plugins (8/8)
 
