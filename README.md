@@ -25,7 +25,7 @@ no code was taken from it. JDownloader's Java plugins cannot be loaded.
 - Terminal UI (`--tui`): queue with live progress, per-job details (parts, speed, ETA, Tor state), pause / resume / cancel / remove
 - Batch import of links from a text or M3U file, or from the clipboard
 - Link grabber: collect links separately (manually, from a file, the clipboard or a crawled page), filter them by host and file type, then confirm them into the download queue
-- Session restore: unfinished downloads come back after a restart
+- Session restore: unfinished downloads come back after a restart, paused (a setting continues them on start)
 - Plugin types: hoster, crawler, account (cookie sessions) and interactive captcha
 - Tor bridges for censored networks
 - FTP, FTPS and SFTP downloads over Tor, with resume: `ftp://` (plain, see the threat model), `ftps://` (implicit TLS, port 990), `ftpes://` (explicit TLS, port 21) and `sftp://` (SSH, port 22). SFTP verifies the server key against `~/.ssh/known_hosts` and refuses unknown or changed keys; without a password in the URL it uses an unencrypted key from `~/.ssh` (`id_ed25519`, `id_ecdsa`, `id_rsa`). FTPS checks certificates against the WebPKI roots. Some FTP servers only accept the data connection from the same IP as the control connection and need a retry or two over Tor

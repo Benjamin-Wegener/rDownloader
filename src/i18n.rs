@@ -753,6 +753,14 @@ const EN: &[(&str, &str)] = &[
         "Log level",
     ),
     (
+        "gui.settings.resume_on_start",
+        "Continue unfinished downloads when the app starts",
+    ),
+    (
+        "gui.settings.tip.resume_on_start",
+        "Off: unfinished downloads are shown as paused and start when you press Resume.",
+    ),
+    (
         "gui.settings.autostart",
         "Start rDownloader automatically on login",
     ),

@@ -1143,9 +1143,10 @@ fn restore_session(
 ) -> Vec<(uuid::Uuid, tokio::task::JoinHandle<()>)> {
     let entries = tracker.open_entries();
     let mut restored = Vec::new();
+    let resume = config::config().resume_on_start;
 
     for entry in entries {
-        match entry.restore_action(tor.is_some()) {
+        match entry.restore_action(tor.is_some() && resume) {
             RestoreAction::Finished => {
                 // Merged right before the shutdown: nothing left to continue.
                 info!("Download already complete: {}", entry.filename);

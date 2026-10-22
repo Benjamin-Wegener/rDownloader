@@ -93,6 +93,11 @@ pub struct Config {
     #[serde(default)]
     pub watch_clipboard: bool,
 
+    /// Continue the downloads that were running when the app last stopped.
+    /// Off: they are shown as paused and start when you press Resume.
+    #[serde(default)]
+    pub resume_on_start: bool,
+
     /// Whether rdownloader should automatically start when logging in
     #[serde(default)]
     pub autostart: bool,
@@ -175,6 +180,7 @@ impl Default for Config {
             conditional_get: false,
             hooks: Default::default(),
             max_retries: default_retries(),
+            resume_on_start: false,
             autostart: false,
             watch_clipboard: false,
             log_level: default_log_level(),
@@ -346,6 +352,11 @@ mod serialization_tests {
             own.job_temp_dir(id),
             PathBuf::from(format!("/data/tmp/job-{id}"))
         );
+    }
+
+    #[test]
+    fn unfinished_downloads_are_not_resumed_by_default() {
+        assert!(!Config::default().resume_on_start);
     }
 
     #[test]

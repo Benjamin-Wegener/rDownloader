@@ -1984,6 +1984,11 @@ impl GuiApp {
                         ui.add_space(6.0);
                         ui.heading(t!("gui.settings.section.interface"));
                         ui.checkbox(
+                            &mut self.settings_cfg.resume_on_start,
+                            t!("gui.settings.resume_on_start"),
+                        )
+                        .on_hover_text(t!("gui.settings.tip.resume_on_start"));
+                        ui.checkbox(
                             &mut self.settings_cfg.autostart,
                             t!("gui.settings.autostart"),
                         );

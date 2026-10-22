@@ -371,6 +371,8 @@
 "gui.text.paste" = "Einfügen"
 "gui.text.select_all" = "Alles auswählen"
 "gui.text.clear" = "Leeren"
+"gui.settings.resume_on_start" = "Unfertige Downloads beim Start fortsetzen"
+"gui.settings.tip.resume_on_start" = "Aus: Unfertige Downloads erscheinen pausiert und starten erst mit Fortsetzen."
 "gui.history.again" = "Erneut herunterladen"
 "gui.hover.speed_history" = "Geschwindigkeitsverlauf (letzte Minute)"
 "gui.hover.no_history" = "Noch keine Geschwindigkeitsdaten"
