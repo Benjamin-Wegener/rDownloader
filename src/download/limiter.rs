@@ -15,6 +15,10 @@ struct Bucket {
 }
 
 pub struct RateLimiter {
+    /// The limit the user configured; applies whenever no time window overrides it.
+    base: AtomicU64,
+    /// A time window with its own limit is active (it wins over `base`).
+    window_active: std::sync::atomic::AtomicBool,
     /// While set, `acquire` waits (a timetable "pause" window).
     paused: std::sync::atomic::AtomicBool,
     /// Bytes per second; 0 = unlimited.
@@ -25,6 +29,8 @@ pub struct RateLimiter {
 impl RateLimiter {
     pub fn new(bytes_per_sec: u64) -> Self {
         Self {
+            base: AtomicU64::new(bytes_per_sec),
+            window_active: std::sync::atomic::AtomicBool::new(false),
             paused: std::sync::atomic::AtomicBool::new(false),
             rate: AtomicU64::new(bytes_per_sec),
             bucket: Mutex::new(Bucket {
@@ -37,6 +43,24 @@ impl RateLimiter {
     /// Changes the limit at runtime (0 = unlimited).
     pub fn set_rate(&self, bytes_per_sec: u64) {
         self.rate.store(bytes_per_sec, Ordering::Relaxed);
+    }
+
+    /// The user changed the configured limit: applies at once, unless a time window is active.
+    pub fn set_base(&self, bytes_per_sec: u64) {
+        self.base.store(bytes_per_sec, Ordering::Relaxed);
+        if !self.window_active.load(Ordering::Relaxed) {
+            self.set_rate(bytes_per_sec);
+        }
+    }
+
+    pub fn base(&self) -> u64 {
+        self.base.load(Ordering::Relaxed)
+    }
+
+    /// A time window sets its own limit (`Some`) or ends (`None`: back to the configured one).
+    pub fn set_window(&self, limit: Option<u64>) {
+        self.window_active.store(limit.is_some(), Ordering::Relaxed);
+        self.set_rate(limit.unwrap_or_else(|| self.base()));
     }
 
     pub fn set_paused(&self, paused: bool) {
@@ -170,5 +194,29 @@ mod tests {
             .await
             .unwrap()
             .unwrap();
+    }
+
+    #[tokio::test]
+    async fn the_configured_limit_applies_at_once_and_windows_win() {
+        let l = RateLimiter::new(1_000);
+        l.set_base(5_000);
+        assert_eq!(
+            l.rate(),
+            5_000,
+            "a settings change is effective immediately"
+        );
+        l.set_window(Some(200));
+        assert_eq!(l.rate(), 200);
+        l.set_base(9_000);
+        assert_eq!(l.rate(), 200, "an active window still wins");
+        assert_eq!(l.base(), 9_000);
+        l.set_window(None);
+        assert_eq!(
+            l.rate(),
+            9_000,
+            "after the window the configured limit is back"
+        );
+        l.set_base(0);
+        assert_eq!(l.rate(), 0, "0 means unlimited");
     }
 }

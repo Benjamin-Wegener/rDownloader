@@ -24,7 +24,7 @@ use crate::ui::{detail, fmt_bytes, import, App, InputPrompt, MoveTo, SharedApp, 
 use icons::Icon;
 use model::{
     build_and_sort_packages, ColumnConfig, ColumnId, GuiItem, GuiPackage, SearchScope, SortConfig,
-    SortDirection, StateFilter, Totals,
+    SortDirection, SpeedUnit, StateFilter, Totals,
 };
 
 /// How often the window redraws when nothing else triggers it (live progress).
@@ -139,6 +139,8 @@ pub fn links_from_dropped(
 #[derive(Debug, PartialEq, Eq, Default)]
 pub struct Actions {
     pub pause: bool,
+    /// Close the connections but keep the partial data.
+    pub stop: bool,
     pub resume: bool,
     pub cancel: bool,
     pub remove: bool,
@@ -148,7 +150,9 @@ pub fn actions_for(status: &JobStatus) -> Actions {
     use JobStatus::*;
     Actions {
         pause: matches!(status, Downloading),
-        resume: matches!(status, Paused),
+        stop: matches!(status, Queued | Resolving | Downloading | Paused | Merging),
+        // A stopped (paused after a restart) or failed download is started again.
+        resume: matches!(status, Paused | Failed(_)),
         cancel: matches!(status, Queued | Resolving | Downloading | Paused | Merging),
         remove: true,
     }
@@ -272,7 +276,7 @@ pub fn bulk_commands(jobs: &[JobProgress], action: Bulk) -> Vec<UiCommand> {
                 | JobStatus::Downloading
                 | JobStatus::Paused
                 | JobStatus::Merging,
-            ) => Some(UiCommand::CancelJob(j.id)),
+            ) => Some(UiCommand::StopJob(j.id)),
             (Bulk::ClearFinished, JobStatus::Done) => Some(UiCommand::RemoveJob(j.id)),
             _ => None,
         })
@@ -301,6 +305,11 @@ struct GuiApp {
     collapsed_packages: std::collections::HashSet<String>,
     grabber_collapsed_packages: std::collections::HashSet<usize>,
     settings_open: bool,
+    /// What is typed in the speed limit field and its unit.
+    speed_text: String,
+    speed_unit: SpeedUnit,
+    speed_error: bool,
+    confirm_clean: bool,
     about_open: bool,
     watch_clipboard: bool,
     last_clip: Option<String>,
@@ -344,6 +353,10 @@ impl GuiApp {
             collapsed_packages: std::collections::HashSet::new(),
             grabber_collapsed_packages: std::collections::HashSet::new(),
             settings_open: false,
+            speed_text: String::new(),
+            speed_unit: SpeedUnit::KBps,
+            speed_error: false,
+            confirm_clean: false,
             about_open: false,
             watch_clipboard: crate::config::config().watch_clipboard,
             last_clip: None,
@@ -423,8 +436,7 @@ impl GuiApp {
             }
             ui.separator();
             if icons::button(ui, Icon::Settings, &t!("gui.toolbar.settings"), true).clicked() {
-                self.settings_open = true;
-                self.settings_cfg = crate::config::load().unwrap_or_default();
+                self.open_settings();
             }
             if ui
                 .button("?")
@@ -434,6 +446,17 @@ impl GuiApp {
                 self.about_open = true;
             }
         });
+    }
+
+    /// Opens the settings dialog with the values from the config file.
+    fn open_settings(&mut self) {
+        self.settings_cfg = crate::config::load().unwrap_or_default();
+        let (text, unit) = model::split_kib(self.settings_cfg.max_speed_kib);
+        self.speed_text = text;
+        self.speed_unit = unit;
+        self.speed_error = false;
+        self.confirm_clean = false;
+        self.settings_open = true;
     }
 
     fn tabs(&mut self, ui: &mut egui::Ui, app: &App) {
@@ -549,6 +572,10 @@ impl GuiApp {
                 let totals = Totals::compute(&app.jobs, |id| app.speeds.speed(id));
                 ui.separator();
                 ui.weak(detail::fmt_speed(totals.bytes_per_sec));
+                if let Some(limit) = model::limit_label(crate::download::limiter::global().rate()) {
+                    ui.separator();
+                    ui.weak(t!("gui.footer.limit", limit = limit));
+                }
                 ui.separator();
                 ui.weak(t!("gui.footer.running", n = totals.running));
             });
@@ -802,6 +829,14 @@ impl GuiApp {
                 }
                 ui.close();
             }
+            if ui.button(t!("gui.context.stop")).clicked() {
+                for item in &pkg.items {
+                    if actions_for(&item.status).stop {
+                        Self::send(app, UiCommand::StopJob(item.id));
+                    }
+                }
+                ui.close();
+            }
             if ui.button(t!("gui.context.cancel")).clicked() {
                 for item in &pkg.items {
                     if actions_for(&item.status).cancel {
@@ -948,6 +983,12 @@ impl GuiApp {
                         Self::send(app, UiCommand::ResumeJob(item.id));
                     }
                     if ui
+                        .add_enabled(actions.stop, egui::Button::new(t!("gui.action.stop")))
+                        .clicked()
+                    {
+                        Self::send(app, UiCommand::StopJob(item.id));
+                    }
+                    if ui
                         .add_enabled(actions.cancel, egui::Button::new(t!("gui.action.cancel")))
                         .clicked()
                     {
@@ -999,6 +1040,10 @@ impl GuiApp {
             }
             if actions.pause && ui.button(t!("gui.context.pause")).clicked() {
                 Self::send(app, UiCommand::PauseJob(item.id));
+                ui.close();
+            }
+            if actions.stop && ui.button(t!("gui.context.stop")).clicked() {
+                Self::send(app, UiCommand::StopJob(item.id));
                 ui.close();
             }
             if actions.cancel && ui.button(t!("gui.context.cancel")).clicked() {
@@ -1435,7 +1480,7 @@ impl GuiApp {
     }
 
     /// Settings dialog with tabs: General, Network/Tor, Limits/Retries
-    fn settings_dialog(&mut self, ctx: &egui::Context, _app: &mut App) {
+    fn settings_dialog(&mut self, ctx: &egui::Context, app: &mut App) {
         if !self.settings_open {
             return;
         }
@@ -1508,6 +1553,19 @@ impl GuiApp {
                     &mut self.settings_cfg.watch_clipboard,
                     t!("gui.clipboard.watch"),
                 );
+                ui.separator();
+                ui.weak(t!("gui.partial.hint"));
+                let label = if self.confirm_clean {
+                    t!("gui.partial.confirm")
+                } else {
+                    t!("gui.partial.clean")
+                };
+                if ui.button(label).clicked() {
+                    if self.confirm_clean {
+                        Self::send(app, UiCommand::CleanPartial);
+                    }
+                    self.confirm_clean = !self.confirm_clean;
+                }
 
                 ui.separator();
                 ui.heading(t!("gui.settings.network"));
@@ -1548,10 +1606,27 @@ impl GuiApp {
                 });
                 ui.horizontal(|ui| {
                     ui.label(t!("gui.settings.max_speed"));
-                    ui.add(
-                        egui::DragValue::new(&mut self.settings_cfg.max_speed_kib)
-                            .range(0..=1_000_000),
-                    );
+                    let edit = ui
+                        .add(egui::TextEdit::singleline(&mut self.speed_text).desired_width(70.0));
+                    if edit.changed() {
+                        self.speed_error = false;
+                    }
+                    egui::ComboBox::from_id_salt("speed_unit")
+                        .selected_text(match self.speed_unit {
+                            SpeedUnit::KBps => "KB/s",
+                            SpeedUnit::MBps => "MB/s",
+                        })
+                        .width(70.0)
+                        .show_ui(ui, |ui| {
+                            ui.selectable_value(&mut self.speed_unit, SpeedUnit::KBps, "KB/s");
+                            ui.selectable_value(&mut self.speed_unit, SpeedUnit::MBps, "MB/s");
+                        });
+                    if self.speed_error {
+                        ui.colored_label(
+                            egui::Color32::from_rgb(0xb9, 0x1c, 0x1c),
+                            t!("gui.settings.speed_invalid"),
+                        );
+                    }
                 });
                 ui.horizontal(|ui| {
                     ui.label(t!("gui.settings.min_speed"));
@@ -1590,7 +1665,26 @@ impl GuiApp {
             self.picker_open = true;
         }
 
+        // The limit is entered with a unit; an input that is not a number is not saved.
+        let speed_ok = if save {
+            match model::to_kib(&self.speed_text, self.speed_unit) {
+                Some(kib) => {
+                    self.settings_cfg.max_speed_kib = kib;
+                    true
+                }
+                None => {
+                    self.speed_error = true;
+                    false
+                }
+            }
+        } else {
+            true
+        };
+        let save = save && speed_ok;
         if save {
+            // Takes effect at once, also for downloads that are running.
+            crate::download::limiter::global()
+                .set_base(self.settings_cfg.max_speed_kib.saturating_mul(1024));
             let path = crate::config::Config::config_path();
             if let Some(parent) = path.parent() {
                 let _ = std::fs::create_dir_all(parent);
@@ -1779,10 +1873,7 @@ impl GuiApp {
         for (key, command) in pressed {
             match shortcut_for(key, command, typing) {
                 Some(Shortcut::AddLinks) => self.add_open = true,
-                Some(Shortcut::Settings) => {
-                    self.settings_open = true;
-                    self.settings_cfg = crate::config::load().unwrap_or_default();
-                }
+                Some(Shortcut::Settings) => self.open_settings(),
                 Some(Shortcut::About) => self.about_open = !self.about_open,
                 Some(Shortcut::RemoveSelected) => {
                     if let Some(id) = self.selected {
@@ -2193,9 +2284,9 @@ mod tests {
         assert_eq!(
             ids(bulk_commands(&jobs, Bulk::StopActive)),
             vec![
-                UiCommand::CancelJob(Uuid::from_u128(1)),
-                UiCommand::CancelJob(Uuid::from_u128(2)),
-                UiCommand::CancelJob(Uuid::from_u128(3)),
+                UiCommand::StopJob(Uuid::from_u128(1)),
+                UiCommand::StopJob(Uuid::from_u128(2)),
+                UiCommand::StopJob(Uuid::from_u128(3)),
             ]
         );
         assert!(bulk_commands(&[], Bulk::StopActive).is_empty());

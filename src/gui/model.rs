@@ -598,6 +598,79 @@ impl Totals {
     }
 }
 
+// ───────────────────────── speed limit entry ─────────────────────────
+
+/// Unit of the speed limit field.
+#[derive(Clone, Copy, PartialEq, Eq, Debug, Default)]
+pub enum SpeedUnit {
+    #[default]
+    KBps,
+    MBps,
+}
+
+/// 1 MB/s is 1024 KB/s (the limit is stored in KiB/s).
+const KIB_PER_MIB: f64 = 1024.0;
+
+/// Value and unit to show for a limit stored in KiB/s (MB/s once it is at least one MB/s).
+pub fn split_kib(kib: u64) -> (String, SpeedUnit) {
+    if kib >= 1024 {
+        let mb = kib as f64 / KIB_PER_MIB;
+        let text = format!("{mb:.2}");
+        let text = text.trim_end_matches('0').trim_end_matches('.').to_string();
+        // Only show MB/s when it is exact; otherwise opening and saving the dialog would
+        // silently change the limit.
+        if to_kib(&text, SpeedUnit::MBps) == Some(kib) {
+            return (text, SpeedUnit::MBps);
+        }
+    }
+    (kib.to_string(), SpeedUnit::KBps)
+}
+
+/// The limit in KiB/s for what the user typed; `None` for anything that is not a plain
+/// non-negative number. A comma is accepted as the decimal separator.
+pub fn to_kib(text: &str, unit: SpeedUnit) -> Option<u64> {
+    let value: f64 = text.trim().replace(',', ".").parse().ok()?;
+    if !value.is_finite() || value < 0.0 {
+        return None;
+    }
+    let kib = match unit {
+        SpeedUnit::KBps => value,
+        SpeedUnit::MBps => value * KIB_PER_MIB,
+    };
+    (kib <= 100_000_000.0).then(|| kib.round() as u64)
+}
+
+/// Parses free text such as `5 MB/s`, `500kb`, `2,5 mbps` or `0` into KiB/s.
+pub fn parse_speed(text: &str) -> Option<u64> {
+    let lower = text.trim().to_lowercase();
+    let split = lower
+        .find(|c: char| c.is_alphabetic())
+        .unwrap_or(lower.len());
+    let (number, unit) = lower.split_at(split);
+    let unit = match unit.trim().trim_end_matches("/s").trim_end_matches("ps") {
+        "" | "k" | "kb" | "kib" => SpeedUnit::KBps,
+        "m" | "mb" | "mib" => SpeedUnit::MBps,
+        _ => return None,
+    };
+    to_kib(number, unit)
+}
+
+/// Label for the footer: the effective limit, or `None` when unlimited.
+pub fn limit_label(bytes_per_sec: u64) -> Option<String> {
+    (bytes_per_sec > 0).then(|| {
+        let kib = bytes_per_sec / 1024;
+        let (value, unit) = split_kib(kib.max(1));
+        format!(
+            "{value} {}",
+            if unit == SpeedUnit::MBps {
+                "MB/s"
+            } else {
+                "KB/s"
+            }
+        )
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -858,5 +931,43 @@ mod tests {
             |_| 10,
         );
         assert_eq!(t.connections, 1);
+    }
+
+    #[test]
+    fn speed_entry_converts_units() {
+        assert_eq!(to_kib("500", SpeedUnit::KBps), Some(500));
+        assert_eq!(to_kib("5", SpeedUnit::MBps), Some(5120));
+        assert_eq!(to_kib("2,5", SpeedUnit::MBps), Some(2560));
+        assert_eq!(to_kib("0", SpeedUnit::MBps), Some(0));
+        assert_eq!(to_kib(" 12 ", SpeedUnit::KBps), Some(12));
+        for bad in ["", "abc", "-1", "1e400", "nan", "inf", "999999999999"] {
+            assert_eq!(to_kib(bad, SpeedUnit::KBps), None, "{bad:?}");
+        }
+    }
+
+    #[test]
+    fn speed_text_is_parsed_with_units() {
+        assert_eq!(parse_speed("5 MB/s"), Some(5120));
+        assert_eq!(parse_speed("500kb"), Some(500));
+        assert_eq!(parse_speed("2,5 mbps"), Some(2560));
+        assert_eq!(parse_speed("0"), Some(0));
+        assert_eq!(parse_speed("7"), Some(7));
+        assert_eq!(parse_speed("5 GB/s"), None);
+        assert_eq!(parse_speed("fast"), None);
+    }
+
+    #[test]
+    fn stored_limits_are_shown_in_a_fitting_unit() {
+        assert_eq!(split_kib(500), ("500".into(), SpeedUnit::KBps));
+        assert_eq!(split_kib(5120), ("5".into(), SpeedUnit::MBps));
+        assert_eq!(split_kib(1536), ("1.5".into(), SpeedUnit::MBps));
+        // What is shown parses back to the same limit.
+        for kib in [0u64, 1, 500, 1023, 1024, 1536, 5120, 100_000] {
+            let (text, unit) = split_kib(kib);
+            assert_eq!(to_kib(&text, unit), Some(kib), "{kib}");
+        }
+        assert_eq!(limit_label(0), None);
+        assert_eq!(limit_label(5 * 1024 * 1024).as_deref(), Some("5 MB/s"));
+        assert_eq!(limit_label(300 * 1024).as_deref(), Some("300 KB/s"));
     }
 }

@@ -27,6 +27,7 @@ pub mod extract;
 pub mod hooks;
 pub mod limiter;
 pub mod mirror;
+pub mod partial;
 pub mod pieces;
 pub mod quarantine;
 pub mod resume;
@@ -2008,6 +2009,94 @@ mod tests {
             .count();
         assert_eq!(others, 3, "the fast parts are never restarted: {reqs:?}");
         control::remove(job.id);
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[tokio::test]
+    async fn a_stopped_download_continues_where_it_stopped() {
+        let data = payload(120_000);
+        let served = Arc::new(AtomicUsize::new(0));
+        let make = || {
+            Arc::new(ThrottledTransport {
+                data: data.clone(),
+                chunk: 2_000,
+                delay_for: Box::new(|_, _| Duration::from_millis(10)),
+                chunks_served: served.clone(),
+                requests: Default::default(),
+            })
+        };
+        let (dir, output) = temp_output();
+        let job = DownloadJob::new(
+            url::Url::parse("http://x.test/f").unwrap(),
+            output.clone(),
+            2,
+        );
+        let job_id = job.id;
+        let again = move |out: PathBuf| DownloadJob {
+            id: job_id,
+            ..DownloadJob::new(url::Url::parse("http://x.test/f").unwrap(), out, 2)
+        };
+
+        // First run: stop after some data has arrived.
+        let control = control::get_or_create(job_id);
+        let first = tokio::spawn({
+            let (t, out, cancel) = (make(), output.clone(), control.cancel.clone());
+            async move {
+                run_job_with(
+                    &again(out),
+                    t,
+                    Arc::new(|_| {}),
+                    new_progress(job_id),
+                    cancel,
+                )
+                .await
+            }
+        });
+        for _ in 0..500 {
+            if served.load(Ordering::SeqCst) >= 10 {
+                break;
+            }
+            tokio::time::sleep(Duration::from_millis(20)).await;
+        }
+        control.stop();
+        let result = tokio::time::timeout(Duration::from_secs(5), first)
+            .await
+            .unwrap()
+            .unwrap();
+        assert!(result.is_err(), "the stopped run ends early");
+        assert_eq!(control.interrupt(), Some(control::Interrupt::Stop));
+        control::remove(job_id);
+        let partial = crate::config::config().job_temp_dir(job_id);
+        assert!(partial.exists(), "the partial data is kept");
+        let kept: u64 = std::fs::read_dir(&partial)
+            .unwrap()
+            .flatten()
+            .filter(|e| e.file_name().to_string_lossy().starts_with("part-"))
+            .map(|e| e.metadata().unwrap().len())
+            .sum();
+        assert!(
+            kept > 0 && kept < 120_000,
+            "stopped mid-way: {kept} bytes kept"
+        );
+
+        // Second run: the same job id continues and only fetches what is missing.
+        let before = served.load(Ordering::SeqCst);
+        let second = run_job_with(
+            &again(output.clone()),
+            make(),
+            Arc::new(|_| {}),
+            new_progress(job_id),
+            Arc::new(tokio::sync::Notify::new()),
+        )
+        .await;
+        second.unwrap();
+        assert_eq!(std::fs::read(&output).unwrap(), data);
+        let fetched_again = (served.load(Ordering::SeqCst) - before) as u64 * 2_000;
+        assert!(
+            fetched_again <= 120_000 - kept + 4_000,
+            "only the missing part is fetched again ({fetched_again} bytes, {kept} were kept)"
+        );
+        control::remove(job_id);
         let _ = std::fs::remove_dir_all(dir);
     }
 }

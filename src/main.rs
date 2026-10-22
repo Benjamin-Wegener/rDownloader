@@ -138,7 +138,7 @@ async fn main() -> Result<()> {
         }
     }
 
-    download::timetable::spawn(cfg.schedule.clone(), cfg.max_speed_kib);
+    download::timetable::spawn(cfg.schedule.clone());
     info!("rDownloader started");
     info!("Config: {}", cfg.describe());
 
@@ -471,34 +471,7 @@ impl JobControl for DaemonControl {
             let _ = self.tracker.set_status(id, JobStatus::Downloading);
             return Ok(());
         }
-        let tor = self
-            .tor
-            .clone()
-            .ok_or_else(|| t!("main.error.tor_unavailable"))?;
-        let entry = self
-            .tracker
-            .list()
-            .into_iter()
-            .find(|entry| entry.id == id)
-            .ok_or_else(|| t!("rpc.error.job_not_found", id = id))?;
-        let job = entry.to_download_job().map_err(|e| format!("{e:#}"))?;
-        let progress = Arc::new(tokio::sync::Mutex::new(JobProgress {
-            id,
-            url: entry.url,
-            filename: entry.filename,
-            total_bytes: entry.total_bytes,
-            bytes_done: entry.bytes_done,
-            parts: vec![],
-            status: JobStatus::Queued,
-        }));
-        let handle = start_job_background(
-            job,
-            Some(tor),
-            progress,
-            self.tracker.clone(),
-            mpsc::unbounded_channel().0,
-            self.jobs.clone(),
-        );
+        let handle = resume_from_tracker(&self.tracker, self.tor.clone(), &self.jobs, id)?;
         self.handles
             .lock()
             .unwrap()
@@ -612,6 +585,19 @@ async fn enqueue_url(
         .resolve(url)
         .await
         .map_err(|e| EnqueueError::Resolve(format!("{e:#}")))?;
+    // The same link as a stopped download: continue that one, its partial data is kept.
+    if let Some(entry) = tracker
+        .list()
+        .into_iter()
+        .find(|e| e.url == resolved.url.as_str() && matches!(e.status, JobStatus::Paused))
+    {
+        if download::control::get(entry.id).is_none() {
+            if let Ok(_handle) = resume_from_tracker(tracker, tor.clone(), jobs_progress, entry.id)
+            {
+                return Ok(entry.filename);
+            }
+        }
+    }
     let proposed_name = resolved
         .filename
         .as_deref()
@@ -757,8 +743,10 @@ async fn run_tui(
                     });
                 }
                 UiCommand::CancelJob(id) => {
-                    if let Some(control) = download::control::get(id) {
-                        control.cancel();
+                    match download::control::get(id) {
+                        // Running: the job cleans up after itself when it ends.
+                        Some(control) => control.cancel(),
+                        None => discard_partial_data(id),
                     }
                     let mut jp = jobs_progress_c.lock().unwrap();
                     if let Some(j) = jp.iter_mut().find(|j| j.id == id) {
@@ -767,6 +755,15 @@ async fn run_tui(
                     drop(jp);
                     // A cancelled download must not be continued in a later session.
                     let _ = tracker_c.set_status(id, JobStatus::Cancelled);
+                }
+                UiCommand::StopJob(id) => {
+                    if let Some(control) = download::control::get(id) {
+                        control.stop();
+                        let mut jp = jobs_progress_c.lock().unwrap();
+                        if let Some(j) = jp.iter_mut().find(|j| j.id == id) {
+                            j.status = JobStatus::Paused;
+                        }
+                    }
                 }
                 UiCommand::PauseJob(id) => {
                     if let Some(control) = download::control::get(id) {
@@ -777,27 +774,61 @@ async fn run_tui(
                         j.status = JobStatus::Paused;
                     }
                 }
-                UiCommand::ResumeJob(id) => {
-                    if let Some(control) = download::control::get(id) {
+                UiCommand::ResumeJob(id) => match download::control::get(id) {
+                    // Paused in place (connections still open): let it read again.
+                    Some(control) if control.interrupt().is_none() => {
                         control.resume();
-                    }
-                    let mut jp = jobs_progress_c.lock().unwrap();
-                    if let Some(j) = jp.iter_mut().find(|j| j.id == id) {
-                        if matches!(j.status, JobStatus::Paused) {
-                            j.status = JobStatus::Downloading;
+                        let mut jp = jobs_progress_c.lock().unwrap();
+                        if let Some(j) = jp.iter_mut().find(|j| j.id == id) {
+                            if matches!(j.status, JobStatus::Paused) {
+                                j.status = JobStatus::Downloading;
+                            }
                         }
                     }
-                }
+                    // Still shutting down after a stop: nothing to resume yet.
+                    Some(_) => {}
+                    // Stopped, failed or restored after a restart: start it again from the
+                    // tracker; the engine continues with the partial data.
+                    None => {
+                        let result =
+                            resume_from_tracker(&tracker_c, tor_c.clone(), &jobs_progress_c, id);
+                        if let Err(message) = result {
+                            app_for_ui.lock().unwrap().status_msg = message;
+                        }
+                    }
+                },
                 UiCommand::RemoveJob(id) => {
-                    // A removed download must stop, not only disappear from the list.
-                    if let Some(control) = download::control::get(id) {
-                        control.cancel();
+                    // A removed download must stop, not only disappear from the list, and its
+                    // partial data goes with it.
+                    match download::control::get(id) {
+                        Some(control) => control.cancel(),
+                        None => discard_partial_data(id),
                     }
                     let mut jp = jobs_progress_c.lock().unwrap();
                     jp.retain(|j| j.id != id);
                     drop(jp);
                     // Removed downloads must not come back on the next start.
                     let _ = tracker_c.remove(id);
+                }
+                UiCommand::CleanPartial => {
+                    // Everything that can still be resumed is kept: running jobs and every
+                    // tracked download that is not finished or cancelled.
+                    let mut keep: std::collections::HashSet<uuid::Uuid> = tracker_c
+                        .list()
+                        .into_iter()
+                        .filter(|e| !matches!(e.status, JobStatus::Done | JobStatus::Cancelled))
+                        .map(|e| e.id)
+                        .collect();
+                    keep.extend(jobs_progress_c.lock().unwrap().iter().map(|j| j.id));
+                    let cfg = config::config();
+                    let roots = [cfg.temp_dir(), config::legacy_temp_dir()];
+                    let orphans = download::partial::find_orphans(&roots, &keep);
+                    let (count, bytes) = download::partial::remove_orphans(&orphans);
+                    app_for_ui.lock().unwrap().status_msg = t!(
+                        "ui.status.partial_cleaned",
+                        count = count,
+                        size = ui::fmt_bytes(bytes)
+                    );
                 }
                 UiCommand::MoveJob(id, to) => {
                     let mut jp = jobs_progress_c.lock().unwrap();
@@ -844,6 +875,25 @@ async fn run_tui(
     }
 
     Ok(())
+}
+
+/// The status a job shows after it was interrupted. A stopped job is *Paused*: its
+/// partial data is kept, it survives a restart and *Resume* continues it.
+fn interrupted_status(kind: download::control::Interrupt) -> JobStatus {
+    match kind {
+        download::control::Interrupt::Stop => JobStatus::Paused,
+        download::control::Interrupt::Cancel => JobStatus::Cancelled,
+    }
+}
+
+/// Deletes the partial data of a job that is gone for good.
+fn discard_partial_data(id: uuid::Uuid) {
+    let dir = config::config().job_temp_dir(id);
+    if dir.exists() {
+        if let Err(e) = std::fs::remove_dir_all(&dir) {
+            warn!("Could not delete the partial data {}: {e}", dir.display());
+        }
+    }
 }
 
 /// Aborts the wrapped task when dropped, so aborting a download also stops
@@ -946,8 +996,13 @@ fn start_job_background(
         download::hooks::fire(download::hooks::HookEvent::Start, hook_ctx(0, None), hooks);
 
         // Cancelled while waiting for a free slot: do not start at all.
-        if control.is_cancelled() {
-            progress.lock().await.status = JobStatus::Cancelled;
+        if let Some(kind) = control.interrupt() {
+            let status = interrupted_status(kind);
+            progress.lock().await.status = status.clone();
+            let _ = tracker.set_status(job.id, status);
+            if kind == download::control::Interrupt::Cancel {
+                discard_partial_data(job.id);
+            }
             download::control::remove(job.id);
             return;
         }
@@ -959,8 +1014,18 @@ fn start_job_background(
             Err(anyhow::anyhow!(t!("main.error.tor_unavailable")))
         };
 
+        let interrupt = control.interrupt();
         forwarder.abort();
         download::control::remove(job.id);
+
+        // Stop and cancel are the user's decision, not a failure: the engine ended with an
+        // error only because its connections were closed.
+        if let Some(kind) = interrupt {
+            progress.lock().await.status = interrupted_status(kind);
+            if kind == download::control::Interrupt::Cancel {
+                discard_partial_data(job.id);
+            }
+        }
 
         // Final progress + tracker update
         {
@@ -972,6 +1037,20 @@ fn start_job_background(
             } else {
                 jp.push(p.clone());
             }
+        }
+
+        if let Some(kind) = interrupt {
+            info!(
+                "Job {} {}: {}",
+                job.id,
+                if kind == download::control::Interrupt::Stop {
+                    "stopped"
+                } else {
+                    "cancelled"
+                },
+                job.output.display()
+            );
+            return;
         }
 
         let final_size = progress.lock().await.total_bytes;
@@ -1016,6 +1095,40 @@ fn start_job_background(
             Err(e) => error!("Job failed: {e:#}"),
         }
     })
+}
+
+/// Starts a paused, stopped or failed download again from its tracker entry. The job keeps
+/// its id, so the engine finds the partial data and continues where it left off.
+fn resume_from_tracker(
+    tracker: &Tracker,
+    tor: Option<Arc<TorManager>>,
+    jobs_progress: &Arc<Mutex<Vec<JobProgress>>>,
+    id: uuid::Uuid,
+) -> Result<tokio::task::JoinHandle<()>, String> {
+    let tor = tor.ok_or_else(|| t!("main.error.tor_unavailable"))?;
+    let entry = tracker
+        .list()
+        .into_iter()
+        .find(|entry| entry.id == id)
+        .ok_or_else(|| t!("rpc.error.job_not_found", id = id))?;
+    let job = entry.to_download_job().map_err(|e| format!("{e:#}"))?;
+    let progress = Arc::new(tokio::sync::Mutex::new(JobProgress {
+        id,
+        url: entry.url,
+        filename: entry.filename,
+        total_bytes: entry.total_bytes,
+        bytes_done: entry.bytes_done,
+        parts: vec![],
+        status: JobStatus::Queued,
+    }));
+    Ok(start_job_background(
+        job,
+        Some(tor),
+        progress,
+        tracker.clone(),
+        mpsc::unbounded_channel().0,
+        jobs_progress.clone(),
+    ))
 }
 
 /// Continues the downloads that were open when the app last stopped.
@@ -1207,5 +1320,39 @@ mod frontend_tests {
     fn flags_override_the_default() {
         assert_eq!(choose_frontend(false, true, true), Frontend::Tui);
         assert_eq!(choose_frontend(true, false, false), Frontend::Gui);
+    }
+
+    #[test]
+    fn stop_means_paused_and_cancel_means_cancelled() {
+        use download::control::Interrupt;
+        assert_eq!(interrupted_status(Interrupt::Stop), JobStatus::Paused);
+        assert_eq!(interrupted_status(Interrupt::Cancel), JobStatus::Cancelled);
+    }
+
+    #[test]
+    fn cancelling_deletes_the_partial_data_and_nothing_else() {
+        let id = uuid::Uuid::new_v4();
+        let other = uuid::Uuid::new_v4();
+        let cfg = config::config();
+        let (mine, theirs) = (cfg.job_temp_dir(id), cfg.job_temp_dir(other));
+        for d in [&mine, &theirs] {
+            std::fs::create_dir_all(d).unwrap();
+            std::fs::write(d.join("part-000"), b"data").unwrap();
+        }
+        discard_partial_data(id);
+        assert!(!mine.exists());
+        assert!(theirs.exists(), "another download's data stays");
+        discard_partial_data(id); // already gone: no error
+        std::fs::remove_dir_all(theirs).unwrap();
+    }
+
+    #[test]
+    fn a_stopped_download_cannot_be_resumed_without_tor_or_unknown_ids() {
+        let dir = std::env::temp_dir().join(format!("rdl-resume-test-{}", uuid::Uuid::new_v4()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let tracker = Tracker::at(dir.join("downloads.json")).unwrap();
+        let jobs: Arc<Mutex<Vec<JobProgress>>> = Arc::new(Mutex::new(Vec::new()));
+        assert!(resume_from_tracker(&tracker, None, &jobs, uuid::Uuid::new_v4()).is_err());
+        let _ = std::fs::remove_dir_all(dir);
     }
 }

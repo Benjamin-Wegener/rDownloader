@@ -38,5 +38,9 @@ First public version. A clean-room download manager in Rust: everything goes thr
 - Pause really stops the transfer and stays paused (it used to resume a second later); cancel and remove stop the connections instead of only hiding the download
 - Single connections that stay far below their siblings are restarted on a new circuit, rationed so the network is not flooded
 
+- Stop closes the connections and keeps the partial data; a stopped download survives a restart and continues with Resume (a failed one can be tried again); adding the same link continues it; Cancel and Remove delete the partial data; unused partial folders can be deleted from the settings
+- A stopped or cancelled download is no longer shown as "Failed", and the shown speed drops to zero at once
+- The speed limit is entered with a unit (KB/s or MB/s) and applies immediately to running downloads; the footer shows the active limit
+
 ### Known limitations
 See "Known limitations" in the README and in `docs/release-v0.1.0.md`.

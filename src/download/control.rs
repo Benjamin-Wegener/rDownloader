@@ -12,9 +12,19 @@ use std::sync::{Arc, Mutex, OnceLock};
 use tokio::sync::{watch, Notify};
 use uuid::Uuid;
 
+/// Why a job was interrupted from outside.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Interrupt {
+    /// Connections closed, partial data kept: the download can be resumed later.
+    Stop,
+    /// Gone for good: the partial data is deleted.
+    Cancel,
+}
+
 pub struct JobControl {
     paused: watch::Sender<bool>,
     cancelled: AtomicBool,
+    stopped: AtomicBool,
     /// Notified on cancel; the retry loops of the parts listen to it.
     pub cancel: Arc<Notify>,
 }
@@ -24,6 +34,7 @@ impl JobControl {
         Self {
             paused: watch::channel(false).0,
             cancelled: AtomicBool::new(false),
+            stopped: AtomicBool::new(false),
             cancel: Arc::new(Notify::new()),
         }
     }
@@ -40,7 +51,29 @@ impl JobControl {
         *self.paused.borrow()
     }
 
+    /// Closes the connections and keeps the partial data (resumable later).
+    pub fn stop(&self) {
+        self.stopped.store(true, Ordering::SeqCst);
+        self.cancelled.store(true, Ordering::SeqCst);
+        self.resume();
+        self.cancel.notify_waiters();
+    }
+
+    /// How the job was interrupted, if it was. Cancel wins over stop.
+    pub fn interrupt(&self) -> Option<Interrupt> {
+        if !self.is_cancelled() {
+            return None;
+        }
+        // `stop` also sets `cancelled`; a later `cancel` clears the stop mark.
+        Some(if self.stopped.load(Ordering::SeqCst) {
+            Interrupt::Stop
+        } else {
+            Interrupt::Cancel
+        })
+    }
+
     pub fn cancel(&self) {
+        self.stopped.store(false, Ordering::SeqCst);
         self.cancelled.store(true, Ordering::SeqCst);
         // A paused job must wake up to notice the cancellation.
         self.resume();
@@ -145,5 +178,19 @@ mod tests {
         assert!(get(id).unwrap().is_paused());
         remove(id);
         assert!(get(id).is_none());
+    }
+
+    #[test]
+    fn stop_and_cancel_are_told_apart() {
+        let c = JobControl::new();
+        assert_eq!(c.interrupt(), None);
+        c.stop();
+        assert_eq!(c.interrupt(), Some(Interrupt::Stop));
+        assert!(c.is_cancelled(), "a stopped job ends like a cancelled one");
+        c.cancel();
+        assert_eq!(c.interrupt(), Some(Interrupt::Cancel), "cancel wins");
+        let d = JobControl::new();
+        d.cancel();
+        assert_eq!(d.interrupt(), Some(Interrupt::Cancel));
     }
 }

@@ -546,7 +546,7 @@ const EN: &[(&str, &str)] = &[
     ),
     (
         "gui.toolbar.stop",
-        "Stop all active downloads",
+        "Stop all active downloads (they can be resumed)",
     ),
     (
         "gui.toolbar.to_top",
@@ -730,7 +730,7 @@ const EN: &[(&str, &str)] = &[
     ),
     (
         "gui.settings.max_speed",
-        "Speed limit (KiB/s, 0 = unlimited)",
+        "Speed limit (0 = unlimited)",
     ),
     (
         "gui.settings.min_speed",
@@ -967,6 +967,38 @@ const EN: &[(&str, &str)] = &[
     (
         "gui.context.paste",
         "Paste links from clipboard",
+    ),
+    (
+        "ui.status.partial_cleaned",
+        "Deleted {count} unused partial download folder(s), freed {size}",
+    ),
+    (
+        "gui.action.stop",
+        "Stop",
+    ),
+    (
+        "gui.partial.clean",
+        "Delete unused partial data",
+    ),
+    (
+        "gui.partial.confirm",
+        "Really delete? Resumable downloads are kept",
+    ),
+    (
+        "gui.partial.hint",
+        "Frees space used by cancelled or removed downloads. Stopped, paused and failed downloads are never touched.",
+    ),
+    (
+        "gui.context.stop",
+        "Stop (can be resumed)",
+    ),
+    (
+        "gui.settings.speed_invalid",
+        "Enter a number, for example 5 or 2.5",
+    ),
+    (
+        "gui.footer.limit",
+        "Limit {limit}",
     ),
     (
         "ui.settings.title",

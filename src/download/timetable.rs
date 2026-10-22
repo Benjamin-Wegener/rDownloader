@@ -110,7 +110,7 @@ pub fn effect_at(rules: &[Rule], weekday: Weekday, time: NaiveTime) -> Option<Ef
 const TICK: Duration = Duration::from_secs(20);
 
 /// Keeps the global limiter in line with the timetable. Does nothing without rules.
-pub fn spawn(rules: Vec<Rule>, default_speed_kib: u64) {
+pub fn spawn(rules: Vec<Rule>) {
     for rule in &rules {
         if let Err(e) = rule.validate() {
             tracing::warn!("{e}; rule ignored");
@@ -128,11 +128,11 @@ pub fn spawn(rules: Vec<Rule>, default_speed_kib: u64) {
                 Some(Effect::Pause) => limiter.set_paused(true),
                 Some(Effect::Limit(kib)) => {
                     limiter.set_paused(false);
-                    limiter.set_rate(kib.saturating_mul(1024));
+                    limiter.set_window(Some(kib.saturating_mul(1024)));
                 }
                 None => {
                     limiter.set_paused(false);
-                    limiter.set_rate(default_speed_kib.saturating_mul(1024));
+                    limiter.set_window(None);
                 }
             }
             tokio::time::sleep(TICK).await;

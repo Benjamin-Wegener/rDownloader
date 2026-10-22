@@ -57,12 +57,18 @@ pub enum UiCommand {
     AddUrls(Vec<String>),
     /// Crawls a page with a crawler plugin and feeds the links to the grabber.
     CrawlPage(String),
+    /// Hold the transfer, keep the connections.
     PauseJob(uuid::Uuid),
+    /// Close the connections, keep the partial data (continues with `ResumeJob`).
+    StopJob(uuid::Uuid),
+    /// Continue a paused or stopped download (a failed one is tried again).
     ResumeJob(uuid::Uuid),
     CancelJob(uuid::Uuid),
     RemoveJob(uuid::Uuid),
     /// Removes a finished download from the history.
     RemoveHistory(uuid::Uuid),
+    /// Delete partial data that belongs to no download any more.
+    CleanPartial,
     /// Change the position of a download in the queue list.
     MoveJob(uuid::Uuid, MoveTo),
 }
@@ -756,7 +762,13 @@ impl App {
     /// Feeds the current progress of all jobs into the speed estimator.
     pub fn sample_speeds(&mut self, now: Instant) {
         for j in &self.jobs {
-            self.speeds.observe(j.id, j.bytes_done, now);
+            if matches!(j.status, JobStatus::Downloading) {
+                self.speeds.observe(j.id, j.bytes_done, now);
+            } else {
+                // A job that is not transferring has no speed: it must drop to zero at once
+                // and start fresh when it runs again, not fade out slowly.
+                self.speeds.forget(j.id);
+            }
         }
     }
 
@@ -1813,5 +1825,35 @@ mod tests {
         move_job(&mut jobs, Uuid::from_u128(99), MoveTo::Top);
         assert_eq!(order(&jobs), [2, 4, 1, 3], "unknown job is ignored");
         move_job(&mut Vec::new(), Uuid::from_u128(1), MoveTo::Down);
+    }
+
+    #[test]
+    fn a_job_that_is_not_downloading_has_no_speed() {
+        let (cmd_tx, _cmd_rx) = mpsc::unbounded_channel::<UiCommand>();
+        let (_etx, erx) = mpsc::unbounded_channel::<JobEvent>();
+        let (_gtx, grx) = mpsc::unbounded_channel::<GrabberEvent>();
+        let mut app = App::new(cmd_tx, erx, grx);
+        let id = Uuid::new_v4();
+        let mut job = JobProgress {
+            id,
+            url: String::new(),
+            filename: "a".into(),
+            total_bytes: 1_000_000,
+            bytes_done: 0,
+            parts: vec![],
+            status: JobStatus::Downloading,
+        };
+        let t0 = Instant::now();
+        app.jobs.push(job.clone());
+        app.sample_speeds(t0);
+        job.bytes_done = 500_000;
+        app.jobs[0] = job.clone();
+        app.sample_speeds(t0 + Duration::from_secs(1));
+        assert!(app.speeds.speed(id) > 0);
+
+        // Stopped: the speed is gone at once, it does not fade out.
+        app.jobs[0].status = JobStatus::Paused;
+        app.sample_speeds(t0 + Duration::from_secs(2));
+        assert_eq!(app.speeds.speed(id), 0);
     }
 }
