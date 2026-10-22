@@ -6,7 +6,7 @@
 //! implementation, so the TUI and the headless API use the same job queue.
 
 use std::convert::Infallible;
-use std::net::SocketAddr;
+use std::net::{IpAddr, SocketAddr};
 use std::sync::Arc;
 
 use anyhow::{Context, Result};
@@ -14,7 +14,11 @@ use async_trait::async_trait;
 use bytes::Bytes;
 use http_body_util::{BodyExt, Full};
 use hyper::body::Incoming;
-use hyper::header::{AUTHORIZATION, CACHE_CONTROL, CONTENT_TYPE, WWW_AUTHENTICATE};
+use hyper::header::{
+    AUTHORIZATION, CACHE_CONTROL, CONTENT_LENGTH, CONTENT_TYPE, HOST, ORIGIN, TRANSFER_ENCODING,
+    WWW_AUTHENTICATE,
+};
+use hyper::http::uri::Authority;
 use hyper::server::conn::http1;
 use hyper::service::service_fn;
 use hyper::{Method, Request, Response, StatusCode};
@@ -31,6 +35,19 @@ use crate::t;
 
 /// Maximum accepted request body (JSON commands are tiny).
 const MAX_BODY_BYTES: usize = 1024 * 1024;
+
+/// Headers sent with every response. No CORS header is set on purpose: pages on
+/// other origins must not be able to read responses, even with a token.
+const SECURITY_HEADERS: &[(&str, &str)] = &[
+    ("x-content-type-options", "nosniff"),
+    (
+        "content-security-policy",
+        "default-src 'none'; frame-ancestors 'none'",
+    ),
+    ("referrer-policy", "no-referrer"),
+    ("x-frame-options", "DENY"),
+    ("cross-origin-resource-policy", "same-origin"),
+];
 
 /// Operations the RPC server can invoke on the download daemon.
 #[async_trait]
@@ -74,7 +91,7 @@ async fn serve_on(
             let service = service_fn(move |req| {
                 let control = control.clone();
                 let token = token.clone();
-                handle(req, control, token)
+                handle(req, control, token, addr)
             });
             if let Err(e) = http1::Builder::new().serve_connection(io, service).await {
                 debug!("RPC connection from {peer} ended: {e}");
@@ -87,15 +104,131 @@ async fn handle(
     req: Request<Incoming>,
     control: Arc<dyn JobControl>,
     token: Option<String>,
+    local: SocketAddr,
 ) -> Result<Response<Full<Bytes>>, Infallible> {
-    let res = match authorized(&req, token.as_deref()) {
-        false => Err((StatusCode::UNAUTHORIZED, t!("rpc.error.unauthorized"))),
-        true => dispatch(req, control).await,
+    let res = match check_guards(&req, local) {
+        Err(error) => Err(error),
+        Ok(()) if !authorized(&req, token.as_deref()) => {
+            Err((StatusCode::UNAUTHORIZED, t!("rpc.error.unauthorized")))
+        }
+        Ok(()) => dispatch(req, control).await,
     };
     Ok(match res {
         Ok(response) => response,
         Err((status, message)) => api_error(status, &message),
     })
+}
+
+/// Rejects requests a foreign web page could produce: DNS rebinding (foreign
+/// `Host`), cross-site form/fetch posts (`Origin`), and non-JSON payloads.
+/// Clients such as `curl` send no `Origin`, so they keep working.
+fn check_guards(req: &Request<Incoming>, local: SocketAddr) -> Result<(), (StatusCode, String)> {
+    let host = req
+        .headers()
+        .get(HOST)
+        .and_then(|value| value.to_str().ok());
+    if !host_is_local(host, local) {
+        return Err((StatusCode::FORBIDDEN, t!("rpc.error.invalid_host")));
+    }
+
+    if !is_state_changing(req.method()) {
+        return Ok(());
+    }
+
+    if let Some(origin) = req.headers().get(ORIGIN) {
+        let origin = origin
+            .to_str()
+            .map_err(|_| (StatusCode::FORBIDDEN, t!("rpc.error.cross_origin")))?;
+        if !origin_matches(origin, host.unwrap_or_default()) {
+            return Err((StatusCode::FORBIDDEN, t!("rpc.error.cross_origin")));
+        }
+    }
+
+    if has_body(req) && !is_json_content_type(req.headers().get(CONTENT_TYPE)) {
+        return Err((
+            StatusCode::UNSUPPORTED_MEDIA_TYPE,
+            t!("rpc.error.unsupported_media_type"),
+        ));
+    }
+
+    Ok(())
+}
+
+fn is_state_changing(method: &Method) -> bool {
+    matches!(
+        *method,
+        Method::POST | Method::PUT | Method::PATCH | Method::DELETE
+    )
+}
+
+fn has_body(req: &Request<Incoming>) -> bool {
+    let declared = req
+        .headers()
+        .get(CONTENT_LENGTH)
+        .and_then(|value| value.to_str().ok())
+        .and_then(|value| value.parse::<u64>().ok())
+        .is_some_and(|length| length > 0);
+    declared || req.headers().contains_key(TRANSFER_ENCODING)
+}
+
+fn is_json_content_type(value: Option<&hyper::header::HeaderValue>) -> bool {
+    value
+        .and_then(|value| value.to_str().ok())
+        .and_then(|value| value.split(';').next())
+        .is_some_and(|media| media.trim().eq_ignore_ascii_case("application/json"))
+}
+
+/// A request is local when its `Host` names `localhost`, a loopback address or
+/// the concrete address the server is bound to. Host names are never accepted:
+/// that is what stops DNS rebinding.
+fn host_is_local(host_header: Option<&str>, local: SocketAddr) -> bool {
+    let Some(host) = host_header.and_then(authority_host) else {
+        return false;
+    };
+    if host.eq_ignore_ascii_case("localhost") {
+        return true;
+    }
+    match host.parse::<IpAddr>() {
+        Ok(ip) => ip.is_loopback() || (ip == local.ip() && !local.ip().is_unspecified()),
+        Err(_) => false,
+    }
+}
+
+/// Checks that an `Origin` header points at the same local authority as `Host`.
+fn origin_matches(origin: &str, host_header: &str) -> bool {
+    let Ok(uri) = origin.parse::<hyper::Uri>() else {
+        return false;
+    };
+    if uri.scheme_str() != Some("http") {
+        return false;
+    }
+    let (Some(origin_host), Some(host)) = (uri.host(), authority_host(host_header)) else {
+        return false;
+    };
+    origin_host.eq_ignore_ascii_case(&host)
+        && uri.port_u16().unwrap_or(80) == authority_port(host_header)
+}
+
+fn authority_host(value: &str) -> Option<String> {
+    if value.contains('@') {
+        return None;
+    }
+    let authority: Authority = value.parse().ok()?;
+    Some(
+        authority
+            .host()
+            .trim_start_matches('[')
+            .trim_end_matches(']')
+            .to_string(),
+    )
+}
+
+fn authority_port(value: &str) -> u16 {
+    value
+        .parse::<Authority>()
+        .ok()
+        .and_then(|authority| authority.port_u16())
+        .unwrap_or(80)
 }
 
 fn authorized(req: &Request<Incoming>, token: Option<&str>) -> bool {
@@ -302,11 +435,15 @@ fn api_error(status: StatusCode, message: &str) -> Response<Full<Bytes>> {
 
 fn json_response(status: StatusCode, value: &Value) -> Response<Full<Bytes>> {
     let body = serde_json::to_vec(value).unwrap_or_else(|_| b"{}".to_vec());
-    Response::builder()
+    let mut response = Response::builder()
         .status(status)
         .header(CONTENT_TYPE, "application/json")
         .header(CACHE_CONTROL, "no-store")
-        .header("Connection", "close")
+        .header("Connection", "close");
+    for (name, value) in SECURITY_HEADERS {
+        response = response.header(*name, *value);
+    }
+    response
         .body(Full::new(Bytes::from(body)))
         .expect("valid response")
 }
@@ -443,14 +580,45 @@ mod tests {
         body: Option<&str>,
         token: Option<&str>,
     ) -> (u16, String) {
+        let mut extra = Vec::new();
+        if let Some(token) = token {
+            extra.push(("Authorization", format!("Bearer {token}")));
+        }
+        let extra: Vec<(&str, &str)> = extra.iter().map(|(n, v)| (*n, v.as_str())).collect();
+        let (status, _, response_body) = raw_request(
+            addr,
+            method,
+            path,
+            body,
+            "localhost",
+            &extra,
+            Some("application/json"),
+        )
+        .await;
+        (status, response_body)
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    async fn raw_request(
+        addr: SocketAddr,
+        method: &str,
+        path: &str,
+        body: Option<&str>,
+        host: &str,
+        extra: &[(&str, &str)],
+        content_type: Option<&str>,
+    ) -> (u16, String, String) {
         let body = body.unwrap_or_default();
         let mut stream = TcpStream::connect(addr).await.unwrap();
         let mut request = format!(
-            "{method} {path} HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\nContent-Length: {}\r\nContent-Type: application/json\r\n",
+            "{method} {path} HTTP/1.1\r\nHost: {host}\r\nConnection: close\r\nContent-Length: {}\r\n",
             body.len()
         );
-        if let Some(token) = token {
-            request.push_str(&format!("Authorization: Bearer {token}\r\n"));
+        if let Some(content_type) = content_type {
+            request.push_str(&format!("Content-Type: {content_type}\r\n"));
+        }
+        for (name, value) in extra {
+            request.push_str(&format!("{name}: {value}\r\n"));
         }
         request.push_str("\r\n");
         request.push_str(body);
@@ -458,7 +626,10 @@ mod tests {
         let mut response = Vec::new();
         stream.read_to_end(&mut response).await.unwrap();
         let response = String::from_utf8(response).unwrap();
-        let status = response
+        let (headers, body) = response
+            .split_once("\r\n\r\n")
+            .unwrap_or((response.as_str(), ""));
+        let status = headers
             .lines()
             .next()
             .unwrap()
@@ -467,11 +638,7 @@ mod tests {
             .unwrap()
             .parse()
             .unwrap();
-        let body = response
-            .split_once("\r\n\r\n")
-            .map(|(_, body)| body.to_string())
-            .unwrap_or_default();
-        (status, body)
+        (status, headers.to_string(), body.to_string())
     }
 
     #[tokio::test]
@@ -616,5 +783,161 @@ mod tests {
         let (addr, _) = start(None).await;
         let (status, _) = request(addr, "GET", "/api/jobs/not-a-uuid", None, None).await;
         assert_eq!(status, 400);
+    }
+
+    #[tokio::test]
+    async fn foreign_host_headers_are_rejected() {
+        let (addr, _) = start(None).await;
+        for host in [
+            "evil.example",
+            "evil.example:8765",
+            "localhost.evil.example",
+            "127.0.0.1.evil.example",
+            "attacker@127.0.0.1:8765",
+        ] {
+            let (status, _, _) = raw_request(addr, "GET", "/api/jobs", None, host, &[], None).await;
+            assert_eq!(status, 403, "Host {host} must be rejected");
+        }
+
+        for host in [
+            "localhost".to_string(),
+            format!("localhost:{}", addr.port()),
+            format!("127.0.0.1:{}", addr.port()),
+        ] {
+            let (status, _, _) =
+                raw_request(addr, "GET", "/api/jobs", None, &host, &[], None).await;
+            assert_eq!(status, 200, "Host {host} must be accepted");
+        }
+    }
+
+    #[tokio::test]
+    async fn cross_origin_changes_are_rejected() {
+        let (addr, _) = start(None).await;
+        let body = r#"{"url":"https://example.com/csrf.bin"}"#;
+
+        for origin in [
+            "https://evil.example",
+            "http://evil.example",
+            "http://localhost:9999",
+            "null",
+        ] {
+            let (status, _, _) = raw_request(
+                addr,
+                "POST",
+                "/api/jobs",
+                Some(body),
+                "localhost",
+                &[("Origin", origin)],
+                Some("application/json"),
+            )
+            .await;
+            assert_eq!(status, 403, "Origin {origin} must be rejected");
+        }
+
+        let (status, _, _) = raw_request(
+            addr,
+            "POST",
+            "/api/jobs",
+            Some(body),
+            "localhost",
+            &[("Origin", "http://localhost")],
+            Some("application/json"),
+        )
+        .await;
+        assert_eq!(status, 201);
+
+        let (status, _, _) = raw_request(
+            addr,
+            "GET",
+            "/api/jobs",
+            None,
+            "localhost",
+            &[("Origin", "https://evil.example")],
+            None,
+        )
+        .await;
+        assert_eq!(status, 200, "GET requests are not blocked by Origin");
+    }
+
+    #[tokio::test]
+    async fn non_json_payloads_are_rejected() {
+        let (addr, _) = start(None).await;
+        let body = r#"{"url":"https://example.com/form.bin"}"#;
+
+        let (status, _, _) = raw_request(
+            addr,
+            "POST",
+            "/api/jobs",
+            Some(body),
+            "localhost",
+            &[],
+            Some("text/plain"),
+        )
+        .await;
+        assert_eq!(status, 415);
+
+        let (status, _, _) = raw_request(
+            addr,
+            "POST",
+            "/api/jobs",
+            Some(body),
+            "localhost",
+            &[],
+            None,
+        )
+        .await;
+        assert_eq!(status, 415);
+
+        let (status, _, _) = raw_request(
+            addr,
+            "POST",
+            "/api/jobs",
+            Some(body),
+            "localhost",
+            &[],
+            Some("application/json; charset=utf-8"),
+        )
+        .await;
+        assert_eq!(status, 201);
+
+        let (status, _, _) = raw_request(
+            addr,
+            "POST",
+            "/rpc",
+            Some(r#"{"jsonrpc":"2.0","id":1,"method":"jobs.list"}"#),
+            "localhost",
+            &[],
+            Some("application/x-www-form-urlencoded"),
+        )
+        .await;
+        assert_eq!(status, 415);
+
+        let id = Uuid::new_v4();
+        let (status, _, _) = raw_request(
+            addr,
+            "POST",
+            &format!("/api/jobs/{id}/pause"),
+            None,
+            "localhost",
+            &[],
+            None,
+        )
+        .await;
+        assert_eq!(status, 404, "empty POST without Content-Type is allowed");
+    }
+
+    #[tokio::test]
+    async fn security_headers_are_sent() {
+        let (addr, _) = start(None).await;
+        let (status, headers, _) =
+            raw_request(addr, "GET", "/health", None, "localhost", &[], None).await;
+        assert_eq!(status, 200);
+        let headers = headers.to_ascii_lowercase();
+        assert!(headers.contains("x-content-type-options: nosniff"));
+        assert!(headers.contains("x-frame-options: deny"));
+        assert!(headers.contains("referrer-policy: no-referrer"));
+        assert!(headers.contains("content-security-policy: default-src 'none'"));
+        assert!(headers.contains("cross-origin-resource-policy: same-origin"));
+        assert!(!headers.contains("access-control-allow-origin"));
     }
 }

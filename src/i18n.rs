@@ -738,6 +738,15 @@ const EN: &[(&str, &str)] = &[
     ("rpc.error.not_found_path", "Unknown endpoint"),
     ("rpc.error.body_too_large", "Request body too large"),
     ("rpc.error.unauthorized", "Unauthorized"),
+    (
+        "rpc.error.invalid_host",
+        "Invalid Host header; use localhost or a loopback address",
+    ),
+    ("rpc.error.cross_origin", "Cross-origin request rejected"),
+    (
+        "rpc.error.unsupported_media_type",
+        "Unsupported media type; send application/json",
+    ),
 ];
 
 struct State {

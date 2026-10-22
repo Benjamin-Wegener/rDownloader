@@ -56,6 +56,7 @@ Statements marked *(verified)* are enforced by code or tests in this repository;
 - **Captcha**: interactive solving shows the challenge in the terminal; no automatic solving or third-party solver is used.
 - **Bridges**: configured bridge lines are passed to Arti; their trustworthiness is the user's responsibility.
 - **Local control API**: `--daemon` serves JSON-RPC/REST without TLS. Anything that can reach the port can control the download queue. Binding to a non-loopback address requires `rpc_token`, but the token travels in clear text; use a tunnel or reverse proxy with TLS for remote access.
+- **Browser-driven requests against the API**: the server accepts only local `Host` values, rejects cross-origin state changes (`Origin`) and requires `application/json` request bodies, so a page the user visits cannot queue or inspect downloads through the browser. `rpc_token` remains the stronger protection once the port is reachable from elsewhere.
 - **Timing and size**: part sizes and timing can fingerprint a download for an observer who sees both ends.
 - **No update mechanism yet**: install updates yourself; there is no signature verification for releases until release builds exist.
 

@@ -118,7 +118,14 @@ removes it. JSON-RPC 2.0 is served at
 .B GET /health
 reports readiness. Without
 .B rpc_token
-the server only binds to loopback.
+the server only binds to loopback. Requests must use a local
+.B Host
+header (localhost, a loopback address, or the bind address); state-changing
+requests with a body need
+.B Content-Type: application/json
+and are rejected when their
+.B Origin
+names another site.
 .SH SECURITY
 Anonymity depends on Tor. Plain http URLs are visible to the exit relay; prefer https.
 Local state files are not encrypted. See

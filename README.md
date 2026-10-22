@@ -120,7 +120,8 @@ REST endpoints:
 
 ```sh
 curl http://127.0.0.1:8765/api/jobs
-curl -X POST http://127.0.0.1:8765/api/jobs -d '{"url":"https://example.com/file.bin"}'
+curl -X POST http://127.0.0.1:8765/api/jobs \
+  -H 'Content-Type: application/json' -d '{"url":"https://example.com/file.bin"}'
 curl -X POST http://127.0.0.1:8765/api/jobs/<id>/pause
 curl -X POST http://127.0.0.1:8765/api/jobs/<id>/resume
 curl -X POST http://127.0.0.1:8765/api/jobs/<id>/cancel
@@ -133,11 +134,22 @@ and `health`:
 
 ```sh
 curl -X POST http://127.0.0.1:8765/rpc \
+  -H 'Content-Type: application/json' \
   -d '{"jsonrpc":"2.0","id":1,"method":"jobs.add","params":{"url":"https://example.com/file.bin"}}'
 ```
 
 `GET /health` returns `{"status":"ok"}`. The API has no TLS; keep it on loopback
 or tunnel it through Tor/a reverse proxy if remote access is needed.
+
+To keep web pages out, the API applies browser-style guards even without a token:
+the `Host` header must name `localhost`, a loopback address, or the concrete
+address `rpc_listen` binds to (no other host names, which defeats DNS rebinding);
+requests that change state (`POST`, `PUT`, `PATCH`, `DELETE`) are rejected when
+their `Origin` header names another site; and a request body must be sent as
+`application/json` (`curl` needs the header shown above). Every response carries
+`X-Content-Type-Options: nosniff`, `Content-Security-Policy`,
+`X-Frame-Options`, `Referrer-Policy` and `Cross-Origin-Resource-Policy`; no CORS
+headers are sent.
 
 ## Hooks and notifications
 
