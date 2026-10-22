@@ -1,9 +1,9 @@
 # rdownloader status
 
-Generated 2026-10-22 at commit d6ab0f1 - regenerate with `scripts/status-md.sh`
+Generated 2026-10-22 at commit ea24ca9 - regenerate with `scripts/status-md.sh`
 
-`[##################--]` **49/52** steps done (94%), 0 in progress, 3 open
-Roadmap items: 59 checked, 20 open
+`[##################--]` **50/55** steps done (91%), 0 in progress, 5 open
+Roadmap items: 60 checked, 22 open
 
 ## core (14/14)
 
@@ -72,8 +72,11 @@ Roadmap items: 59 checked, 20 open
 - [x] `ui-6` History + Export (CSV/JSON)
 - [x] `ui-7` LinkGrabber-Workflow: Entkoppeltes Sammeln, Filtern & Bestaetigen
 
-## gui (1/3)
+## gui (2/6)
 
 - [x] `gui-1` Native GUI-Fenster (egui) mit derselben Engine, Standard wenn ein Display da ist; --tui fuer das Terminal
-- [ ] `gui-2` GUI ausbauen: LinkGrabber, Einstellungen, Datei-Import-Dialog, Tray-Symbol
-- [ ] `gui-3` App-Paket: macOS .app mit Icon, Windows/Linux-Pakete, Autostart
+- [x] `gui-2` GUI-Rahmen nach docs/gui-layout.md: Toolbar, Reiter, Uebersichtspanel, Befehlsleiste, Fusszeile
+- [ ] `gui-3` GUI-Tabelle: Spalten (Name, Groesse, Host, Verbindung, Status, Tempo, Rest, Geladen, Fortschritt, Speicherort, Kommentar), Sortierung, Spaltenauswahl, Pakete im Datenmodell
+- [ ] `gui-4` GUI-Reiter Link-Sammler auf dem vorhandenen Sammler-Modell
+- [ ] `gui-5` GUI-Dialoge und Menues: Links-hinzufuegen-Dialog, Kontextmenue, Einstellungen, Dateiauswahl
+- [ ] `gui-6` App-Paket: macOS .app mit Icon, Windows/Linux-Pakete, Autostart
