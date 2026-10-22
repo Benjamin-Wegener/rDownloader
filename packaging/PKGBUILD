@@ -3,11 +3,11 @@ pkgver=0.1.0
 pkgrel=1
 pkgdesc="Clean-room Rust download manager with Tor"
 arch=('x86_64' 'aarch64')
-url="https://github.com/example/rdownloader"
+url="https://github.com/Benjamin-Wegener/rDownloader"
 license=('MIT')
 depends=('gcc-libs')
 makedepends=('rust' 'cargo')
-source=("$pkgname-$pkgver.tar.gz::https://github.com/example/rdownloader/archive/refs/tags/v$pkgver.tar.gz")
+source=("$pkgname-$pkgver.tar.gz::https://github.com/Benjamin-Wegener/rDownloader/archive/refs/tags/v$pkgver.tar.gz")
 sha256sums=('SKIP')
 
 build() {

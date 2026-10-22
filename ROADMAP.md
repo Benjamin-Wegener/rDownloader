@@ -33,7 +33,7 @@ Der Kern (M1) ist das Risiko; Plugins/GUI sind ohne ihn wertlos.
 Leitlinien für die Reihenfolge: **Sicherheit und Datenschutz vor Komfort, Nutzen vor Aufwand, nichts ohne Test.** Ein Schritt landet nur auf master, wenn Format, Clippy und alle Tests grün sind.
 
 **Release v0.1.0 – die letzten vier Schritte (je ein Agent, parallel, verschiedene Bereiche):**
-- `rel-1` (infra) Release-CI auf Linux/macOS/Windows, strenges fmt, cargo-deny, Prüfsummen
+- [x] `rel-1` (infra) Release-CI auf Linux/macOS/Windows, strenges fmt, cargo-deny, Prüfsummen
 - `rel-2` (core) Härtung: keine Panics bei feindlichen Eingaben, klare Fehlermeldungen, Erststart ohne Config
 - `rel-3` (gui) Politur des Fensters: Erststart, Tastenkürzel, Drag & Drop, Über-Dialog
 - `rel-4` (docs) CHANGELOG, Release Notes, README-Abgleich, Drittlizenzen

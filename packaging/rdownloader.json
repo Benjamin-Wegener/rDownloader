@@ -1,11 +1,11 @@
 {
   "version": "0.1.0",
   "description": "Clean-room Rust download manager with Tor",
-  "homepage": "https://github.com/example/rdownloader",
+  "homepage": "https://github.com/Benjamin-Wegener/rDownloader",
   "license": "MIT",
   "architecture": {
     "64bit": {
-      "url": "https://github.com/example/rdownloader/releases/download/v0.1.0/rdownloader-windows-x86_64.zip",
+      "url": "https://github.com/Benjamin-Wegener/rDownloader/releases/download/v0.1.0/rdownloader-windows-x86_64.zip",
       "hash": "sha256:REPLACE"
     }
   },
@@ -14,7 +14,7 @@
   "autoupdate": {
     "architecture": {
       "64bit": {
-        "url": "https://github.com/example/rdownloader/releases/download/v$version/rdownloader-windows-x86_64.zip"
+        "url": "https://github.com/Benjamin-Wegener/rDownloader/releases/download/v$version/rdownloader-windows-x86_64.zip"
       }
     }
   }
