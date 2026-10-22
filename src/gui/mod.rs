@@ -837,142 +837,153 @@ impl GuiApp {
             ui.visuals().widgets.noninteractive.bg_stroke
         });
 
-        let response = frame
-            .show(ui, |ui| {
-                ui.horizontal(|ui| {
-                    if self.columns.is_visible(ColumnId::Name) {
-                        ui.allocate_ui(egui::vec2(ColumnId::Name.default_width(), 20.0), |ui| {
-                            let label = format!("   {}", item.name);
-                            ui.label(label).on_hover_text(&item.raw.url);
-                        });
-                    }
-                    if self.columns.is_visible(ColumnId::Size) {
-                        ui.allocate_ui(egui::vec2(ColumnId::Size.default_width(), 20.0), |ui| {
-                            if item.size > 0 {
-                                ui.label(fmt_bytes(item.size));
-                            } else {
-                                ui.label("–");
-                            }
-                        });
-                    }
-                    if self.columns.is_visible(ColumnId::Host) {
-                        ui.allocate_ui(egui::vec2(ColumnId::Host.default_width(), 20.0), |ui| {
-                            ui.label(&item.host);
-                        });
-                    }
-                    if self.columns.is_visible(ColumnId::Connection) {
-                        ui.allocate_ui(
-                            egui::vec2(ColumnId::Connection.default_width(), 20.0),
-                            |ui| {
-                                ui.label(&item.connection);
-                            },
-                        );
-                    }
-                    if self.columns.is_visible(ColumnId::Status) {
-                        ui.allocate_ui(egui::vec2(ColumnId::Status.default_width(), 20.0), |ui| {
-                            ui.colored_label(
-                                status_color(&item.status, dark),
-                                status_text(&item.status),
-                            );
-                        });
-                    }
-                    if self.columns.is_visible(ColumnId::Speed) {
-                        ui.allocate_ui(egui::vec2(ColumnId::Speed.default_width(), 20.0), |ui| {
-                            if item.speed > 0 {
-                                ui.label(detail::fmt_speed(item.speed));
-                            } else {
-                                ui.label("–");
-                            }
-                        });
-                    }
-                    if self.columns.is_visible(ColumnId::Eta) {
-                        ui.allocate_ui(egui::vec2(ColumnId::Eta.default_width(), 20.0), |ui| {
-                            if let Some(eta) = item.eta {
-                                ui.label(detail::fmt_eta(eta));
-                            } else {
-                                ui.label("–");
-                            }
-                        });
-                    }
-                    if self.columns.is_visible(ColumnId::Loaded) {
-                        ui.allocate_ui(egui::vec2(ColumnId::Loaded.default_width(), 20.0), |ui| {
-                            ui.label(fmt_bytes(item.loaded));
-                        });
-                    }
-                    if self.columns.is_visible(ColumnId::Progress) {
-                        ui.allocate_ui(
-                            egui::vec2(ColumnId::Progress.default_width(), 20.0),
-                            |ui| {
-                                let bar = match item.progress {
-                                    Some(f) => egui::ProgressBar::new(f).show_percentage(),
-                                    None => egui::ProgressBar::new(0.0)
-                                        .animate(matches!(item.status, JobStatus::Downloading)),
-                                };
-                                ui.add(bar);
-                            },
-                        );
-                    }
-                    if self.columns.is_visible(ColumnId::SaveTo) {
-                        ui.allocate_ui(egui::vec2(ColumnId::SaveTo.default_width(), 20.0), |ui| {
-                            ui.label(&item.save_to);
-                        });
-                    }
-                    if self.columns.is_visible(ColumnId::Comment) {
-                        ui.allocate_ui(egui::vec2(ColumnId::Comment.default_width(), 20.0), |ui| {
-                            ui.label(&item.comment);
-                        });
-                    }
-                });
-
-                if selected {
-                    ui.add_space(2.0);
-                    ui.weak(progress_line(&item.raw, item.speed));
-                    if let JobStatus::Failed(error) = &item.status {
-                        ui.colored_label(status_color(&item.status, dark), error);
-                    }
-                    let actions = actions_for(&item.status);
-                    ui.horizontal(|ui| {
-                        if ui
-                            .add_enabled(actions.pause, egui::Button::new(t!("gui.action.pause")))
-                            .clicked()
-                        {
-                            Self::send(app, UiCommand::PauseJob(item.id));
-                        }
-                        if ui
-                            .add_enabled(actions.resume, egui::Button::new(t!("gui.action.resume")))
-                            .clicked()
-                        {
-                            Self::send(app, UiCommand::ResumeJob(item.id));
-                        }
-                        if ui
-                            .add_enabled(actions.cancel, egui::Button::new(t!("gui.action.cancel")))
-                            .clicked()
-                        {
-                            Self::send(app, UiCommand::CancelJob(item.id));
-                        }
-                        if ui
-                            .add_enabled(actions.remove, egui::Button::new(t!("gui.action.remove")))
-                            .clicked()
-                        {
-                            app.speeds.forget(item.id);
-                            Self::send(app, UiCommand::RemoveJob(item.id));
+        let mut row_clicked = false;
+        let mut row_rect = egui::Rect::NOTHING;
+        let frame_resp = frame.show(ui, |ui| {
+            let top_row = ui.horizontal(|ui| {
+                if self.columns.is_visible(ColumnId::Name) {
+                    ui.allocate_ui(egui::vec2(ColumnId::Name.default_width(), 20.0), |ui| {
+                        let label = format!("   {}", item.name);
+                        ui.label(label).on_hover_text(&item.raw.url);
+                    });
+                }
+                if self.columns.is_visible(ColumnId::Size) {
+                    ui.allocate_ui(egui::vec2(ColumnId::Size.default_width(), 20.0), |ui| {
+                        if item.size > 0 {
+                            ui.label(fmt_bytes(item.size));
+                        } else {
+                            ui.label("–");
                         }
                     });
-                    egui::CollapsingHeader::new(t!("gui.job.details"))
-                        .id_salt(item.id)
-                        .show(ui, |ui| {
-                            ui.monospace(detail::detail_text(
-                                &item.raw,
-                                item.speed,
-                                app.tor_health.as_ref(),
-                            ));
-                        });
                 }
-            })
-            .response;
+                if self.columns.is_visible(ColumnId::Host) {
+                    ui.allocate_ui(egui::vec2(ColumnId::Host.default_width(), 20.0), |ui| {
+                        ui.label(&item.host);
+                    });
+                }
+                if self.columns.is_visible(ColumnId::Connection) {
+                    ui.allocate_ui(
+                        egui::vec2(ColumnId::Connection.default_width(), 20.0),
+                        |ui| {
+                            ui.label(&item.connection);
+                        },
+                    );
+                }
+                if self.columns.is_visible(ColumnId::Status) {
+                    ui.allocate_ui(egui::vec2(ColumnId::Status.default_width(), 20.0), |ui| {
+                        ui.colored_label(
+                            status_color(&item.status, dark),
+                            status_text(&item.status),
+                        );
+                    });
+                }
+                if self.columns.is_visible(ColumnId::Speed) {
+                    ui.allocate_ui(egui::vec2(ColumnId::Speed.default_width(), 20.0), |ui| {
+                        if item.speed > 0 {
+                            ui.label(detail::fmt_speed(item.speed));
+                        } else {
+                            ui.label("–");
+                        }
+                    });
+                }
+                if self.columns.is_visible(ColumnId::Eta) {
+                    ui.allocate_ui(egui::vec2(ColumnId::Eta.default_width(), 20.0), |ui| {
+                        if let Some(eta) = item.eta {
+                            ui.label(detail::fmt_eta(eta));
+                        } else {
+                            ui.label("–");
+                        }
+                    });
+                }
+                if self.columns.is_visible(ColumnId::Loaded) {
+                    ui.allocate_ui(egui::vec2(ColumnId::Loaded.default_width(), 20.0), |ui| {
+                        ui.label(fmt_bytes(item.loaded));
+                    });
+                }
+                if self.columns.is_visible(ColumnId::Progress) {
+                    ui.allocate_ui(egui::vec2(ColumnId::Progress.default_width(), 20.0), |ui| {
+                        let bar = match item.progress {
+                            Some(f) => egui::ProgressBar::new(f).show_percentage(),
+                            None => egui::ProgressBar::new(0.0)
+                                .animate(matches!(item.status, JobStatus::Downloading)),
+                        };
+                        ui.add(bar);
+                    });
+                }
+                if self.columns.is_visible(ColumnId::SaveTo) {
+                    ui.allocate_ui(egui::vec2(ColumnId::SaveTo.default_width(), 20.0), |ui| {
+                        ui.label(&item.save_to);
+                    });
+                }
+                if self.columns.is_visible(ColumnId::Comment) {
+                    ui.allocate_ui(egui::vec2(ColumnId::Comment.default_width(), 20.0), |ui| {
+                        ui.label(&item.comment);
+                    });
+                }
+            });
 
+            row_rect = top_row.response.rect;
+            if top_row.response.interact(egui::Sense::click()).clicked() {
+                row_clicked = true;
+            }
+
+            if selected {
+                ui.add_space(2.0);
+                ui.weak(progress_line(&item.raw, item.speed));
+                if let JobStatus::Failed(error) = &item.status {
+                    ui.colored_label(status_color(&item.status, dark), error);
+                }
+                let actions = actions_for(&item.status);
+                ui.horizontal(|ui| {
+                    if ui
+                        .add_enabled(actions.pause, egui::Button::new(t!("gui.action.pause")))
+                        .clicked()
+                    {
+                        Self::send(app, UiCommand::PauseJob(item.id));
+                    }
+                    if ui
+                        .add_enabled(actions.resume, egui::Button::new(t!("gui.action.resume")))
+                        .clicked()
+                    {
+                        Self::send(app, UiCommand::ResumeJob(item.id));
+                    }
+                    if ui
+                        .add_enabled(actions.cancel, egui::Button::new(t!("gui.action.cancel")))
+                        .clicked()
+                    {
+                        Self::send(app, UiCommand::CancelJob(item.id));
+                    }
+                    if ui
+                        .add_enabled(actions.remove, egui::Button::new(t!("gui.action.remove")))
+                        .clicked()
+                    {
+                        app.speeds.forget(item.id);
+                        Self::send(app, UiCommand::RemoveJob(item.id));
+                    }
+                });
+                egui::CollapsingHeader::new(t!("gui.job.details"))
+                    .id_salt(item.id)
+                    .show(ui, |ui| {
+                        ui.monospace(detail::detail_text(
+                            &item.raw,
+                            item.speed,
+                            app.tor_health.as_ref(),
+                        ));
+                    });
+            }
+        });
+
+        if row_clicked {
+            self.selected = Some(item.id);
+        }
+
+        let context_rect = if row_rect != egui::Rect::NOTHING {
+            row_rect
+        } else {
+            frame_resp.response.rect
+        };
         let interact_resp = ui.interact(
-            response.rect,
+            context_rect,
             ui.make_persistent_id(("row", item.id)),
             egui::Sense::click(),
         );
