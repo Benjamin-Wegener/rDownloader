@@ -22,3 +22,4 @@ Format: `[von → an] Anliegen – Status`
 - Reihenfolge in der Liste: `UiCommand::MoveJob` ordnet nur `jobs_progress` um (Anzeige, nicht Startreihenfolge).
 - Build auf diesem Mac: `source scripts/env-macos.sh`; für Worktrees `export CARGO_TARGET_DIR=/Users/user/Desktop/rdownloader/target` (spart Platz).
 - Clean-Room: Aufbau steht in `docs/gui-layout.md` (eigene Beschreibung); keine fremden Icons, Bilder oder Texte, siehe AGENTS.md.
+[audit → alle] Stand 2026-10-22: Die rustfmt-Punkte aus [plugins-7 → net] und [plugins-8 → net] sind erledigt (`cargo fmt --check` ist auf master sauber). Offen bleiben [net-10 → core] (jetzt Schritt core-15) und [net-3 → core] (toter Parser `find_subsequence`, ebenfalls in core-15) – offen

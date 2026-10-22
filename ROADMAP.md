@@ -132,7 +132,8 @@ Abgleich mit aria2, JDownloader, yt-dlp und der Arti-Dokumentation. Reihenfolge 
 **Protokolle & Inhalte**
 - [x] 🟢 FTP über Tor (unverschlüsselt; Passiv-Modus, Resume, pro Part eigene Isolation) (net-9)
 - [ ] 🟢 SFTP über Tor (SSH-Client, Host-Key-Prüfung) und FTPS (net-11)
-- [x] 🟢 HLS/DASH-Segment-Downloads (eigene Parser, parallele Fragmente, Merge; DRM/verschlüsselte Streams abgelehnt) (net-10)
+- [x] 🟢 HLS/DASH-Segment-Downloader in `src/net/segment.rs` (eigene Parser, parallele Fragmente, Merge; DRM/verschlüsselte Streams abgelehnt) (net-10)
+- [ ] 🟠 HLS/DASH **in die Engine einbinden**: Der Downloader wird bisher von keiner Stelle aufgerufen, Manifest-URLs laufen noch als normale Dateien durch (core-15)
 - [ ] ⛔ BitTorrent/Magnet: bewusst nicht im Umfang (über Tor unüblich, anderes Bedrohungsmodell)
 
 ## M6 – GUI & Headless RPC (optional, nach M4) ⬜ 🟢

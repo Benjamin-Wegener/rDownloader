@@ -55,3 +55,5 @@ gui-4	gui	GUI-Reiter Link-Sammler auf dem vorhandenen Sammler-Modell	gui-3
 gui-5	gui	GUI-Dialoge und Menues: Links-hinzufuegen-Dialog, Kontextmenue, Einstellungen, Dateiauswahl	gui-4
 gui-6	gui	App-Paket: macOS .app mit Icon, Windows/Linux-Pakete, Autostart	gui-5
 net-11	net	SFTP (SSH-Client mit Host-Key-Pruefung) und FTPS ueber Tor	net-10
+core-15	core	HLS/DASH in die Engine einbinden: Manifest-URLs (.m3u8/.mpd) an net::SegmentDownloader routen (Fortschritt, Abbruch, Zielendung .ts/.mp4), toten Parser find_subsequence entfernen	net-10
+infra-7	infra	Aufraeumen: ungenutzte Config connect_timeout_secs (umsetzen oder entfernen), irrefuehrende Tor-Log-Zeile (bootstrap 85%, healthy=false), README/Roadmap an den echten Stand anpassen	-

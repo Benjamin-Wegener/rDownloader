@@ -27,7 +27,7 @@ no code was taken from it. JDownloader's Java plugins cannot be loaded.
 - Plugin types: hoster, crawler, account (cookie sessions) and interactive captcha
 - Tor bridges for censored networks
 - FTP downloads (`ftp://`) over Tor, with resume (unencrypted, see the threat model); some servers only accept the data connection from the same IP as the control connection and need a retry or two over Tor; SFTP is planned
-- HLS/DASH segment engine: own manifest parsers (master playlists, `SegmentTemplate`/`SegmentList`/`SegmentBase`), parallel fragment downloads over Tor and ordered merge; encrypted HLS and DRM-protected DASH are rejected
+- HLS/DASH segment engine (library code; not yet connected to the download queue, tracked as core-15): own manifest parsers (master playlists, `SegmentTemplate`/`SegmentList`/`SegmentBase`), parallel fragment downloads over Tor and ordered merge; encrypted HLS and DRM-protected DASH are rejected
 - `.onion` addresses (onion services) work like any other URL; plain `http://` is fine there because the connection is end-to-end encrypted by Tor
 - Interface text comes from a string catalog (English built in, translations can be added without code changes)
 
