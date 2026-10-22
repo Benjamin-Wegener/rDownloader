@@ -5,7 +5,7 @@ links, review them, run a queue of packages, watch totals. This page describes t
 layout in our own words. **Nothing is copied**: no icons, pictures, logos, themes,
 texts or translations of any other program. Our icons are drawn by us, our texts come
 from the i18n catalog, and our name and colours are our own (see "Clean-room rules"
-in `AGENTS.md`).
+in the contributing notes of the README).
 
 Derived from a reference screenshot supplied by the project owner (kept locally, not
 in this repository).
@@ -46,9 +46,9 @@ in this repository).
 
 ## Build order
 
-1. `gui-2` frame: toolbar, tabs, overview panel, command bar, footer (this page, items 1, 2, 4, 5, 6).
-2. `gui-3` table: columns, sorting, column chooser, packages (data model with a package
+1. frame: toolbar, tabs, overview panel, command bar, footer (this page, items 1, 2, 4, 5, 6).
+2. table: columns, sorting, column chooser, packages (data model with a package
    per download group) and the extra fields the columns need (save path, comment).
-3. `gui-4` link collector tab on top of the existing collector model.
-4. `gui-5` dialogs and menus: add-links dialog, row context menu, settings dialog, file picker.
-5. `gui-6` app package: macOS `.app`, icon, Windows/Linux packages, autostart.
+3. link collector tab on top of the existing collector model.
+4. dialogs and menus: add-links dialog, row context menu, settings dialog, file picker.
+5. app package: macOS `.app`, icon, Windows/Linux packages, autostart.

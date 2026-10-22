@@ -23,7 +23,7 @@ M0 Fundament ✅ ─► M1 Zuverlässiger Download-Kern ✅ ─► M2 Bedienbare
                                             M5 Härtung & Extras (parallel ab M2) ─┘
 ```
 
-`✅*` = alles bis auf Nice-to-have-Punkte (🟢) erledigt. Aktueller Stand pro Schritt: [STATUS.md](STATUS.md).
+`✅*` = alles bis auf Nice-to-have-Punkte (🟢) erledigt.
 
 Regel: Nichts aus M3+ anfangen, bevor M1 ein Testdownload mit Abbruch + Resume besteht.
 Der Kern (M1) ist das Risiko; Plugins/GUI sind ohne ihn wertlos.
@@ -32,20 +32,13 @@ Der Kern (M1) ist das Risiko; Plugins/GUI sind ohne ihn wertlos.
 
 Leitlinien für die Reihenfolge: **Sicherheit und Datenschutz vor Komfort, Nutzen vor Aufwand, nichts ohne Test.** Ein Schritt landet nur auf master, wenn Format, Clippy und alle Tests grün sind.
 
-**Release v0.1.0 – die letzten vier Schritte (je ein Agent, parallel, verschiedene Bereiche):**
-- [x] `rel-1` (infra) Release-CI auf Linux/macOS/Windows, strenges fmt, cargo-deny, Prüfsummen
-- `rel-2` (core) Härtung: keine Panics bei feindlichen Eingaben, klare Fehlermeldungen, Erststart ohne Config
-- `rel-3` (gui) Politur des Fensters: Erststart, Tastenkürzel, Drag & Drop, Über-Dialog
-- `rel-4` (docs) CHANGELOG, Release Notes, README-Abgleich, Drittlizenzen
-- Danach „Go“: Token-Scope `workflow`, Push, Tag `v0.1.0`, Repo öffentlich, dann `touch .git/orch/done/release-v010` gibt die zurückgestellten Schritte frei (`core-17..19`, `gui-7`, `gui-8`)
-
 **Jetzt** (läuft oder startbar):
-1. `gui-4` Link-Sammler im Fenster · `net-11` SFTP/FTPS (laufen bei den Agents)
-2. `core-15` HLS/DASH wirklich in die Engine einbinden (Feature ist sonst nicht erreichbar) · `infra-7` Aufräumen
-3. `gui-5` Dialoge, Kontextmenü, Einstellungen
+1.  Link-Sammler im Fenster ·  SFTP/FTPS (laufen bei den Agents)
+2.  HLS/DASH wirklich in die Engine einbinden (Feature ist sonst nicht erreichbar) ·  Aufräumen
+3.  Dialoge, Kontextmenü, Einstellungen
 4. **Du:** GitHub-Token um den Scope `workflow` erweitern, damit `v0.1.0` veröffentlicht werden kann
 
-**Danach** (Qualität und Reichweite): `gui-6` App-Paket · `i18n-3` deutsche Übersetzung · `infra-8` Paketierungsvorlagen (Homebrew, AUR, Scoop, crates.io) · die offenen Live-Prüfungen (RAR, TUI, Linux/Windows-CI, Fenster-Bedienung)
+**Danach** (Qualität und Reichweite):  App-Paket ·  deutsche Übersetzung ·  Paketierungsvorlagen (Homebrew, AUR, Scoop, crates.io) · die offenen Live-Prüfungen (RAR, TUI, Linux/Windows-CI, Fenster-Bedienung)
 
 **Später** (Nice-to-have, bewertet in der Tabelle unten): Themes, Clipboard-Überwachung, Tray und Autostart, Zeitfenster, Watch-Ordner, Download-Regeln, Duplikat-Erkennung, Live-Events
 
@@ -80,9 +73,9 @@ Reihenfolge ist Abhängigkeitsreihenfolge – von oben nach unten.
 - [x] **Definition of Done M1:** 1-GB-Testdatei über Tor, Prozess mitten im Download killen, neu starten → Download setzt fort, Hash stimmt. Als Integrationstest automatisiert (`tests/integration_kill_resume_hash.rs`).
 
 ## Querschnitt: Englisch + Übersetzbarkeit
-- [x] 🟠 `src/i18n.rs`: String-Katalog (Standard `en`, Schlüssel + benannte Platzhalter), später Sprachpakete (i18n-1)
-- [x] 🟠 Bestehende deutsche Texte in Code, Hilfe und UI auf Englisch umstellen (i18n-2)
-- [x] 🟢 Deutsche Übersetzung als Sprachpaket (`lang/de.toml`, Sprache per Config/Umgebung, Vollständigkeitstest) (i18n-3)
+- [x] 🟠 `src/i18n.rs`: String-Katalog (Standard `en`, Schlüssel + benannte Platzhalter), später Sprachpakete
+- [x] 🟠 Bestehende deutsche Texte in Code, Hilfe und UI auf Englisch umstellen
+- [x] 🟢 Deutsche Übersetzung als Sprachpaket (`lang/de.toml`, Sprache per Config/Umgebung, Vollständigkeitstest)
 
 ## M2 – Bedienbare TUI ✅ 🟠
 Abhängig von M1 (Engine liefert echten Fortschritt).
@@ -94,7 +87,7 @@ Abhängig von M1 (Engine liefert echten Fortschritt).
 - [x] 🟠 History/Abgeschlossen-Liste mit Statistiken + Export (CSV/JSON) – Tab „History" mit den beendeten Downloads (Dauer, Ø-Geschwindigkeit, Status), Export per Taste als CSV/JSON in das Data-Verzeichnis
 - [x] 🟠 **LinkGrabber-Workflow**: Entkoppeltes Sammeln $\to$ Paketieren/Filtern (Hoster, Dateityp) $\to$ Bestätigen & Übertrag in Download-Queue
 - [x] 🟠 **Container- & Listen-Import**: `.dlc`, `.ccf`, Text-Linklisten und `.metalink`
-- [ ] 🟢 Themes (`gui-7`), Clipboard-Überwachung (`gui-8`), globaler Hotkey (geparkt) – siehe Bewertungstabelle
+- [ ] 🟢 Themes (), Clipboard-Überwachung (), globaler Hotkey (geparkt) – siehe Bewertungstabelle
 
 ## M3 – Plugin-System ✅ 🟠
 Statisch zuerst, dynamisch unter Sandboxing.
@@ -112,7 +105,7 @@ CI früh starten (parallel zu M1), Rest nach M2.
 - [x] 🟠 Prebuilt-Binaries (macOS/Linux/Windows) via GitHub Releases (`.github/workflows/release.yml`)
 - [x] 🟠 Manpage + `--help` (clap), README mit Quickstart (Threat-Modell: docs/threat-model.md)
 - [ ] 🟠 **v0.1.0 veröffentlichen** (Doku fertig: CHANGELOG.md, docs/release-v0.1.0.md, THIRD_PARTY_LICENSES.md): Tag `v0.1.0` liegt lokal; privates Repo `Benjamin-Wegener/rDownloader` ist angelegt, der Push scheitert am fehlenden `workflow`-Scope des GitHub-Tokens. Danach Repo auf öffentlich stellen
-- [ ] 🟢 `cargo install` (crates.io), Homebrew-Tap / AUR / Scoop (`infra-8`: Vorlagen im Repo)
+- [ ] 🟢 `cargo install` (crates.io), Homebrew-Tap / AUR / Scoop (: Vorlagen im Repo)
 
 ## M5 – Härtung, Automation & Headless (parallel) 🟢
 **Sicherheit/Privacy**
@@ -128,51 +121,51 @@ CI früh starten (parallel zu M1), Rest nach M2.
 **Automation, Limits & Post-Processing**
 - [x] 🟠 **Auto-Extract Engine**: Automatisches Entpacken von Multi-Part-Archiven (`.rar`, `.zip`, `.7z`) nach Download & Hash-Verifikation
 - [x] 🟠 **Job-Scheduler & Per-Host Limits**: Max. gleichzeitige Jobs und parallele Jobs pro Hoster (`max_concurrent_jobs`, `max_jobs_per_host`)
-- [x] 🟢 Scheduler-Zeitfenster und zeitabhängige Limits (`[[schedule]]`, Pause-Fenster, über Mitternacht) (core-16)
-- [ ] 🟢 Watch-Ordner (`core-17`) · RSS-Reader (geparkt)
-- [ ] 🟢 Download-Regeln für Zielordner und Namen (`core-18`) · Duplikat-Erkennung (`core-19`)
+- [x] 🟢 Scheduler-Zeitfenster und zeitabhängige Limits (`[[schedule]]`, Pause-Fenster, über Mitternacht)
+- [ ] 🟢 Watch-Ordner () · RSS-Reader (geparkt)
+- [ ] 🟢 Download-Regeln für Zielordner und Namen () · Duplikat-Erkennung ()
 
 ## Lücken aus der Recherche (2026-10-22)
 Abgleich mit aria2, JDownloader, yt-dlp und der Arti-Dokumentation. Reihenfolge = Priorität.
 
 **Sicherheit**
-- [x] 🔴 **Daemon-API gegen fremde Webseiten absichern** (net-12): Ohne Token kann jede im Browser geöffnete Seite per `fetch` an `127.0.0.1:8765` Downloads einreihen (kein Host-/Origin-/Content-Type-Check, JSON wird auch bei `text/plain` gelesen) und per DNS-Rebinding die Queue lesen. Nötig: Host-Header muss lokal sein, ändernde Anfragen brauchen `application/json` und gleiche Herkunft, Sicherheits-Header, Doku für `curl`-Nutzer
-- [x] 🔴 **Zentraler Dateinamen-Bereiniger** für alle Quellen: Namen aus Plugins, `.dlc`/`.metalink` und URL werden ungeprüft an den Download-Ordner gehängt (`main.rs`, `dl_dir.join(&filename)`); nur `Content-Disposition` wird bereinigt. Dazu Windows-Reservenamen und automatisches Umbenennen bei Kollision (core-9)
-- [x] 🟠 macOS-Quarantäne-Attribut `com.apple.quarantine` auf fertige Downloads, damit Gatekeeper sie prüft (core-11)
-- [x] 🟠 Freien Speicher vor dem Start prüfen und Zieldatei vorab reservieren (core-10)
+- [x] 🔴 **Daemon-API gegen fremde Webseiten absichern**: Ohne Token kann jede im Browser geöffnete Seite per `fetch` an `127.0.0.1:8765` Downloads einreihen (kein Host-/Origin-/Content-Type-Check, JSON wird auch bei `text/plain` gelesen) und per DNS-Rebinding die Queue lesen. Nötig: Host-Header muss lokal sein, ändernde Anfragen brauchen `application/json` und gleiche Herkunft, Sicherheits-Header, Doku für `curl`-Nutzer
+- [x] 🔴 **Zentraler Dateinamen-Bereiniger** für alle Quellen: Namen aus Plugins, `.dlc`/`.metalink` und URL werden ungeprüft an den Download-Ordner gehängt (`main.rs`, `dl_dir.join(&filename)`); nur `Content-Disposition` wird bereinigt. Dazu Windows-Reservenamen und automatisches Umbenennen bei Kollision
+- [x] 🟠 macOS-Quarantäne-Attribut `com.apple.quarantine` auf fertige Downloads, damit Gatekeeper sie prüft
+- [x] 🟠 Freien Speicher vor dem Start prüfen und Zieldatei vorab reservieren
 
 **Tor**
-- [x] 🟠 `.onion`-URLs: Arti-Feature `onion-service-client` aktiv, mit Live-Test gegen einen echten Onion-Dienst (net-8)
-- [x] 🟢 Vanguards (Schutz gegen Guard-Entdeckung): Arti-Feature `vanguards` aktiviert; Modus ist Arti-Standard (net-8)
+- [x] 🟠 `.onion`-URLs: Arti-Feature `onion-service-client` aktiv, mit Live-Test gegen einen echten Onion-Dienst
+- [x] 🟢 Vanguards (Schutz gegen Guard-Entdeckung): Arti-Feature `vanguards` aktiviert; Modus ist Arti-Standard
 
 **Download-Kern**
-- [x] 🟠 Langsame Verbindungen kappen und neu aufbauen (`lowest-speed-limit`-Prinzip), bei Tor besonders nützlich (core-12)
-- [x] 🟢 Bedingtes Laden (Vergleich mit `Last-Modified` aus dem Größen-Request, `conditional_get`) (core-12)
-- [x] 🟠 Mirrors: mehrere URLs pro Datei (Verteilung auf die Parts, Auswahl nach gemessener Geschwindigkeit, Ausfall-/Falsch-Erkennung); Metalink-Stückprüfsummen mit Reparatur defekter Stücke (core-13)
-- [x] 🟢 Ereignis-Hooks bei Start/Fertig/Fehler (ohne Shell, Umgebungsvariablen, Zeitlimit) und Desktop-Benachrichtigung (macOS/Linux) (core-14)
+- [x] 🟠 Langsame Verbindungen kappen und neu aufbauen (`lowest-speed-limit`-Prinzip), bei Tor besonders nützlich
+- [x] 🟢 Bedingtes Laden (Vergleich mit `Last-Modified` aus dem Größen-Request, `conditional_get`)
+- [x] 🟠 Mirrors: mehrere URLs pro Datei (Verteilung auf die Parts, Auswahl nach gemessener Geschwindigkeit, Ausfall-/Falsch-Erkennung); Metalink-Stückprüfsummen mit Reparatur defekter Stücke
+- [x] 🟢 Ereignis-Hooks bei Start/Fertig/Fehler (ohne Shell, Umgebungsvariablen, Zeitlimit) und Desktop-Benachrichtigung (macOS/Linux)
 - [x] 🟢 `~/.netrc`-Zugangsdaten und Cookie-Import aus Browsern (Firefox/Chromium/Netscape, plugins-8)
 
 **Protokolle & Inhalte**
-- [x] 🟢 FTP über Tor (unverschlüsselt; Passiv-Modus, Resume, pro Part eigene Isolation) (net-9)
-- [x] 🟢 SFTP über Tor (SSH-Client, Host-Key-Prüfung) und FTPS (net-11)
-- [x] 🟢 HLS/DASH-Segment-Downloader in `src/net/segment.rs` (eigene Parser, parallele Fragmente, Merge; DRM/verschlüsselte Streams abgelehnt) (net-10)
-- [ ] 🟠 HLS/DASH **in die Engine einbinden**: Der Downloader wird bisher von keiner Stelle aufgerufen, Manifest-URLs laufen noch als normale Dateien durch (core-15)
+- [x] 🟢 FTP über Tor (unverschlüsselt; Passiv-Modus, Resume, pro Part eigene Isolation)
+- [x] 🟢 SFTP über Tor (SSH-Client, Host-Key-Prüfung) und FTPS
+- [x] 🟢 HLS/DASH-Segment-Downloader in `src/net/segment.rs` (eigene Parser, parallele Fragmente, Merge; DRM/verschlüsselte Streams abgelehnt)
+- [ ] 🟠 HLS/DASH **in die Engine einbinden**: Der Downloader wird bisher von keiner Stelle aufgerufen, Manifest-URLs laufen noch als normale Dateien durch
 - [ ] ⛔ BitTorrent/Magnet: bewusst nicht im Umfang (über Tor unüblich, anderes Bedrohungsmodell)
 
 ## M6 – GUI & Headless RPC (optional, nach M4) ⬜ 🟢
 - [x] 🟠 **Headless Daemon & RPC/Web-API**: JSON-RPC 2.0 + REST für Fernsteuerung ohne TUI (`src/net/rpc.rs`, `--daemon`)
   - [x] Queue-Liste, Status, Hinzufügen, Pause/Resume/Cancel/Remove über `POST /rpc` und `/api/jobs`
   - [x] Optionaler Bearer-Token (`rpc_token`), Loopback-Bindung ohne Token erzwungen
-  - [x] Live-Events für Fernsteuerung: Server-Sent Events statt WebSocket (`net-17`)
+  - [x] Live-Events für Fernsteuerung: Server-Sent Events statt WebSocket ()
 - [ ] 🟠 **Grafische Oberfläche** (Nutzerwunsch 2026-10-22: richtiges Programmfenster statt TUI, kein Server). Entscheidung: **egui/eframe** – reines Rust, ein Fenster auf macOS/Linux/Windows, nutzt dieselbe Engine und denselben Zustand wie die TUI im selben Prozess. Das Fenster ist der Standard, wenn ein Display da ist; `--tui` erzwingt das Terminal.
-  - [x] gui-1: Fenster mit Downloads (Fortschritt, Geschwindigkeit, ETA, Details, Pause/Fortsetzen/Abbrechen/Entfernen), Link-Eingabe und Zwischenablage, History, Tor-Status, Captcha-Dialog
-  - [x] gui-2: Fensterrahmen (Toolbar, Reiter, Übersichtspanel, Befehlsleiste, Fußzeile), Layout siehe `docs/gui-layout.md` (Clean-Room, Referenz-Screenshot nur lokal)
-  - [x] gui-3: Tabelle mit Spalten, Sortierung, Spaltenauswahl und Paketen im Datenmodell
-  - [x] gui-4: Reiter Link-Sammler
-  - [x] gui-5: Dialoge und Menüs (Links hinzufügen, Kontextmenü, Einstellungen, Dateiauswahl)
-  - [x] gui-6: App-Paket (macOS `.app` mit Icon, Windows/Linux, Autostart)
+  - [x] Fenster mit Downloads (Fortschritt, Geschwindigkeit, ETA, Details, Pause/Fortsetzen/Abbrechen/Entfernen), Link-Eingabe und Zwischenablage, History, Tor-Status, Captcha-Dialog
+  - [x] Fensterrahmen (Toolbar, Reiter, Übersichtspanel, Befehlsleiste, Fußzeile), Layout siehe `docs/gui-layout.md` (Clean-Room, Referenz-Screenshot nur lokal)
+  - [x] Tabelle mit Spalten, Sortierung, Spaltenauswahl und Paketen im Datenmodell
+  - [x] Reiter Link-Sammler
+  - [x] Dialoge und Menüs (Links hinzufügen, Kontextmenü, Einstellungen, Dateiauswahl)
+  - [x] App-Paket (macOS `.app` mit Icon, Windows/Linux, Autostart)
 - [x] ⛔ GUI-Entscheidung: egui gewählt; Browser-WebUI und Tauri verworfen (der Nutzer wollte ein Fenster, keinen Server)
-- [ ] 🟢 Tray-Integration und Autostart (`gui-9`) · Browser-Extension-Brücke (geparkt)
+- [ ] 🟢 Tray-Integration und Autostart () · Browser-Extension-Brücke (geparkt)
 
 ---
 
@@ -182,23 +175,23 @@ Alle 🟢-Punkte an einer Stelle, nach Nutzen und Aufwand bewertet (S = Stunden,
 
 | Punkt | Nutzen | Aufwand | Abhängig von | Plan |
 | --- | --- | --- | --- | --- |
-| Deutsche Übersetzung als Sprachpaket (`lang/de.toml`, Sprachwahl) | hoch | S | – | `i18n-3`; Auswahl im Fenster mit `gui-7` |
-| Themes (hell, dunkel, automatisch, Akzentfarbe) und Einstellungsseite dafür | mittel | S | `gui-5` | `gui-7` |
-| Zwischenablage-Überwachung: kopierte Links landen im Link-Sammler (nie direkt im Download) | hoch | M | `gui-4` | `gui-8`; globaler Hotkey später, braucht OS-Schnittstellen |
-| Tray-Symbol, Autostart, Fenster in den Tray schließen | mittel | M | `gui-6` | `gui-9` |
-| Download-Regeln: Zielordner und Umbenennen nach Dateityp, Host oder Muster (eigenes Konzept) | hoch | M | `gui-3` (Pakete) | `core-18` |
-| Duplikat-Erkennung („schon geladen“ per URL oder Datei in der History) | hoch | S | `gui-4` | `core-19` |
-| Scheduler-Zeitfenster und zeitabhängige Geschwindigkeitslimits | mittel | M | `core-7` ✅ | `core-16` |
-| Watch-Ordner: Linklisten, `.dlc`, `.metalink` in einem Ordner werden importiert | mittel | M | `plugins-6` ✅ | `core-17` |
-| Live-Events im Daemon (Server-Sent Events statt WebSocket: einfacher, keine neue Abhängigkeit) | mittel | S–M | `net-12` ✅ | `net-17` |
-| Paketierung: `cargo install`-Metadaten, Homebrew-Formel, AUR-PKGBUILD, Scoop-Manifest | hoch | S–M | Release `v0.1.0` | `infra-8` (Vorlagen im Repo; Veröffentlichen von Hand) |
-| Pluggable Transports (obfs4, snowflake) für zensierte Netze | hoch dort, sonst niedrig | L | externe PT-Binaries, Release | geparkt; eigenes Sicherheits-Design nötig, danach `net-13` |
+| Deutsche Übersetzung als Sprachpaket (`lang/de.toml`, Sprachwahl) | hoch | S | – | ; Auswahl im Fenster mit  |
+| Themes (hell, dunkel, automatisch, Akzentfarbe) und Einstellungsseite dafür | mittel | S |  |  |
+| Zwischenablage-Überwachung: kopierte Links landen im Link-Sammler (nie direkt im Download) | hoch | M |  | ; globaler Hotkey später, braucht OS-Schnittstellen |
+| Tray-Symbol, Autostart, Fenster in den Tray schließen | mittel | M |  |  |
+| Download-Regeln: Zielordner und Umbenennen nach Dateityp, Host oder Muster (eigenes Konzept) | hoch | M |  (Pakete) |  |
+| Duplikat-Erkennung („schon geladen“ per URL oder Datei in der History) | hoch | S |  |  |
+| Scheduler-Zeitfenster und zeitabhängige Geschwindigkeitslimits | mittel | M |  ✅ |  |
+| Watch-Ordner: Linklisten, `.dlc`, `.metalink` in einem Ordner werden importiert | mittel | M |  ✅ |  |
+| Live-Events im Daemon (Server-Sent Events statt WebSocket: einfacher, keine neue Abhängigkeit) | mittel | S–M |  ✅ |  |
+| Paketierung: `cargo install`-Metadaten, Homebrew-Formel, AUR-PKGBUILD, Scoop-Manifest | hoch | S–M | Release `v0.1.0` |  (Vorlagen im Repo; Veröffentlichen von Hand) |
+| Pluggable Transports (obfs4, snowflake) für zensierte Netze | hoch dort, sonst niedrig | L | externe PT-Binaries, Release | geparkt; eigenes Sicherheits-Design nötig, danach  |
 | System-`tor` erkennen und mitbenutzen (spart den Bootstrap) | mittel | M | – | geparkt: SOCKS-Isolation pro Part ist schwächer kontrollierbar als mit Arti |
 | Certificate-Pinning pro Host | niedrig–mittel | S–M | – | geparkt bis ein konkreter Hoster es braucht |
-| RSS/Atom-Reader (Feeds über Tor, Muster füllen den Link-Sammler) | niedrig–mittel | M–L | `core-17` | geparkt |
+| RSS/Atom-Reader (Feeds über Tor, Muster füllen den Link-Sammler) | niedrig–mittel | M–L |  | geparkt |
 | Browser-Erweiterung („Link an rdownloader senden“) | mittel | M–L | Daemon-API ✅ | geparkt bis das Fenster stabil ist |
 | Plugin-Marktplatz, signierte Auto-Updates | niedrig | L | stabiles Plugin-Format, Plugins Dritter | geparkt |
-| Tastenkürzel und Fokusreihenfolge im Fenster | mittel | S | `gui-5` | Teil von `gui-5` |
+| Tastenkürzel und Fokusreihenfolge im Fenster | mittel | S |  | Teil von  |
 
 ---
 
@@ -227,7 +220,7 @@ Was automatisch geprüft ist und was noch **nicht** am echten System gesehen wur
 
 ## Aufräumen in `Cargo.toml`
 Beim Abschluss von M1 prüfen und entfernen, was ungenutzt ist.
-Erledigt (infra-4): `reqwest` (inkl. `socks`), `indicatif` und `thiserror` entfernt, `tokio` auf genutzte Features reduziert. Dependency-Baum: 602 → 579 Pakete.
+Erledigt: `reqwest` (inkl. `socks`), `indicatif` und `thiserror` entfernt, `tokio` auf genutzte Features reduziert. Dependency-Baum: 602 → 579 Pakete.
 
 ## Bekannte Limitationen (ehrlich)
 - JDs `.jar`-Plugins lassen sich clean-room **nicht** laden (Java + proprietäre API).

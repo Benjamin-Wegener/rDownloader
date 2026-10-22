@@ -3,7 +3,7 @@
 //! - Contract A (`Transport`): HTTP access implemented by `net` and consumed by `core`.
 //! - Contract B (`JobEvent`/`JobCommand`): event and control channel between job and `ui`.
 //!
-//! Changes here need a `HANDOFF.md` entry and agreement with the user.
+//! Changes here affect every area of the program; discuss them before making them.
 //! `MockTransport` and `FakeJob` allow `core` and `ui` to be tested independently.
 
 #![allow(dead_code)]

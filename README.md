@@ -10,7 +10,7 @@ no code was taken from it. JDownloader's Java plugins cannot be loaded.
 
 > Version 0.1.0 - the first release. Read the [known limitations](#known-limitations) and the
 > [threat model](docs/threat-model.md) before relying on it. See [CHANGELOG.md](CHANGELOG.md),
-> [STATUS.md](STATUS.md) for the state of the work and [ROADMAP.md](ROADMAP.md) for what is planned.
+> [ROADMAP.md](ROADMAP.md) for what is planned.
 
 ## Features
 
@@ -220,7 +220,10 @@ Report vulnerabilities privately via GitHub, see [SECURITY.md](SECURITY.md).
 
 ## Contributing
 
-Work is organised through [AGENTS.md](AGENTS.md) (steps, areas, build environment). See [CONTRIBUTORS.md](CONTRIBUTORS.md).
+Contributions are welcome. The project is developed in small steps by the maintainer together with several AI coding agents,
+each working in its own area and branch; every change must pass `cargo fmt --check`, `clippy -D warnings` and all tests.
+Please keep to the clean-room rule: no code, icons, images or texts of other download managers. New interface texts need an
+English entry in `src/i18n.rs` and a German one in `lang/de.toml`. See [CONTRIBUTORS.md](CONTRIBUTORS.md).
 
 ## License
 
