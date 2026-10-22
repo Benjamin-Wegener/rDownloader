@@ -214,7 +214,7 @@ impl DownloadPlugin for DirectDownloadPlugin {
             id: "direct".into(),
             name: "Direct Download".into(),
             version: "0.1.0".into(),
-            author: "rdownloader".into(),
+            author: "rDownloader".into(),
             description: t!("plugin.direct.description"),
             kind: PluginKind::Hoster,
             domains: vec!["*".into()],

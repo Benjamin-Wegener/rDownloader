@@ -272,7 +272,7 @@ impl AccountPlugin for CookieImportAccountPlugin {
             id: "cookie-import".into(),
             name: "Cookie Import".into(),
             version: "0.1.0".into(),
-            author: "rdownloader".into(),
+            author: "rDownloader".into(),
             description: "Uses cookies copied from a logged-in browser session".into(),
             kind: super::PluginKind::Account,
             domains: self.domains.clone(),

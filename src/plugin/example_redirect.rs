@@ -25,7 +25,7 @@ impl ExampleRedirectHosterPlugin {
                 id: "example-redirect-hoster".into(),
                 name: "Example Redirect Hoster".into(),
                 version: "0.1.0".into(),
-                author: "rdownloader".into(),
+                author: "rDownloader".into(),
                 description: t!("plugin.redirect.description"),
                 kind: PluginKind::Hoster,
                 domains: vec![

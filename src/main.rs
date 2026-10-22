@@ -139,7 +139,7 @@ async fn main() -> Result<()> {
     }
 
     download::timetable::spawn(cfg.schedule.clone(), cfg.max_speed_kib);
-    info!("rdownloader started");
+    info!("rDownloader started");
     info!("Config: {}", cfg.describe());
 
     // Tor manager bootstrap (or disabled)

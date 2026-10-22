@@ -153,7 +153,7 @@ impl CrawlerPlugin for HtmlLinkCrawlerPlugin {
             id: "html-link-crawler".into(),
             name: "HTML Link Crawler".into(),
             version: "0.1.0".into(),
-            author: "rdownloader".into(),
+            author: "rDownloader".into(),
             description: "Finds all http(s) links on an HTML page".into(),
             kind: PluginKind::Crawler,
             domains: vec!["*".into()],

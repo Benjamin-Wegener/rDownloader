@@ -1,6 +1,6 @@
 # Contributors
 
-rdownloader is a clean-room project built with the help of several AI coding agents,
+rDownloader is a clean-room project built with the help of several AI coding agents,
 coordinated by the maintainer. Contributing models (as reported by the maintainer):
 
 - Claude Sonnet 5.5 (low)

@@ -848,7 +848,7 @@ fn draw(f: &mut Frame, app: &App) {
         AppTab::Settings => 4,
     };
     let tabs = Tabs::new(titles)
-        .block(Block::default().borders(Borders::ALL).title("rdownloader"))
+        .block(Block::default().borders(Borders::ALL).title("rDownloader"))
         .select(tab_idx)
         .style(Style::default().fg(Color::White))
         .highlight_style(

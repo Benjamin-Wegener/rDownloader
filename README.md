@@ -1,4 +1,4 @@
-# rdownloader
+# rDownloader
 
 A clean-room download manager written in Rust. Every download goes through the
 Tor network (embedded [Arti](https://gitlab.torproject.org/tpo/core/arti), no
@@ -213,7 +213,7 @@ Hooks run in the background, are stopped after 60 seconds and never delay a down
 
 ## Security
 
-What rdownloader protects, and what it does not, is described in [docs/threat-model.md](docs/threat-model.md).
+What rDownloader protects, and what it does not, is described in [docs/threat-model.md](docs/threat-model.md).
 Plugin sandboxing and the WebAssembly plugin ABI are documented in [src/plugin/PERMISSIONS.md](src/plugin/PERMISSIONS.md) and implemented in `src/plugin/wasm.rs`.
 Read the limitations before relying on it for anonymity.
 Report vulnerabilities privately via GitHub, see [SECURITY.md](SECURITY.md).
@@ -224,4 +224,4 @@ Work is organised through [AGENTS.md](AGENTS.md) (steps, areas, build environmen
 
 ## License
 
-[MIT](LICENSE). The licenses of the Rust crates used are listed in [THIRD_PARTY_LICENSES.md](THIRD_PARTY_LICENSES.md). rdownloader is written from scratch; it contains no code, icons, images or texts of other download managers.
+[MIT](LICENSE). The licenses of the Rust crates used are listed in [THIRD_PARTY_LICENSES.md](THIRD_PARTY_LICENSES.md). rDownloader is written from scratch; it contains no code, icons, images or texts of other download managers.

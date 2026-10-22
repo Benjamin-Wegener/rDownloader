@@ -115,7 +115,7 @@ fn set_linux_xdg_autostart(enable: bool) -> Result<()> {
             r#"[Desktop Entry]
 Type=Application
 Version=1.0
-Name=rdownloader
+Name=rDownloader
 GenericName=Download Manager
 Comment=Clean-room download manager with Tor (Arti)
 Exec={exe_str}

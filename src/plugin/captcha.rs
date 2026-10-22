@@ -227,7 +227,7 @@ impl CaptchaPlugin for MathCaptchaPlugin {
             id: "math-captcha".into(),
             name: "Math Captcha Plugin".into(),
             version: "0.1.0".into(),
-            author: "rdownloader".into(),
+            author: "rDownloader".into(),
             description: "Simple interactive math challenge solver".into(),
             kind: PluginKind::Captcha,
             domains: self.domains.clone(),

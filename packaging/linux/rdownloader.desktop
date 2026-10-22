@@ -1,6 +1,6 @@
 [Desktop Entry]
 Type=Application
-Name=RDownloader
+Name=rDownloader
 Comment=Clean-room high-performance download manager with Tor, chunking and link grabber
 Exec=rdownloader --gui %U
 Icon=rdownloader

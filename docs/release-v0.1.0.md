@@ -1,6 +1,6 @@
-# rdownloader 0.1.0 - release notes
+# rDownloader 0.1.0 - release notes
 
-The first public release. rdownloader downloads through the Tor network, splits files into parts that
+The first public release. rDownloader downloads through the Tor network, splits files into parts that
 use separate circuits, resumes after crashes and comes with a desktop window, a terminal interface and
 a headless daemon. It is written from scratch; the workflow is inspired by classic download managers, but no
 code, icons, images or texts of other programs are used.

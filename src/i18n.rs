@@ -77,7 +77,7 @@ const EN: &[(&str, &str)] = &[
     ),
     (
         "ui.status.help",
-        "rdownloader | q=Quit · a=Add · Enter=Details · i=Import file · v=Paste clipboard · p=Pause · r=Resume · c=Cancel · d=Remove · Tab=Switch · ↑↓=Select",
+        "rDownloader | q=Quit · a=Add · Enter=Details · i=Import file · v=Paste clipboard · p=Pause · r=Resume · c=Cancel · d=Remove · Tab=Switch · ↑↓=Select",
     ),
     (
         "ui.status.queued_url",
@@ -754,7 +754,7 @@ const EN: &[(&str, &str)] = &[
     ),
     (
         "gui.settings.autostart",
-        "Start rdownloader automatically on login",
+        "Start rDownloader automatically on login",
     ),
     (
         "gui.search.hint",
@@ -922,7 +922,7 @@ const EN: &[(&str, &str)] = &[
     ),
     (
         "gui.about.title",
-        "About rdownloader",
+        "About rDownloader",
     ),
     (
         "gui.about.version",

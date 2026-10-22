@@ -4,13 +4,13 @@
 //! Gatekeeper verifies them before first execution.
 //!
 //! Format: `0083;HEX_TIMESTAMP;AGENT_NAME;UUID`
-//! e.g. `0083;66a1b2c3;rdownloader;4B29E3DC-55B2-4F1E-9C3E-9419138B21AC`
+//! e.g. `0083;66a1b2c3;rDownloader;4B29E3DC-55B2-4F1E-9C3E-9419138B21AC`
 
 use anyhow::{bail, Context, Result};
 use std::path::Path;
 
 pub const QUARANTINE_ATTR_NAME: &str = "com.apple.quarantine";
-pub const DEFAULT_AGENT: &str = "rdownloader";
+pub const DEFAULT_AGENT: &str = "rDownloader";
 
 /// Formats a quarantine string.
 /// Flags:
@@ -144,10 +144,10 @@ mod tests {
     #[test]
     fn format_quarantine_string_structure() {
         let u = uuid::Uuid::parse_str("4b29e3dc-55b2-4f1e-9c3e-9419138b21ac").unwrap();
-        let q = format_quarantine_value("rdownloader", 0x66a1b2c3, &u);
+        let q = format_quarantine_value("rDownloader", 0x66a1b2c3, &u);
         assert_eq!(
             q,
-            "0083;66a1b2c3;rdownloader;4B29E3DC-55B2-4F1E-9C3E-9419138B21AC"
+            "0083;66a1b2c3;rDownloader;4B29E3DC-55B2-4F1E-9C3E-9419138B21AC"
         );
     }
 
@@ -166,7 +166,7 @@ mod tests {
             assert!(val.is_some());
             let s = val.unwrap();
             assert!(s.starts_with("0083;"));
-            assert!(s.contains("rdownloader"));
+            assert!(s.contains("rDownloader"));
         }
         #[cfg(not(target_os = "macos"))]
         {

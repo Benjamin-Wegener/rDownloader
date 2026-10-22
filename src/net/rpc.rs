@@ -255,7 +255,7 @@ async fn dispatch(req: Request<Incoming>, control: Arc<dyn JobControl>) -> ApiRe
         (Method::GET, "/") => Ok(json_response(
             StatusCode::OK,
             &json!({
-                "name": "rdownloader",
+                "name": "rDownloader",
                 "version": env!("CARGO_PKG_VERSION"),
                 "api": "json-rpc-2.0",
                 "endpoints": [

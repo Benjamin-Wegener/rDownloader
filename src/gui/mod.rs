@@ -42,7 +42,7 @@ enum Tab {
 pub fn run(app: SharedApp) -> Result<()> {
     let options = eframe::NativeOptions {
         viewport: egui::ViewportBuilder::default()
-            .with_title("rdownloader")
+            .with_title("rDownloader")
             .with_inner_size([920.0, 640.0])
             .with_min_inner_size([560.0, 360.0]),
         ..Default::default()
@@ -1810,7 +1810,7 @@ impl GuiApp {
             .resizable(false)
             .anchor(egui::Align2::CENTER_CENTER, [0.0, -40.0])
             .show(ctx, |ui| {
-                ui.heading("rdownloader");
+                ui.heading("rDownloader");
                 ui.label(t!("gui.about.version", version = env!("CARGO_PKG_VERSION")));
                 ui.label(t!("gui.about.license"));
                 ui.add_space(6.0);
