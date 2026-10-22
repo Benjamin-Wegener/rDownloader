@@ -121,7 +121,7 @@ CI früh starten (parallel zu M1), Rest nach M2.
 **Automation, Limits & Post-Processing**
 - [x] 🟠 **Auto-Extract Engine**: Automatisches Entpacken von Multi-Part-Archiven (`.rar`, `.zip`, `.7z`) nach Download & Hash-Verifikation
 - [x] 🟠 **Job-Scheduler & Per-Host Limits**: Max. gleichzeitige Jobs und parallele Jobs pro Hoster (`max_concurrent_jobs`, `max_jobs_per_host`)
-- [ ] 🟢 Scheduler-Zeitfenster und zeitabhängige Limits (`core-16`)
+- [x] 🟢 Scheduler-Zeitfenster und zeitabhängige Limits (`[[schedule]]`, Pause-Fenster, über Mitternacht) (core-16)
 - [ ] 🟢 Watch-Ordner (`core-17`) · RSS-Reader (geparkt)
 - [ ] 🟢 Download-Regeln für Zielordner und Namen (`core-18`) · Duplikat-Erkennung (`core-19`)
 

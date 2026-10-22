@@ -58,6 +58,10 @@ pub struct Config {
     #[serde(default)]
     pub extract_delete_archives: bool,
 
+    /// Time windows that change the speed limit or pause downloads (`[[schedule]]`).
+    #[serde(default)]
+    pub schedule: Vec<crate::download::timetable::Rule>,
+
     /// Global download speed limit in KiB/s (0 = unlimited)
     #[serde(default)]
     pub max_speed_kib: u64,
@@ -148,6 +152,7 @@ impl Default for Config {
             max_jobs_per_host: default_max_jobs_per_host(),
             auto_extract: false,
             extract_delete_archives: false,
+            schedule: Vec::new(),
             max_speed_kib: 0,
             min_speed_kib: default_min_speed_kib(),
             conditional_get: false,

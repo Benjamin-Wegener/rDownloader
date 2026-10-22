@@ -15,6 +15,8 @@ struct Bucket {
 }
 
 pub struct RateLimiter {
+    /// While set, `acquire` waits (a timetable "pause" window).
+    paused: std::sync::atomic::AtomicBool,
     /// Bytes per second; 0 = unlimited.
     rate: AtomicU64,
     bucket: Mutex<Bucket>,
@@ -23,6 +25,7 @@ pub struct RateLimiter {
 impl RateLimiter {
     pub fn new(bytes_per_sec: u64) -> Self {
         Self {
+            paused: std::sync::atomic::AtomicBool::new(false),
             rate: AtomicU64::new(bytes_per_sec),
             bucket: Mutex::new(Bucket {
                 tokens: burst(bytes_per_sec),
@@ -36,6 +39,14 @@ impl RateLimiter {
         self.rate.store(bytes_per_sec, Ordering::Relaxed);
     }
 
+    pub fn set_paused(&self, paused: bool) {
+        self.paused.store(paused, Ordering::Relaxed);
+    }
+
+    pub fn is_paused(&self) -> bool {
+        self.paused.load(Ordering::Relaxed)
+    }
+
     pub fn rate(&self) -> u64 {
         self.rate.load(Ordering::Relaxed)
     }
@@ -44,6 +55,9 @@ impl RateLimiter {
     /// is empty queue up behind each other (the bucket goes into debt), so the
     /// long-run throughput never exceeds the rate no matter how many parts run.
     pub async fn acquire(&self, n: u64) {
+        while self.is_paused() {
+            tokio::time::sleep(Duration::from_millis(500)).await;
+        }
         let rate = self.rate();
         if rate == 0 || n == 0 {
             return;
@@ -141,5 +155,20 @@ mod tests {
         let t = Instant::now();
         l.acquire(1 << 20).await;
         assert!(t.elapsed() < Duration::from_millis(50));
+    }
+
+    #[tokio::test]
+    async fn pausing_blocks_until_resumed() {
+        let l = Arc::new(RateLimiter::new(0));
+        l.set_paused(true);
+        let l2 = l.clone();
+        let waiter = tokio::spawn(async move { l2.acquire(1).await });
+        tokio::time::sleep(Duration::from_millis(200)).await;
+        assert!(!waiter.is_finished(), "must wait while paused");
+        l.set_paused(false);
+        tokio::time::timeout(Duration::from_secs(2), waiter)
+            .await
+            .unwrap()
+            .unwrap();
     }
 }

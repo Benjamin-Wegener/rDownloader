@@ -34,6 +34,7 @@ pub mod sanitize;
 pub mod scheduler;
 pub mod slow;
 pub mod space;
+pub mod timetable;
 #[allow(unused_imports)]
 pub use quarantine::{apply_quarantine, get_quarantine, QUARANTINE_ATTR_NAME};
 pub use resume::{PartOffset, ResumeState};
