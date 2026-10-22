@@ -1822,7 +1822,13 @@ mod tests {
                 .await
             })
         };
-        tokio::time::sleep(Duration::from_millis(150)).await;
+        // Slow machines (CI) need a while before the first chunk arrives: wait for data.
+        for _ in 0..500 {
+            if served.load(Ordering::SeqCst) >= 3 {
+                break;
+            }
+            tokio::time::sleep(Duration::from_millis(20)).await;
+        }
         control.pause();
         // Chunks already in flight may still arrive; after that nothing moves any more.
         tokio::time::sleep(Duration::from_millis(100)).await;
