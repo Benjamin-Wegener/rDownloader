@@ -84,6 +84,10 @@ pub struct Config {
     #[serde(default = "default_retries")]
     pub max_retries: u32,
 
+    /// Collect links you copy in the link grabber (never starts downloads by itself).
+    #[serde(default)]
+    pub watch_clipboard: bool,
+
     /// Whether rdownloader should automatically start when logging in
     #[serde(default)]
     pub autostart: bool,
@@ -163,6 +167,7 @@ impl Default for Config {
             hooks: Default::default(),
             max_retries: default_retries(),
             autostart: false,
+            watch_clipboard: false,
             log_level: default_log_level(),
             language: None,
             rpc_listen: default_rpc_listen(),

@@ -957,6 +957,18 @@ const EN: &[(&str, &str)] = &[
         "Downloads start as soon as Tor is connected.",
     ),
     (
+        "gui.clipboard.watch",
+        "Watch clipboard",
+    ),
+    (
+        "gui.clipboard.watch_hint",
+        "Links you copy are collected in the link grabber. Nothing is downloaded without your confirmation.",
+    ),
+    (
+        "gui.context.paste",
+        "Paste links from clipboard",
+    ),
+    (
         "ui.settings.title",
         "Settings",
     ),

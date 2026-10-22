@@ -81,7 +81,7 @@ sha1 = "0.10"
 md-5 = "0.10"
 zip = { version = "2", default-features = false, features = ["deflate"] }
 sevenz-rust = "0.6"
-eframe = { version = "0.37.0", default-features = false, features = ["default_fonts", "glow", "x11", "wayland"] }
+eframe = { version = "0.37.0", default-features = false, features = ["default_fonts", "glow", "x11", "wayland", "clipboard"] }
 
 [dev-dependencies]
 rand = "0.10"

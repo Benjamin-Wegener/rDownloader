@@ -335,3 +335,6 @@
 "gui.drop.failed" = "{file}: konnte nicht gelesen werden ({error})"
 "gui.queue.empty_drop" = "Du kannst auch eine Linkliste, .dlc- oder .metalink-Datei auf dieses Fenster ziehen."
 "gui.queue.tor_wait" = "Downloads starten, sobald Tor verbunden ist."
+"gui.clipboard.watch" = "Zwischenablage überwachen"
+"gui.clipboard.watch_hint" = "Kopierte Links landen im Link-Sammler. Ohne deine Bestätigung wird nichts heruntergeladen."
+"gui.context.paste" = "Links aus der Zwischenablage einfügen"

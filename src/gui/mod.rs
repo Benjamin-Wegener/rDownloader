@@ -77,6 +77,19 @@ pub fn links_in(text: &str) -> Vec<String> {
         .collect()
 }
 
+/// New links in clipboard text, or `None` when it is unchanged or holds no links.
+/// `last` is the clipboard text seen before; the first call only records it (what was
+/// copied before watching started is not imported).
+pub fn clipboard_news(last: &mut Option<String>, text: &str) -> Option<Vec<url::Url>> {
+    let previous = last.replace(text.to_string());
+    let previous = previous?;
+    if previous == text {
+        return None;
+    }
+    let found = import::parse_urls(text).urls;
+    (!found.is_empty()).then_some(found)
+}
+
 /// Shortcut actions of the window.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Shortcut {
@@ -289,6 +302,9 @@ struct GuiApp {
     grabber_collapsed_packages: std::collections::HashSet<usize>,
     settings_open: bool,
     about_open: bool,
+    watch_clipboard: bool,
+    last_clip: Option<String>,
+    last_clip_check: Instant,
     settings_cfg: crate::config::Config,
     picker_open: bool,
     picker_path: std::path::PathBuf,
@@ -329,6 +345,9 @@ impl GuiApp {
             grabber_collapsed_packages: std::collections::HashSet::new(),
             settings_open: false,
             about_open: false,
+            watch_clipboard: crate::config::config().watch_clipboard,
+            last_clip: None,
+            last_clip_check: Instant::now(),
             settings_cfg: initial_cfg,
             picker_open: false,
             picker_path: dirs::download_dir().unwrap_or_else(|| std::path::PathBuf::from(".")),
@@ -478,10 +497,18 @@ impl GuiApp {
             if ui.button(t!("gui.add.title")).clicked() {
                 self.add_open = true;
             }
+            if ui
+                .checkbox(&mut self.watch_clipboard, t!("gui.clipboard.watch"))
+                .on_hover_text(t!("gui.clipboard.watch_hint"))
+                .changed()
+            {
+                // Start from the current content so old clipboard text is not imported.
+                self.last_clip = None;
+            }
             ui.add(
                 egui::TextEdit::singleline(&mut self.query)
                     .hint_text(t!("gui.search.hint"))
-                    .desired_width((ui.available_width() - 330.0).max(120.0)),
+                    .desired_width((ui.available_width() - 520.0).max(100.0)),
             );
             egui::ComboBox::from_id_salt("scope")
                 .selected_text(scope_text(self.scope))
@@ -1466,6 +1493,10 @@ impl GuiApp {
                     &mut self.settings_cfg.autostart,
                     t!("gui.settings.autostart"),
                 );
+                ui.checkbox(
+                    &mut self.settings_cfg.watch_clipboard,
+                    t!("gui.clipboard.watch"),
+                );
 
                 ui.separator();
                 ui.heading(t!("gui.settings.network"));
@@ -1704,6 +1735,21 @@ impl GuiApp {
         }
 
         let typing = ctx.egui_wants_keyboard_input();
+        // Ctrl/Cmd+V outside a text field: offer the pasted links in the add dialog.
+        if !typing {
+            let pasted: Option<String> = ctx.input(|i| {
+                i.events.iter().find_map(|e| match e {
+                    egui::Event::Paste(text) => Some(text.clone()),
+                    _ => None,
+                })
+            });
+            if let Some(text) = pasted {
+                if !links_in(&text).is_empty() {
+                    self.add_text = text;
+                    self.add_open = true;
+                }
+            }
+        }
         let pressed: Vec<(egui::Key, bool)> = ctx.input(|i| {
             i.events
                 .iter()
@@ -1788,10 +1834,40 @@ impl GuiApp {
         if self.overview_open {
             egui::Panel::bottom("overview").show(ui, |ui| self.overview(ui, &a));
         }
-        egui::CentralPanel::default().show(ui, |ui| match self.tab {
-            Tab::Downloads => self.downloads(ui, &mut a),
-            Tab::LinkGrabber => self.link_grabber(ui, &mut a),
-            Tab::History => self.history(ui, &mut a),
+        egui::CentralPanel::default().show(ui, |ui| {
+            // Right-click on the background (registered first, so buttons stay on top).
+            let background = ui.interact(
+                ui.max_rect(),
+                ui.make_persistent_id("background"),
+                egui::Sense::click(),
+            );
+            background.context_menu(|ui| {
+                if ui.button(t!("gui.context.paste")).clicked() {
+                    let result = import::read_clipboard().map(|text| import::parse_urls(&text));
+                    match result {
+                        Ok(imp) if !imp.urls.is_empty() => {
+                            a.collect_links(crate::ui::LinkSource::Clipboard, imp.urls);
+                            self.tab = Tab::LinkGrabber;
+                        }
+                        Ok(_) => a.status_msg = t!("ui.status.import_none"),
+                        Err(e) => a.status_msg = t!("ui.status.import_failed", error = e),
+                    }
+                    ui.close();
+                }
+                if ui.button(t!("gui.add.title")).clicked() {
+                    self.add_open = true;
+                    ui.close();
+                }
+                if ui.button(t!("gui.toolbar.clear")).clicked() {
+                    Self::bulk(&a, Bulk::ClearFinished);
+                    ui.close();
+                }
+            });
+            match self.tab {
+                Tab::Downloads => self.downloads(ui, &mut a),
+                Tab::LinkGrabber => self.link_grabber(ui, &mut a),
+                Tab::History => self.history(ui, &mut a),
+            }
         });
 
         let ctx = ui.ctx().clone();
@@ -1815,6 +1891,15 @@ impl eframe::App for GuiApp {
             a.apply_grabber_event(event);
         }
         a.sample_speeds(Instant::now());
+        // Opt-in clipboard watch: copied links go to the link grabber, never to a download.
+        if self.watch_clipboard && self.last_clip_check.elapsed() >= Duration::from_millis(1500) {
+            self.last_clip_check = Instant::now();
+            if let Ok(text) = import::read_clipboard() {
+                if let Some(urls) = clipboard_news(&mut self.last_clip, &text) {
+                    a.collect_links(crate::ui::LinkSource::Clipboard, urls);
+                }
+            }
+        }
         ctx.request_repaint_after(REPAINT_EVERY);
     }
 
@@ -2327,5 +2412,37 @@ mod tests {
         let mut out = ctx.run_ui(input, |ui| gui.show(ui));
         out.textures_delta.clear();
         assert!(!out.shapes.is_empty());
+    }
+
+    #[test]
+    fn clipboard_watch_only_reports_new_links() {
+        let mut last = None;
+        assert_eq!(
+            clipboard_news(&mut last, "http://old.test/a"),
+            None,
+            "old content is only recorded"
+        );
+        assert_eq!(
+            clipboard_news(&mut last, "http://old.test/a"),
+            None,
+            "unchanged"
+        );
+        let news = clipboard_news(&mut last, "look: http://new.test/f.zip").expect("a new link");
+        assert_eq!(news.len(), 1);
+        assert_eq!(
+            clipboard_news(&mut last, "just words"),
+            None,
+            "text without links is ignored"
+        );
+        assert_eq!(clipboard_news(&mut last, "just words"), None);
+        assert!(clipboard_news(&mut last, "https://again.test/x").is_some());
+    }
+
+    #[test]
+    fn window_with_context_menu_and_clipboard_checkbox_renders() {
+        let (app, _rx) = shared_app();
+        let mut gui = GuiApp::new(app);
+        gui.watch_clipboard = true;
+        assert!(render(&mut gui, 3) > 0);
     }
 }
