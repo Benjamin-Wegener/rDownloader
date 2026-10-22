@@ -33,14 +33,21 @@ use url::Url;
 use crate::t;
 use crate::tor::{AsyncReadWrite, TorManager};
 
+pub mod dash;
 pub mod ftp;
+pub mod hls;
 pub mod router;
 pub mod rpc;
+pub mod segment;
 pub mod transport;
 
 mod disposition;
 
 pub use router::SchemeTransport;
+#[allow(unused_imports)]
+pub use segment::{
+    looks_like_manifest, SegmentDownloader, SegmentKind, SegmentPlan, SegmentRef, SegmentReport,
+};
 pub use transport::TorTransport;
 
 /// Future that yields a raw byte stream to `host:port`.

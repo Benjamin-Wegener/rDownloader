@@ -666,6 +666,51 @@ const EN: &[(&str, &str)] = &[
     ),
     ("net.error.http_handshake", "HTTP/1.1 handshake"),
     ("net.error.send_request", "send HTTP request"),
+    ("net.segment.manifest", "Not an HLS or DASH manifest"),
+    (
+        "net.segment.empty",
+        "Streaming manifest lists no segments",
+    ),
+    (
+        "net.segment.encrypted",
+        "Encrypted HLS streams are not supported",
+    ),
+    (
+        "net.segment.drm",
+        "DRM-protected DASH streams are not supported",
+    ),
+    (
+        "net.segment.live",
+        "Live streaming manifests are not supported",
+    ),
+    (
+        "net.segment.fetch",
+        "Fetch streaming manifest: {url}",
+    ),
+    ("net.segment.read", "Read streaming manifest"),
+    ("net.segment.init", "Initialization segment"),
+    (
+        "net.segment.range_ignored",
+        "Server ignored the range request for {url}",
+    ),
+    ("net.segment.write", "Write segment: {path}"),
+    ("net.segment.merge", "Merge segments: {path}"),
+    (
+        "net.segment.segment",
+        "Segment {index}/{total}",
+    ),
+    (
+        "net.segment.invalid",
+        "Invalid streaming manifest: {detail}",
+    ),
+    (
+        "net.segment.template",
+        "Unsupported DASH layout: {detail}",
+    ),
+    (
+        "net.segment.duration",
+        "DASH manifest lacks a presentation duration",
+    ),
     (
         "main.error.tor_start",
         "Tor could not be started: {e}",
