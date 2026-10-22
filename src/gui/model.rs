@@ -542,6 +542,48 @@ pub fn matches(job: &JobProgress, filter: StateFilter, scope: SearchScope, query
 }
 
 /// Totals shown in the overview panel (over all downloads, not only the visible ones).
+/// How the parts of one download are doing, for the hover tooltip.
+#[derive(Debug, Default, PartialEq, Eq)]
+pub struct PartCounts {
+    pub active: usize,
+    pub retrying: usize,
+    pub waiting: usize,
+    pub done: usize,
+    pub failed: usize,
+    pub total: usize,
+}
+
+impl PartCounts {
+    pub fn of(job: &JobProgress) -> Self {
+        let mut c = PartCounts {
+            total: job.parts.len(),
+            ..Default::default()
+        };
+        for p in &job.parts {
+            match p.status {
+                PartStatus::Downloading => c.active += 1,
+                PartStatus::Retrying { .. } => c.retrying += 1,
+                PartStatus::Pending => c.waiting += 1,
+                PartStatus::Done => c.done += 1,
+                PartStatus::Failed(_) => c.failed += 1,
+            }
+        }
+        c
+    }
+}
+
+/// Current, average and peak of a speed history (bytes per second).
+pub fn speed_stats(history: &[u64]) -> (u64, u64, u64) {
+    let now = history.last().copied().unwrap_or(0);
+    let peak = history.iter().copied().max().unwrap_or(0);
+    let avg = if history.is_empty() {
+        0
+    } else {
+        history.iter().sum::<u64>() / history.len() as u64
+    };
+    (now, avg, peak)
+}
+
 #[derive(Debug, Default, PartialEq, Eq)]
 pub struct Totals {
     pub links: usize,
@@ -977,6 +1019,32 @@ mod tests {
         );
         assert_eq!(t.eta_secs, None);
         assert_eq!(Totals::compute(&[], |_| 0), Totals::default());
+    }
+
+    #[test]
+    fn part_counts_and_speed_stats_summarise_a_download() {
+        let part = |i, status| PartProgress {
+            index: i,
+            bytes_done: 0,
+            total: 10,
+            status,
+        };
+        let mut job = job(1, "a", "http://a.test/a", JobStatus::Downloading, 0, 0);
+        job.parts = vec![
+            part(0, PartStatus::Downloading),
+            part(1, PartStatus::Downloading),
+            part(2, PartStatus::Retrying { attempt: 1, max: 3 }),
+            part(3, PartStatus::Pending),
+            part(4, PartStatus::Done),
+            part(5, PartStatus::Failed("x".into())),
+        ];
+        let c = PartCounts::of(&job);
+        assert_eq!(
+            (c.active, c.retrying, c.waiting, c.done, c.failed, c.total),
+            (2, 1, 1, 1, 1, 6)
+        );
+        assert_eq!(speed_stats(&[]), (0, 0, 0));
+        assert_eq!(speed_stats(&[10, 30, 20]), (20, 20, 30));
     }
 
     #[test]

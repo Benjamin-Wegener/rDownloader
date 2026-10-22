@@ -1100,6 +1100,26 @@ const EN: &[(&str, &str)] = &[
         "gui.text.clear",
         "Clear",
     ),
+    ("gui.hover.speed_history", "Speed history (last minute)"),
+    ("gui.hover.no_history", "No speed data yet"),
+    (
+        "gui.hover.speed_stats",
+        "Now {now} · average {avg} · peak {peak}",
+    ),
+    ("gui.hover.connections", "Connections"),
+    ("gui.hover.single_connection", "One connection"),
+    (
+        "gui.hover.parts_now",
+        "{active} active · {retrying} retrying · {waiting} waiting",
+    ),
+    (
+        "gui.hover.parts_done",
+        "{done} of {total} parts done · {failed} failed",
+    ),
+    ("gui.hover.tor_off", "Direct connection (no Tor)"),
+    ("gui.hover.tor_ready", "Tor: ready"),
+    ("gui.hover.tor_starting", "Tor: starting ({percent}%)"),
+    ("gui.hover.tor_blocked", "Tor: blocked ({reason})"),
     (
         "gui.history.again",
         "Download again",

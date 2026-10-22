@@ -1,7 +1,7 @@
 //! Detail view of one download: parts, speed, ETA and Tor circuit health.
 //! Everything here is pure (no terminal access) so it can be unit-tested.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, VecDeque};
 use std::time::{Duration, Instant};
 
 use super::fmt_bytes;
@@ -26,7 +26,12 @@ struct Sample {
 #[derive(Default)]
 pub struct SpeedTracker {
     samples: HashMap<JobId, Sample>,
+    /// Recent smoothed speeds per job, one entry per accepted sample.
+    history: HashMap<JobId, VecDeque<u64>>,
 }
+
+/// How many samples the speed history keeps (about one minute).
+pub const HISTORY_LEN: usize = 120;
 
 impl SpeedTracker {
     pub fn observe(&mut self, id: JobId, bytes_done: u64, now: Instant) {
@@ -62,6 +67,19 @@ impl SpeedTracker {
         };
         s.bytes = bytes_done;
         s.at = now;
+        let speed = s.speed as u64;
+        let h = self.history.entry(id).or_default();
+        if h.len() == HISTORY_LEN {
+            h.pop_front();
+        }
+        h.push_back(speed);
+    }
+
+    /// The recent speeds of a job, oldest first.
+    pub fn history(&self, id: JobId) -> Vec<u64> {
+        self.history
+            .get(&id)
+            .map_or_else(Vec::new, |h| h.iter().copied().collect())
     }
 
     /// A speed reported by the job itself (`JobEvent::Speed`) wins over the estimate.
@@ -80,6 +98,7 @@ impl SpeedTracker {
 
     pub fn forget(&mut self, id: JobId) {
         self.samples.remove(&id);
+        self.history.remove(&id);
     }
 }
 
@@ -203,6 +222,19 @@ mod tests {
         assert_eq!(eta_secs(1001, 100), Some(11));
         assert_eq!(eta_secs(1000, 0), None);
         assert_eq!(eta_secs(0, 100), Some(0));
+    }
+
+    #[test]
+    fn speed_history_is_kept_and_capped() {
+        let (mut tr, id, t0) = (SpeedTracker::default(), Uuid::new_v4(), Instant::now());
+        for i in 0..(HISTORY_LEN as u64 + 20) {
+            tr.observe(id, i * 1000, t0 + Duration::from_secs(i));
+        }
+        let h = tr.history(id);
+        assert_eq!(h.len(), HISTORY_LEN);
+        assert!(h.iter().all(|v| *v > 0));
+        tr.forget(id);
+        assert!(tr.history(id).is_empty());
     }
 
     #[test]

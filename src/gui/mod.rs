@@ -169,6 +169,81 @@ pub fn fraction(job: &JobProgress) -> Option<f32> {
     (job.total_bytes > 0).then(|| (job.bytes_done as f64 / job.total_bytes as f64).min(1.0) as f32)
 }
 
+/// Draws a small line graph of `values` (bytes per second) in a fixed-size box.
+fn speed_graph(ui: &mut egui::Ui, values: &[u64]) {
+    let (rect, _) = ui.allocate_exact_size(egui::vec2(240.0, 60.0), egui::Sense::hover());
+    let painter = ui.painter_at(rect);
+    painter.rect_filled(rect, 3.0, ui.visuals().extreme_bg_color);
+    let peak = values.iter().copied().max().unwrap_or(0).max(1) as f32;
+    let step = rect.width() / (detail::HISTORY_LEN - 1) as f32;
+    // Newest sample at the right edge.
+    let first = detail::HISTORY_LEN - values.len().min(detail::HISTORY_LEN);
+    let points: Vec<egui::Pos2> = values
+        .iter()
+        .rev()
+        .take(detail::HISTORY_LEN)
+        .rev()
+        .enumerate()
+        .map(|(i, v)| {
+            egui::pos2(
+                rect.left() + (first + i) as f32 * step,
+                rect.bottom() - 2.0 - (rect.height() - 4.0) * (*v as f32 / peak),
+            )
+        })
+        .collect();
+    if points.len() > 1 {
+        painter.add(egui::Shape::line(
+            points,
+            egui::Stroke::new(1.5, ui.visuals().selection.bg_fill),
+        ));
+    }
+}
+
+/// Tooltip of a running download: speed history and connection status.
+fn hover_stats(ui: &mut egui::Ui, job: &JobProgress, history: &[u64], tor: Option<&TorHealth>) {
+    ui.strong(t!("gui.hover.speed_history"));
+    if history.len() < 2 {
+        ui.weak(t!("gui.hover.no_history"));
+    } else {
+        speed_graph(ui, history);
+        let (now, avg, peak) = model::speed_stats(history);
+        ui.label(t!(
+            "gui.hover.speed_stats",
+            now = detail::fmt_speed(now),
+            avg = detail::fmt_speed(avg),
+            peak = detail::fmt_speed(peak)
+        ));
+    }
+    ui.add_space(4.0);
+    ui.strong(t!("gui.hover.connections"));
+    let c = model::PartCounts::of(job);
+    if c.total == 0 {
+        ui.label(t!("gui.hover.single_connection"));
+    } else {
+        ui.label(t!(
+            "gui.hover.parts_now",
+            active = c.active,
+            retrying = c.retrying,
+            waiting = c.waiting
+        ));
+        ui.label(t!(
+            "gui.hover.parts_done",
+            done = c.done,
+            total = c.total,
+            failed = c.failed
+        ));
+    }
+    ui.label(match tor {
+        None => t!("gui.hover.tor_off"),
+        Some(h) if h.blockage().is_some() => t!(
+            "gui.hover.tor_blocked",
+            reason = h.blockage().unwrap_or_default()
+        ),
+        Some(h) if h.ready() => t!("gui.hover.tor_ready"),
+        Some(h) => t!("gui.hover.tor_starting", percent = h.bootstrap_percent()),
+    });
+}
+
 /// One line under the progress bar: bytes, speed, ETA, parts.
 pub fn progress_line(job: &JobProgress, bytes_per_sec: u64) -> String {
     let mut parts = vec![if job.total_bytes > 0 {
@@ -994,8 +1069,14 @@ impl GuiApp {
             });
 
             row_rect = top_row.response.rect;
-            if top_row.response.interact(egui::Sense::click()).clicked() {
+            let row_response = top_row.response.interact(egui::Sense::click());
+            if row_response.clicked() {
                 row_clicked = true;
+            }
+            if matches!(item.status, JobStatus::Downloading | JobStatus::Merging) {
+                let history = app.speeds.history(item.id);
+                let tor = app.tor_health.as_ref();
+                row_response.on_hover_ui(|ui| hover_stats(ui, &item.raw, &history, tor));
             }
 
             if selected {
@@ -2599,6 +2680,27 @@ mod tests {
         gui.add_text = "http://a.test/1".into();
         assert!(render(&mut gui, 2) > 0);
         assert!(gui.add_open, "stays open until submitted or cancelled");
+    }
+
+    #[test]
+    fn the_hover_tooltip_renders_with_and_without_history() {
+        let job = JobProgress {
+            id: Uuid::from_u128(1),
+            url: "http://a.test/a".into(),
+            filename: "a".into(),
+            total_bytes: 100,
+            bytes_done: 10,
+            parts: vec![],
+            status: JobStatus::Downloading,
+        };
+        let ctx = egui::Context::default();
+        for history in [vec![], vec![5, 10, 20, 15]] {
+            let mut out = ctx.run_ui(egui::RawInput::default(), |ui| {
+                hover_stats(ui, &job, &history, None);
+            });
+            out.textures_delta.clear();
+            assert!(!out.shapes.is_empty());
+        }
     }
 
     #[test]
