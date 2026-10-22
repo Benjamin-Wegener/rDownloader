@@ -19,7 +19,7 @@ use bytes::Bytes;
 use http_body_util::Full;
 use hyper::body::{Body, Incoming};
 use hyper::client::conn::http1;
-use hyper::http::header::{HeaderValue, HOST, RANGE, USER_AGENT};
+use hyper::http::header::{HeaderValue, HOST, RANGE, REFERER, USER_AGENT};
 use hyper::http::{Method, Request, Response, Uri};
 use hyper_util::rt::TokioIo;
 use tokio::io::{AsyncRead, AsyncWrite};
@@ -238,8 +238,32 @@ impl TorConnector {
     }
 }
 
-fn default_user_agent() -> String {
-    concat!("rdownloader/", env!("CARGO_PKG_VERSION")).to_string()
+/// Standard Tor Browser User-Agent to match typical Tor traffic and avoid being blocked
+/// by anti-bot or CDN protections.
+pub const TOR_BROWSER_USER_AGENT: &str =
+    "Mozilla/5.0 (Windows NT 10.0; rv:128.0) Gecko/20100101 Firefox/128.0";
+
+/// Computes a sensible default Referer header for a given URL (e.g. `https://vimm.net/`
+/// for `https://dl3.vimm.net/...` or the site's origin) so servers requiring a Referer succeed.
+pub fn default_referer(url: &Url) -> Option<String> {
+    let host = url.host_str()?;
+    let parts: Vec<&str> = host.split('.').collect();
+    let parent = if parts.len() >= 2 && !parts.iter().all(|p| p.chars().all(|c| c.is_ascii_digit()))
+    {
+        format!("{}.{}", parts[parts.len() - 2], parts[parts.len() - 1])
+    } else {
+        host.to_string()
+    };
+    Some(format!("{}://{}/", url.scheme(), parent))
+}
+
+fn effective_user_agent() -> String {
+    let configured = crate::config::config().user_agent.trim();
+    if configured.is_empty() || configured.starts_with("rdownloader/") {
+        TOR_BROWSER_USER_AGENT.to_string()
+    } else {
+        configured.to_string()
+    }
 }
 
 /// Minimal HTTP/1.1 client that opens every connection through the
@@ -263,11 +287,14 @@ impl TorHttpClient {
     }
 
     pub async fn head(&self, isolation: u64, url: &Url) -> Result<Response<Incoming>> {
-        let request = Request::builder()
+        let mut builder = Request::builder()
             .method(Method::HEAD)
             .uri(url.as_str())
-            .header(USER_AGENT, default_user_agent())
-            .body(Full::new(Bytes::new()))?;
+            .header(USER_AGENT, effective_user_agent());
+        if let Some(ref_val) = default_referer(url) {
+            builder = builder.header(REFERER, ref_val);
+        }
+        let request = builder.body(Full::new(Bytes::new()))?;
         self.request(isolation, request).await
     }
 
@@ -281,7 +308,10 @@ impl TorHttpClient {
         let mut builder = Request::builder()
             .method(Method::GET)
             .uri(url.as_str())
-            .header(USER_AGENT, default_user_agent());
+            .header(USER_AGENT, effective_user_agent());
+        if let Some(ref_val) = default_referer(url) {
+            builder = builder.header(REFERER, ref_val);
+        }
         if let Some((start, end)) = range {
             let value = match end {
                 Some(end) => format!("bytes={start}-{end}"),
@@ -553,6 +583,24 @@ mod tests {
             .to_bytes();
         assert_eq!(&body[..], b"hello");
         server.await.expect("server task");
+    }
+
+    #[test]
+    fn default_referer_computes_parent_or_origin() {
+        let vimm = Url::parse("https://dl3.vimm.net/?mediaId=80634&alt=1").unwrap();
+        assert_eq!(
+            default_referer(&vimm),
+            Some("https://vimm.net/".to_string())
+        );
+
+        let root = Url::parse("https://vimm.net/vault/80634").unwrap();
+        assert_eq!(
+            default_referer(&root),
+            Some("https://vimm.net/".to_string())
+        );
+
+        let ip = Url::parse("http://127.0.0.1:8080/test").unwrap();
+        assert_eq!(default_referer(&ip), Some("http://127.0.0.1/".to_string()));
     }
 
     #[test]

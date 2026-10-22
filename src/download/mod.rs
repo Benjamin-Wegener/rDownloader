@@ -12,7 +12,7 @@ use std::sync::Arc;
 use tokio::fs::{self, File, OpenOptions};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::sync::Mutex;
-use tracing::{error, info, warn};
+use tracing::{debug, error, info, warn};
 use uuid::Uuid;
 
 use crate::contract::{ByteRange, Transport};
@@ -125,17 +125,41 @@ impl DownloadJob {
 
 /// Resolves size and validators with a HEAD request sent through Tor.
 ///
+/// Falls back to a probe GET `bytes=0-0` if the server rejects HEAD (e.g. 400 Bad Request,
+/// 405 Method Not Allowed) or fails to provide headers.
+///
 /// Nothing is resolved locally: the host name is handed to Arti and resolved
 /// by the exit node, so this path cannot leak DNS.
 async fn resolve_size(transport: &dyn Transport, url: &url::Url) -> Result<ServerInfo> {
-    let head = transport.head(url, 0).await?;
-    // Many servers (CDNs, compressed or chunked responses) send no length at all.
-    Ok(ServerInfo {
-        total: head.total_size,
-        accepts_ranges: head.accepts_ranges,
-        etag: head.etag,
-        last_modified: head.last_modified,
-    })
+    match transport.head(url, 0).await {
+        Ok(head) => Ok(ServerInfo {
+            total: head.total_size,
+            accepts_ranges: head.accepts_ranges,
+            etag: head.etag,
+            last_modified: head.last_modified,
+        }),
+        Err(head_err) => {
+            debug!("HEAD failed for {url} ({head_err:#}), falling back to GET probe");
+            let probe = transport
+                .get(
+                    url,
+                    Some(ByteRange {
+                        start: 0,
+                        end: Some(0),
+                    }),
+                    0,
+                )
+                .await?;
+            let head = probe.head;
+            let accepts_ranges = head.status == 206 && head.content_length == Some(1);
+            Ok(ServerInfo {
+                total: head.total_size,
+                accepts_ranges: head.accepts_ranges || accepts_ranges,
+                etag: head.etag,
+                last_modified: head.last_modified,
+            })
+        }
+    }
 }
 
 /// What the server reveals about the resource.
@@ -1373,6 +1397,47 @@ mod tests {
             res.is_err(),
             "a truncated body must not count as a finished download"
         );
+    }
+
+    #[tokio::test]
+    async fn resolve_size_falls_back_to_get_when_head_fails() {
+        struct HeadFailTransport;
+        #[async_trait::async_trait]
+        impl Transport for HeadFailTransport {
+            async fn head(
+                &self,
+                _url: &url::Url,
+                _isolation: u64,
+            ) -> Result<crate::contract::ResponseHead> {
+                anyhow::bail!("400 Bad Request");
+            }
+            async fn get(
+                &self,
+                url: &url::Url,
+                _range: Option<ByteRange>,
+                _isolation: u64,
+            ) -> Result<crate::contract::Response> {
+                Ok(crate::contract::Response {
+                    head: crate::contract::ResponseHead {
+                        status: 206,
+                        final_url: url.clone(),
+                        content_length: Some(1),
+                        total_size: Some(42_000),
+                        accepts_ranges: true,
+                        filename: Some("test.bin".into()),
+                        etag: Some("test-etag".into()),
+                        last_modified: None,
+                    },
+                    body: Box::pin(futures::stream::empty()),
+                })
+            }
+        }
+
+        let url = url::Url::parse("https://dl3.vimm.net/download").unwrap();
+        let info = resolve_size(&HeadFailTransport, &url).await.unwrap();
+        assert_eq!(info.total, Some(42_000));
+        assert!(info.accepts_ranges);
+        assert_eq!(info.etag.as_deref(), Some("test-etag"));
     }
 
     // ── conditional download ──
