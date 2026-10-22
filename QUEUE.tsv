@@ -60,10 +60,14 @@ infra-7	infra	Aufraeumen: ungenutzte Config connect_timeout_secs (umsetzen oder 
 i18n-3	i18n	Deutsche Uebersetzung als Sprachpaket (lang/de.toml), Sprache per Config/Umgebung, Test auf Vollstaendigkeit aller Schluessel	-
 infra-8	infra	Paketierungsvorlagen: Cargo-Metadaten fuer crates.io, Homebrew-Formel, AUR-PKGBUILD, Scoop-Manifest (Veroeffentlichen von Hand)	infra-7
 core-16	core	Scheduler-Zeitfenster und zeitabhaengige Geschwindigkeitslimits	core-15
-core-17	core	Watch-Ordner: Linklisten, .dlc und .metalink in einem Ordner werden importiert (Link-Sammler, nie direkt Download)	core-16
-core-18	core	Download-Regeln: Zielordner und Umbenennen nach Dateityp, Host oder Muster	core-17
-core-19	core	Duplikat-Erkennung (schon geladen per URL oder History) im Link-Sammler	core-18,gui-4
-gui-7	gui	Themes (hell, dunkel, automatisch, Akzentfarbe) und Einstellungsseite inkl. Sprachwahl	gui-5,i18n-3
-gui-8	gui	Zwischenablage-Ueberwachung (opt-in) speist den Link-Sammler, nie direkt den Download	gui-4,gui-7
+rel-1	infra	Release-CI: ci.yml/release.yml auf ubuntu+macos+windows mit GUI-Abhaengigkeiten (Linux: x11/wayland-Pakete), fmt streng (continue-on-error weg), Cargo.toml repository/homepage auf Benjamin-Wegener/rDownloader, cargo-deny (Lizenzen+Advisories) als CI-Job, Release-Artefakte mit SHA256SUMS	-
+rel-2	core	v0.1.0-Haertung der Engine: alle Parser (Manifeste, Metalink, DLC, FTP, Zeitplan, Config) mit kaputten/feindlichen Eingaben fuzz-aehnlich testen, keine Panics (unwrap/expect/Indexierung pruefen), Fehlerpfade (Platte voll, Zielordner nicht schreibbar, Tor nicht bootstrapbar) mit klaren Meldungen, ersten Start ohne Config pruefen	-
+rel-3	gui	v0.1.0-Politur des Fensters: Erststart (leere Liste, Tor-Bootstrap sichtbar, Hinweis bei Fehlern), Tastenkuerzel, Fokusreihenfolge, Mindestgroesse, Hell/Dunkel lesbar, Fenster-Smoke-Test, Hilfe/Ueber-Dialog mit Version und Lizenz, Drag&Drop von Links und Linklisten	-
+rel-4	docs	v0.1.0-Doku: CHANGELOG.md, Release Notes, README gegen den Code abgleichen (jede Behauptung pruefen), bekannte Limitationen, THIRD_PARTY_LICENSES (aus Cargo.lock), Clean-Room-Hinweis, Schnellstart mit Screenshots-Platzhaltern, Sicherheitshinweise fuer Nutzer	-
+core-17	core	Watch-Ordner: Linklisten, .dlc und .metalink in einem Ordner werden importiert (Link-Sammler, nie direkt Download)	core-16,release-v010
+core-18	core	Download-Regeln: Zielordner und Umbenennen nach Dateityp, Host oder Muster	core-17,release-v010
+core-19	core	Duplikat-Erkennung (schon geladen per URL oder History) im Link-Sammler	core-18,gui-4,release-v010
+gui-7	gui	Themes (hell, dunkel, automatisch, Akzentfarbe) und Einstellungsseite inkl. Sprachwahl	gui-5,i18n-3,release-v010
+gui-8	gui	Zwischenablage-Ueberwachung (opt-in) speist den Link-Sammler, nie direkt den Download	gui-4,gui-7,release-v010
 gui-9	gui	Tray-Symbol, Autostart, Fenster in den Tray schliessen	gui-6
 net-17	net	Live-Events im Daemon per Server-Sent Events	net-11

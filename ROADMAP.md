@@ -32,6 +32,13 @@ Der Kern (M1) ist das Risiko; Plugins/GUI sind ohne ihn wertlos.
 
 Leitlinien für die Reihenfolge: **Sicherheit und Datenschutz vor Komfort, Nutzen vor Aufwand, nichts ohne Test.** Ein Schritt landet nur auf master, wenn Format, Clippy und alle Tests grün sind.
 
+**Release v0.1.0 – die letzten vier Schritte (je ein Agent, parallel, verschiedene Bereiche):**
+- `rel-1` (infra) Release-CI auf Linux/macOS/Windows, strenges fmt, cargo-deny, Prüfsummen
+- `rel-2` (core) Härtung: keine Panics bei feindlichen Eingaben, klare Fehlermeldungen, Erststart ohne Config
+- `rel-3` (gui) Politur des Fensters: Erststart, Tastenkürzel, Drag & Drop, Über-Dialog
+- `rel-4` (docs) CHANGELOG, Release Notes, README-Abgleich, Drittlizenzen
+- Danach „Go“: Token-Scope `workflow`, Push, Tag `v0.1.0`, Repo öffentlich, dann `touch .git/orch/done/release-v010` gibt die zurückgestellten Schritte frei (`core-17..19`, `gui-7`, `gui-8`)
+
 **Jetzt** (läuft oder startbar):
 1. `gui-4` Link-Sammler im Fenster · `net-11` SFTP/FTPS (laufen bei den Agents)
 2. `core-15` HLS/DASH wirklich in die Engine einbinden (Feature ist sonst nicht erreichbar) · `infra-7` Aufräumen
