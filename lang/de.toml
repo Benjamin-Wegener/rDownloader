@@ -291,7 +291,6 @@
 "rpc.error.invalid_host" = "Ungültiger Host-Header; localhost oder eine Loopback-Adresse verwenden"
 "rpc.error.cross_origin" = "Cross-Origin-Anfrage abgelehnt"
 "rpc.error.unsupported_media_type" = "Nicht unterstützter Medientyp; application/json senden"
-"gui.toolbar.settings" = "Einstellungen öffnen"
 "gui.add.save_to" = "Zielordner"
 "gui.add.browse" = "Durchsuchen…"
 "gui.add.package" = "Paketname"
