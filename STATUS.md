@@ -1,11 +1,11 @@
 # rdownloader status
 
-Generated 2026-10-22 at commit aab41d0 - regenerate with `scripts/status-md.sh`
+Generated 2026-10-22 at commit 1a28519 - regenerate with `scripts/status-md.sh`
 
-`[##################--]` **44/48** steps done (92%), 0 in progress, 4 open
-Roadmap items: 52 checked, 25 open
+`[##################--]` **45/48** steps done (94%), 0 in progress, 3 open
+Roadmap items: 53 checked, 24 open
 
-## core (12/14)
+## core (13/14)
 
 - [x] `core-9` Zentraler Dateinamen-Bereiniger fuer alle Quellen (Plugin/Container/URL): kein Pfad-Ausbruch, Windows-Reservenamen, Kollision -> automatisch umbenennen
 - [x] `core-1` src/contract.rs: Verträge A (Transport) + B (JobEvent/JobCommand), MockTransport, FakeJob
@@ -19,7 +19,7 @@ Roadmap items: 52 checked, 25 open
 - [x] `core-10` Freier-Speicher-Pruefung vor dem Start + Vorab-Reservierung der Zieldatei
 - [x] `core-11` macOS-Quarantaene-Attribut (com.apple.quarantine) auf fertige Downloads setzen
 - [x] `core-12` Langsame Verbindungen kappen (lowest-speed-limit) + bedingtes Laden (If-Modified-Since)
-- [ ] `core-13` Mirrors (mehrere URLs pro Datei, Auswahl nach Geschwindigkeit) + Metalink-Block-Pruefsummen
+- [x] `core-13` Mirrors (mehrere URLs pro Datei, Auswahl nach Geschwindigkeit) + Metalink-Block-Pruefsummen
 - [ ] `core-14` Ereignis-Hooks (Start/Fertig/Fehler -> eigener Befehl) und Desktop-Benachrichtigung
 
 ## i18n (2/2)
