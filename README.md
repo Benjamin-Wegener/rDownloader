@@ -90,6 +90,9 @@ All keys are optional.
 | `max_parts` | `10` | parts per download |
 | `max_retries` | `3` | retries per part |
 | `max_speed_kib` | `0` | global speed limit in KiB/s, `0` = unlimited |
+| `min_speed_kib` | `1` | connections slower than this (over 30 s of network time) are dropped and rebuilt on a fresh circuit, `0` = off |
+| `read_timeout_secs` | `60` | a connection that delivers no data for this long is dropped |
+| `conditional_get` | `false` | skip a download when the existing file has the server's size and is not older than its `Last-Modified` |
 | `max_concurrent_jobs`, `max_jobs_per_host` | `3`, `2` | jobs running at once, overall and per host (`0` = unlimited) |
 | `auto_extract`, `extract_delete_archives` | `false` | unpack finished `.zip` / `.7z` / `.rar` (also multi-part) next to the download, optionally delete the archives afterwards |
 | `bridges` | `[]` | Tor bridge lines |

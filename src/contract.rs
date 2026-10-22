@@ -85,6 +85,7 @@ pub struct MockResource {
     pub accepts_ranges: bool,
     pub filename: Option<String>,
     pub etag: Option<String>,
+    pub last_modified: Option<String>,
 }
 
 impl MockResource {
@@ -94,6 +95,7 @@ impl MockResource {
             accepts_ranges: true,
             filename: None,
             etag: None,
+            last_modified: None,
         }
     }
 }
@@ -153,7 +155,7 @@ impl MockTransport {
             accepts_ranges: res.accepts_ranges,
             filename: res.filename.clone(),
             etag: res.etag.clone(),
-            last_modified: None,
+            last_modified: res.last_modified.clone(),
         }
     }
 }

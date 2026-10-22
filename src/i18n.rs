@@ -505,6 +505,14 @@ const EN: &[(&str, &str)] = &[
         "Connection ended early: received {received} of {expected} bytes",
     ),
     (
+        "download.error.read_timeout",
+        "No data received for {secs} s",
+    ),
+    (
+        "download.error.too_slow",
+        "Connection too slow: {speed} B/s (minimum {min} B/s)",
+    ),
+    (
         "download.error.unexpected_status",
         "Unexpected status: {status}",
     ),

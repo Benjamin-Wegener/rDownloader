@@ -66,6 +66,16 @@ pub struct Config {
     #[serde(default)]
     pub max_speed_kib: u64,
 
+    /// Drop and rebuild connections slower than this many KiB/s (0 = off).
+    /// Measured over 30 s of network time, so the speed limit does not count.
+    #[serde(default = "default_min_speed_kib")]
+    pub min_speed_kib: u64,
+
+    /// Skip a download when the existing local file has the server's size and is
+    /// not older than the server's `Last-Modified`.
+    #[serde(default)]
+    pub conditional_get: bool,
+
     /// Max retries per part
     #[serde(default = "default_retries")]
     pub max_retries: u32,
@@ -105,6 +115,9 @@ fn default_max_concurrent_jobs() -> usize {
 fn default_max_jobs_per_host() -> usize {
     2
 }
+fn default_min_speed_kib() -> u64 {
+    1
+}
 fn default_retries() -> u32 {
     3
 }
@@ -132,6 +145,8 @@ impl Default for Config {
             auto_extract: false,
             extract_delete_archives: false,
             max_speed_kib: 0,
+            min_speed_kib: default_min_speed_kib(),
+            conditional_get: false,
             max_retries: default_retries(),
             log_level: default_log_level(),
             rpc_listen: default_rpc_listen(),

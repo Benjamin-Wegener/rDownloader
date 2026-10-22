@@ -21,6 +21,7 @@ use crate::tor::TorManager;
 use futures::StreamExt;
 
 pub mod checksum;
+pub mod conditional;
 pub mod extract;
 pub mod limiter;
 pub mod quarantine;
@@ -28,6 +29,7 @@ pub mod resume;
 pub mod retry;
 pub mod sanitize;
 pub mod scheduler;
+pub mod slow;
 pub mod space;
 #[allow(unused_imports)]
 pub use quarantine::{apply_quarantine, get_quarantine, QUARANTINE_ATTR_NAME};
@@ -89,6 +91,9 @@ pub struct DownloadJob {
     pub part_size: Option<u64>, // None = auto (total/max_parts)
     /// Expected hash of the finished file; verified after merging when set.
     pub checksum: Option<checksum::Checksum>,
+    /// A local copy to compare against (conditional download): when it is as new
+    /// as the server's version, nothing is downloaded.
+    pub existing_copy: Option<PathBuf>,
 }
 
 impl DownloadJob {
@@ -100,6 +105,7 @@ impl DownloadJob {
             max_parts: max_parts.clamp(1, 10),
             part_size: None,
             checksum: None,
+            existing_copy: None,
         }
     }
 }
@@ -308,10 +314,33 @@ async fn download_part(
         *part_bytes_done = 0;
     }
 
+    let cfg = crate::config::config();
+    let read_timeout = std::time::Duration::from_secs(cfg.read_timeout_secs.max(1));
+    let mut guard = slow::SlowGuard::new(cfg.min_speed_kib.saturating_mul(1024), slow::WINDOW);
     let mut received = 0u64;
     let mut body = response.body;
-    while let Some(chunk) = body.next().await {
+    loop {
+        // A connection that delivers nothing for `read_timeout` is dead.
+        let waiting_since = std::time::Instant::now();
+        let next = tokio::time::timeout(read_timeout, body.next())
+            .await
+            .map_err(|_| {
+                anyhow::anyhow!(t!(
+                    "download.error.read_timeout",
+                    secs = read_timeout.as_secs().to_string()
+                ))
+            })?;
+        let Some(chunk) = next else { break };
         let chunk = chunk?;
+        guard
+            .record(chunk.len() as u64, waiting_since.elapsed())
+            .map_err(|slow| {
+                anyhow::anyhow!(t!(
+                    "download.error.too_slow",
+                    speed = slow.bytes_per_sec.to_string(),
+                    min = slow.minimum.to_string()
+                ))
+            })?;
         file.write_all(&chunk).await?;
         let len = chunk.len() as u64;
         limiter::global().acquire(len).await;
@@ -408,6 +437,20 @@ pub async fn run_job_with(
 
     let info = resolve_size(&*transport, &job.url).await?;
     let total = info.total;
+
+    if let Some(local) = &job.existing_copy {
+        if conditional::is_up_to_date(local, total, info.last_modified.as_deref()) {
+            info!(
+                "Local copy is up to date, skipping download: {}",
+                local.display()
+            );
+            let mut p = progress.lock().await;
+            p.total_bytes = total;
+            p.bytes_done = total;
+            p.status = JobStatus::Done;
+            return Ok(());
+        }
+    }
 
     // Check available disk space before starting
     ensure_sufficient_space(&job.output, total)?;
@@ -656,6 +699,7 @@ pub async fn run_job_with(
     }
 
     merge_parts(&part_paths, &job.output, total).await?;
+    conditional::apply_remote_time(&job.output, info.last_modified.as_deref());
 
     if let Some(expected) = &job.checksum {
         if let Err(e) = checksum::verify_file(&job.output, expected).await {
@@ -923,5 +967,92 @@ mod tests {
             res.is_err(),
             "a truncated body must not count as a finished download"
         );
+    }
+
+    // ── conditional download ──
+
+    async fn run_with_copy(
+        copy: Option<PathBuf>,
+        res: MockResource,
+    ) -> (Result<()>, JobProgress, MockTransport) {
+        let t = MockTransport::new().with_resource("http://x.test/f", res);
+        let dir = std::env::temp_dir().join(format!("rdl-engine-{}", Uuid::new_v4()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let mut job = DownloadJob::new(
+            url::Url::parse("http://x.test/f").unwrap(),
+            dir.join("o.bin"),
+            2,
+        );
+        job.existing_copy = copy;
+        let progress = Arc::new(Mutex::new(JobProgress {
+            id: job.id,
+            url: String::new(),
+            filename: String::new(),
+            total_bytes: 0,
+            bytes_done: 0,
+            parts: vec![],
+            status: JobStatus::Queued,
+        }));
+        let res = run_job_with(
+            &job,
+            Arc::new(t.clone()),
+            Arc::new(|_| {}),
+            progress.clone(),
+            Arc::new(tokio::sync::Notify::new()),
+        )
+        .await;
+        let _ = std::fs::remove_dir_all(&dir);
+        let p = progress.lock().await.clone();
+        (res, p, t)
+    }
+
+    fn local_copy(content: &[u8]) -> PathBuf {
+        let p = std::env::temp_dir().join(format!("rdl-local-{}.bin", Uuid::new_v4()));
+        std::fs::write(&p, content).unwrap();
+        p
+    }
+
+    fn get_count(t: &MockTransport) -> usize {
+        t.requests()
+            .iter()
+            .filter(|r| matches!(r, crate::contract::RecordedRequest::Get { .. }))
+            .count()
+    }
+
+    #[tokio::test]
+    async fn current_local_copy_skips_the_download() {
+        let data = payload(1_000);
+        let local = local_copy(&data);
+        let mut res = MockResource::new(data);
+        res.last_modified = Some("Wed, 01 Jan 2020 00:00:00 GMT".into()); // older than the file
+        let (r, p, t) = run_with_copy(Some(local.clone()), res).await;
+        r.unwrap();
+        assert_eq!(p.status, JobStatus::Done);
+        assert_eq!(get_count(&t), 0, "nothing may be downloaded");
+        let _ = std::fs::remove_file(local);
+    }
+
+    #[tokio::test]
+    async fn outdated_local_copy_is_downloaded_again() {
+        let data = payload(1_000);
+        let local = local_copy(&data);
+        let mut res = MockResource::new(data);
+        res.last_modified = Some("Wed, 01 Jan 2099 00:00:00 GMT".into()); // newer than the file
+        let (r, p, t) = run_with_copy(Some(local.clone()), res).await;
+        r.unwrap();
+        assert_eq!(p.status, JobStatus::Done);
+        assert!(get_count(&t) > 0);
+        let _ = std::fs::remove_file(local);
+    }
+
+    #[tokio::test]
+    async fn local_copy_of_other_size_is_downloaded_again() {
+        let local = local_copy(b"short");
+        let mut res = MockResource::new(payload(1_000));
+        res.last_modified = Some("Wed, 01 Jan 2020 00:00:00 GMT".into());
+        let (r, _, t) = run_with_copy(Some(local.clone()), res).await;
+        r.unwrap();
+        assert!(get_count(&t) > 0);
+        let _ = std::fs::remove_file(local);
     }
 }

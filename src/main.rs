@@ -218,7 +218,11 @@ async fn main() -> Result<()> {
             .unwrap_or(rdownloader::download::DEFAULT_FALLBACK_FILENAME)
             .to_string();
         let parts = cli.parts.unwrap_or(cfg.max_parts).clamp(1, 10);
-        let job = DownloadJob::new(resolved.url, output.clone(), parts);
+        let mut job = DownloadJob::new(resolved.url, output.clone(), parts);
+        job.existing_copy = rdownloader::download::conditional::existing_copy(
+            output.parent().unwrap_or(std::path::Path::new(".")),
+            proposed_name,
+        );
 
         let progress = Arc::new(tokio::sync::Mutex::new(JobProgress {
             id: job.id,
@@ -344,7 +348,9 @@ impl JobControl for DaemonControl {
             .and_then(|s| s.to_str())
             .unwrap_or(rdownloader::download::DEFAULT_FALLBACK_FILENAME)
             .to_string();
-        let job = DownloadJob::new(resolved.url, output, self.max_parts);
+        let mut job = DownloadJob::new(resolved.url, output, self.max_parts);
+        job.existing_copy =
+            rdownloader::download::conditional::existing_copy(&self.dl_dir, proposed_name);
         let id = job.id;
         let progress = Arc::new(tokio::sync::Mutex::new(JobProgress {
             id,
@@ -544,7 +550,8 @@ async fn enqueue_url(
         .and_then(|s| s.to_str())
         .unwrap_or(rdownloader::download::DEFAULT_FALLBACK_FILENAME)
         .to_string();
-    let job = DownloadJob::new(resolved.url, output.clone(), max_parts);
+    let mut job = DownloadJob::new(resolved.url, output.clone(), max_parts);
+    job.existing_copy = rdownloader::download::conditional::existing_copy(dl_dir, proposed_name);
     let progress = Arc::new(tokio::sync::Mutex::new(JobProgress {
         id: job.id,
         url: job.url.to_string(),
