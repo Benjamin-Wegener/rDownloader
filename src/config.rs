@@ -84,6 +84,11 @@ pub struct Config {
     #[serde(default = "default_log_level")]
     pub log_level: String,
 
+    /// Interface language (for example `en` or `de`). The
+    /// `RDOWNLOADER_LANG` environment variable overrides this value.
+    #[serde(default)]
+    pub language: Option<String>,
+
     /// Listen address of the headless JSON-RPC/REST server
     #[serde(default = "default_rpc_listen")]
     pub rpc_listen: String,
@@ -149,6 +154,7 @@ impl Default for Config {
             hooks: Default::default(),
             max_retries: default_retries(),
             log_level: default_log_level(),
+            language: None,
             rpc_listen: default_rpc_listen(),
             rpc_token: None,
         }
@@ -227,6 +233,19 @@ pub fn load() -> Result<Config> {
     }
 }
 
+/// Reads only the `language` key from an existing config file.
+///
+/// This runs before clap builds the help text, so `--help` honours the configured
+/// language. A missing or broken file is ignored here; [`init`] reports it later.
+pub fn language_hint() -> Option<String> {
+    let text = std::fs::read_to_string(Config::config_path()).ok()?;
+    let value: toml::Value = toml::from_str(&text).ok()?;
+    value
+        .get("language")
+        .and_then(toml::Value::as_str)
+        .map(str::to_string)
+}
+
 pub fn config() -> &'static Config {
     CONFIG.get_or_init(|| load().unwrap_or_default())
 }
@@ -249,6 +268,13 @@ mod serialization_tests {
         let back: Config = toml::from_str(&text).expect("and parses again");
         assert_eq!(back.hooks, Config::default().hooks);
         assert_eq!(back.max_parts, Config::default().max_parts);
+    }
+
+    #[test]
+    fn language_is_optional_and_read_from_the_config() {
+        assert_eq!(Config::default().language, None);
+        let cfg: Config = toml::from_str("language = \"de\"\n").unwrap();
+        assert_eq!(cfg.language.as_deref(), Some("de"));
     }
 
     #[test]

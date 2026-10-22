@@ -104,10 +104,11 @@ All keys are optional.
 | `download_dir`, `temp_dir`, `tor_data_dir` | platform defaults | where files and Tor state live |
 | `user_agent`, `connect_timeout_secs`, `read_timeout_secs` | | HTTP behaviour |
 | `log_level` | `info` | log level (`RUST_LOG` overrides it) |
+| `language` | `en` | interface language: `en` or `de` (`RDOWNLOADER_LANG` overrides it) |
 | `rpc_listen` | `127.0.0.1:8765` | listen address of the headless RPC server |
 | `rpc_token` | unset | optional bearer token; required for non-loopback addresses |
 
-`RDOWNLOADER_LANG=<code>` selects the interface language when a catalog for it is loaded.
+English is the built-in default; the German catalog ships in `lang/de.toml`. Set `language = "de"` in the config or `RDOWNLOADER_LANG=de` (the environment variable wins). The catalog is embedded at build time, so installed binaries need no extra files.
 
 ## Headless daemon & RPC
 

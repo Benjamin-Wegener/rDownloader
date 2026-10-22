@@ -1,9 +1,10 @@
 //! String catalog for all user-visible text (UI, help, user-facing errors).
 //!
 //! Keys are stable dotted identifiers (`cli.about`), placeholders are named (`{name}`).
-//! English is built in and is the fallback. Further languages are plain TOML files
-//! (`key = "text"`) loaded at runtime with [`load_catalog`], so adding a translation
-//! needs no code change.
+//! English is built in and is the fallback; German ships as the embedded
+//! `lang/de.toml`. Further languages are plain TOML catalogs (`key = "text"`) that
+//! can be registered with [`load_catalog`]. The active language comes from the
+//! `language` config key or `RDOWNLOADER_LANG`.
 //!
 //! ```ignore
 //! t!("queue.title");
@@ -1162,6 +1163,9 @@ const EN: &[(&str, &str)] = &[
     ),
 ];
 
+/// Bundled German catalog (`lang/de.toml`).
+const DE: &str = include_str!("../lang/de.toml");
+
 struct State {
     language: String,
     catalogs: HashMap<String, HashMap<String, String>>,
@@ -1174,9 +1178,10 @@ fn state() -> &'static RwLock<State> {
             .iter()
             .map(|(k, v)| (k.to_string(), v.to_string()))
             .collect();
+        let de = toml::from_str(DE).expect("bundled lang/de.toml is valid");
         RwLock::new(State {
             language: "en".into(),
-            catalogs: HashMap::from([("en".to_string(), en)]),
+            catalogs: HashMap::from([("en".to_string(), en), ("de".to_string(), de)]),
         })
     })
 }
@@ -1192,6 +1197,14 @@ pub fn load_catalog(lang: &str, toml_text: &str) -> Result<()> {
         .catalogs
         .insert(lang.to_string(), map);
     Ok(())
+}
+
+/// Language codes of all built-in and loaded catalogs, sorted.
+pub fn languages() -> Vec<String> {
+    let st = state().read().unwrap();
+    let mut codes: Vec<String> = st.catalogs.keys().cloned().collect();
+    codes.sort();
+    codes
 }
 
 /// Selects the active language; returns `false` (and keeps the current one) if unknown.
@@ -1249,17 +1262,10 @@ mod tests {
     use super::*;
 
     #[test]
-    fn english_is_default() {
+    fn catalog_lookup_and_language_switching() {
+        // Only this test switches the global language, so parallel tests stay stable.
         assert!(tr("cli.arg.parts").contains("parts"));
-    }
-
-    #[test]
-    fn unknown_key_returns_key() {
         assert_eq!(tr("no.such.key"), "no.such.key");
-    }
-
-    #[test]
-    fn named_placeholders_are_replaced() {
         let args = [("name", "a.bin".to_string()), ("n", "4".to_string())];
         assert_eq!(
             substitute("Started {name} ({n} parts)", &args),
@@ -1267,11 +1273,7 @@ mod tests {
         );
         assert_eq!(substitute("{unknown} stays", &args), "{unknown} stays");
         assert_eq!(t!("no.such.key", name = "x"), "no.such.key");
-    }
 
-    #[test]
-    fn translation_with_fallback() {
-        // One test mutates the global language; keep all language switching here.
         load_catalog("xx", "\"cli.arg.parts\" = \"Piezas: {n}\"").unwrap();
         assert!(set_language("xx"));
         assert_eq!(t!("cli.arg.parts", n = 3), "Piezas: 3");
@@ -1282,12 +1284,53 @@ mod tests {
         );
         assert!(!set_language("does-not-exist"));
         assert_eq!(language(), "xx");
+        // The bundled German catalog is loaded at startup.
+        assert!(languages().contains(&"de".to_string()));
+        assert!(set_language("de"));
+        assert_eq!(t!("ui.tab.settings"), "Einstellungen");
         set_language("en");
     }
 
     #[test]
     fn invalid_catalog_is_an_error() {
         assert!(load_catalog("bad", "this is = = not toml").is_err());
+    }
+
+    #[test]
+    fn german_catalog_is_complete_and_keeps_placeholders() {
+        let de: HashMap<String, String> = toml::from_str(DE).expect("valid German catalog");
+        for (key, english) in EN {
+            let german = de
+                .get(*key)
+                .unwrap_or_else(|| panic!("missing German text for {key}"));
+            assert!(!german.is_empty(), "empty German text for {key}");
+            assert_eq!(
+                placeholders(english),
+                placeholders(german),
+                "placeholders differ for {key}"
+            );
+        }
+        for key in de.keys() {
+            assert!(
+                EN.iter().any(|(known, _)| known == key),
+                "unknown key in German catalog: {key}"
+            );
+        }
+        assert!(de["ui.settings.body"].contains('\n'));
+        assert!(!de["ui.settings.body"].contains("\\n"));
+    }
+
+    fn placeholders(text: &str) -> Vec<&str> {
+        let mut names = Vec::new();
+        let mut rest = text;
+        while let Some(start) = rest.find('{') {
+            let after = &rest[start + 1..];
+            let Some(end) = after.find('}') else { break };
+            names.push(&after[..end]);
+            rest = &after[end + 1..];
+        }
+        names.sort_unstable();
+        names
     }
 
     #[test]

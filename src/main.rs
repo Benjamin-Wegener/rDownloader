@@ -109,19 +109,34 @@ fn choose_frontend(gui: bool, tui: bool, display_available: bool) -> Frontend {
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    if let Ok(lang) = std::env::var("RDOWNLOADER_LANG") {
-        i18n::set_language(&lang);
+    // The language must be known before clap builds its help text. The config is
+    // loaded in full below; here only the language key is read (without creating
+    // the file), so `--help` works even with a missing or broken config.
+    let requested_language = std::env::var("RDOWNLOADER_LANG")
+        .ok()
+        .or_else(config::language_hint);
+    if let Some(lang) = &requested_language {
+        i18n::set_language(lang);
     }
+
     let cli = Cli::from_arg_matches(&cli_command().get_matches())?;
     let frontend = choose_frontend(cli.gui, cli.tui, gui::display_available());
 
-    // Load config
     let cfg = config::init()?;
     tracing_subscriber::fmt()
         .with_env_filter(
             EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new(&cfg.log_level)),
         )
         .init();
+
+    if let Some(lang) = requested_language {
+        if !i18n::set_language(&lang) {
+            warn!(
+                "Unknown language {lang:?}; available: {}",
+                i18n::languages().join(", ")
+            );
+        }
+    }
 
     info!("rdownloader started");
     info!("Config: {}", cfg.describe());

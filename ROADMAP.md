@@ -75,6 +75,7 @@ Reihenfolge ist Abhängigkeitsreihenfolge – von oben nach unten.
 ## Querschnitt: Englisch + Übersetzbarkeit
 - [x] 🟠 `src/i18n.rs`: String-Katalog (Standard `en`, Schlüssel + benannte Platzhalter), später Sprachpakete (i18n-1)
 - [x] 🟠 Bestehende deutsche Texte in Code, Hilfe und UI auf Englisch umstellen (i18n-2)
+- [x] 🟢 Deutsche Übersetzung als Sprachpaket (`lang/de.toml`, Sprache per Config/Umgebung, Vollständigkeitstest) (i18n-3)
 
 ## M2 – Bedienbare TUI ✅ 🟠
 Abhängig von M1 (Engine liefert echten Fortschritt).
