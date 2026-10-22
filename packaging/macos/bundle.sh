@@ -8,7 +8,7 @@ REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 
 TARGET_DIR="${1:-$REPO_ROOT/target/release}"
 OUTPUT_DIR="${2:-$REPO_ROOT/target/bundle/osx}"
-APP_NAME="RDownloader.app"
+APP_NAME="rDownloader.app"
 APP_DIR="$OUTPUT_DIR/$APP_NAME"
 
 echo "Building macOS application bundle: $APP_DIR"

@@ -61,7 +61,7 @@ jobs:
         run: |
           ./packaging/macos/bundle.sh target/${{ matrix.target }}/release target/bundle/osx
           cd target/bundle/osx
-          zip -r ../../../${{ matrix.asset_name }}-app.zip RDownloader.app
+          zip -r ../../../${{ matrix.asset_name }}-app.zip rDownloader.app
           cd ../../../target/${{ matrix.target }}/release
           tar -czvf ../../../${{ matrix.asset_name }}.tar.gz ${{ matrix.artifact_name }}
 

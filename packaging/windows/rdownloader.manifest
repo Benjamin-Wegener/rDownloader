@@ -6,7 +6,7 @@
     name="org.rdownloader.app"
     type="win32"
   />
-  <description>RDownloader Clean-room Download Manager</description>
+  <description>rDownloader Clean-room Download Manager</description>
   <trustInfo xmlns="urn:schemas-microsoft-com:asm.v3">
     <security>
       <requestedPrivileges>
