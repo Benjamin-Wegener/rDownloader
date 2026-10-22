@@ -284,7 +284,7 @@ async fn main() -> Result<()> {
         if cli.headless || cli.tor_clients.is_some() {
             // Headless: run directly
             if let Some(tor) = tor {
-                let cancel = Arc::new(tokio::sync::Notify::new());
+                let cancel = download::control::get_or_create(job.id).cancel.clone();
                 let res = run_job(&job, tor, progress.clone(), cancel).await;
                 let p = progress.lock().await;
                 tracker.update_from_progress(&p, output.to_str().unwrap_or(""), parts)?;
@@ -443,8 +443,14 @@ impl JobControl for DaemonControl {
                 .tracker
                 .update_from_progress(&snapshot, &entry.output, entry.tor_parts);
         }
-        if let Some(handle) = self.handles.lock().unwrap().remove(&id) {
-            handle.abort();
+        match download::control::get(id) {
+            // The job is running in this process: stop its transfer, keep the task.
+            Some(control) => control.pause(),
+            None => {
+                if let Some(handle) = self.handles.lock().unwrap().remove(&id) {
+                    handle.abort();
+                }
+            }
         }
         self.set_status(id, JobStatus::Paused)?;
         let _ = self.tracker.set_status(id, JobStatus::Paused);
@@ -457,6 +463,13 @@ impl JobControl for DaemonControl {
             .ok_or_else(|| t!("rpc.error.job_not_found", id = id))?;
         if current.status != JobStatus::Paused {
             return Err(t!("rpc.error.job_not_paused"));
+        }
+        // Still running in this process (paused in place): just let it read again.
+        if let Some(control) = download::control::get(id) {
+            control.resume();
+            self.set_status(id, JobStatus::Downloading)?;
+            let _ = self.tracker.set_status(id, JobStatus::Downloading);
+            return Ok(());
         }
         let tor = self
             .tor
@@ -496,18 +509,28 @@ impl JobControl for DaemonControl {
     }
 
     fn cancel_job(&self, id: uuid::Uuid) -> Result<(), String> {
+        if let Some(control) = download::control::get(id) {
+            control.cancel();
+        }
         if let Some(handle) = self.handles.lock().unwrap().remove(&id) {
             handle.abort();
         }
+        // An aborted task cannot clean up after itself.
+        download::control::remove(id);
         self.set_status(id, JobStatus::Cancelled)?;
         let _ = self.tracker.set_status(id, JobStatus::Cancelled);
         Ok(())
     }
 
     fn remove_job(&self, id: uuid::Uuid) -> Result<(), String> {
+        if let Some(control) = download::control::get(id) {
+            control.cancel();
+        }
         if let Some(handle) = self.handles.lock().unwrap().remove(&id) {
             handle.abort();
         }
+        // An aborted task cannot clean up after itself.
+        download::control::remove(id);
         {
             let mut jobs = self.jobs.lock().unwrap();
             let before = jobs.len();
@@ -734,6 +757,9 @@ async fn run_tui(
                     });
                 }
                 UiCommand::CancelJob(id) => {
+                    if let Some(control) = download::control::get(id) {
+                        control.cancel();
+                    }
                     let mut jp = jobs_progress_c.lock().unwrap();
                     if let Some(j) = jp.iter_mut().find(|j| j.id == id) {
                         j.status = JobStatus::Cancelled;
@@ -743,12 +769,18 @@ async fn run_tui(
                     let _ = tracker_c.set_status(id, JobStatus::Cancelled);
                 }
                 UiCommand::PauseJob(id) => {
+                    if let Some(control) = download::control::get(id) {
+                        control.pause();
+                    }
                     let mut jp = jobs_progress_c.lock().unwrap();
                     if let Some(j) = jp.iter_mut().find(|j| j.id == id) {
                         j.status = JobStatus::Paused;
                     }
                 }
                 UiCommand::ResumeJob(id) => {
+                    if let Some(control) = download::control::get(id) {
+                        control.resume();
+                    }
                     let mut jp = jobs_progress_c.lock().unwrap();
                     if let Some(j) = jp.iter_mut().find(|j| j.id == id) {
                         if matches!(j.status, JobStatus::Paused) {
@@ -757,6 +789,10 @@ async fn run_tui(
                     }
                 }
                 UiCommand::RemoveJob(id) => {
+                    // A removed download must stop, not only disappear from the list.
+                    if let Some(control) = download::control::get(id) {
+                        control.cancel();
+                    }
                     let mut jp = jobs_progress_c.lock().unwrap();
                     jp.retain(|j| j.id != id);
                     drop(jp);
@@ -852,7 +888,9 @@ fn start_job_background(
 
         // Mirror the engine's progress into the queue and keep the tracker
         // current, so a killed session can be continued later on.
+        let control = download::control::get_or_create(job.id);
         let forwarder = {
+            let control = control.clone();
             let progress = progress.clone();
             let tracker = tracker.clone();
             let jobs_progress = jobs_progress.clone();
@@ -861,7 +899,11 @@ fn start_job_background(
                 let mut tick: u32 = 0;
                 loop {
                     tokio::time::sleep(std::time::Duration::from_millis(500)).await;
-                    let p = progress.lock().await.clone();
+                    let mut p = progress.lock().await.clone();
+                    // The engine keeps the connections open while paused; show that.
+                    if control.is_paused() && p.status == JobStatus::Downloading {
+                        p.status = JobStatus::Paused;
+                    }
                     {
                         let mut jp = jobs_progress.lock().unwrap();
                         if let Some(existing) = jp.iter_mut().find(|x| x.id == p.id) {
@@ -903,7 +945,14 @@ fn start_job_background(
         };
         download::hooks::fire(download::hooks::HookEvent::Start, hook_ctx(0, None), hooks);
 
-        let cancel = Arc::new(tokio::sync::Notify::new());
+        // Cancelled while waiting for a free slot: do not start at all.
+        if control.is_cancelled() {
+            progress.lock().await.status = JobStatus::Cancelled;
+            download::control::remove(job.id);
+            return;
+        }
+
+        let cancel = control.cancel.clone();
         let res = if let Some(tor) = tor {
             run_job(&job, tor, progress.clone(), cancel).await
         } else {
@@ -911,6 +960,7 @@ fn start_job_background(
         };
 
         forwarder.abort();
+        download::control::remove(job.id);
 
         // Final progress + tracker update
         {

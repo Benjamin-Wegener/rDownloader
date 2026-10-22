@@ -109,6 +109,7 @@ All keys are optional.
 | `max_retries` | `3` | retries per part |
 | `max_speed_kib` | `0` | global speed limit in KiB/s, `0` = unlimited |
 | `[[schedule]]` | none | time windows (`days`, `from`, `to`, `speed_kib` or `pause = true`, local time; first match wins) that change the speed limit or pause downloads |
+| `restart_slow_parts` | `true` | restart a single connection that stays far below the other parts of the same download, on a new circuit and rationed (cool-down, one at a time per download, global budget) |
 | `min_speed_kib` | `1` | connections slower than this (over 30 s of network time) are dropped and rebuilt on a fresh circuit, `0` = off |
 | `read_timeout_secs` | `60` | a connection that delivers no data for this long is dropped |
 | `conditional_get` | `false` | skip a download when the existing file has the server's size and is not older than its `Last-Modified` |

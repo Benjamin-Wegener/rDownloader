@@ -66,6 +66,11 @@ pub struct Config {
     #[serde(default)]
     pub max_speed_kib: u64,
 
+    /// Restart single connections that stay far below the other parts of the same
+    /// download (rationed: cool-down, per-job and global limits).
+    #[serde(default = "default_true")]
+    pub restart_slow_parts: bool,
+
     /// Drop and rebuild connections slower than this many KiB/s (0 = off).
     /// Measured over 30 s of network time, so the speed limit does not count.
     #[serde(default = "default_min_speed_kib")]
@@ -132,6 +137,9 @@ fn default_max_concurrent_jobs() -> usize {
 fn default_max_jobs_per_host() -> usize {
     2
 }
+fn default_true() -> bool {
+    true
+}
 fn default_min_speed_kib() -> u64 {
     1
 }
@@ -162,6 +170,7 @@ impl Default for Config {
             extract_delete_archives: false,
             schedule: Vec::new(),
             max_speed_kib: 0,
+            restart_slow_parts: true,
             min_speed_kib: default_min_speed_kib(),
             conditional_get: false,
             hooks: Default::default(),

@@ -22,6 +22,7 @@ use futures::StreamExt;
 
 pub mod checksum;
 pub mod conditional;
+pub mod control;
 pub mod extract;
 pub mod hooks;
 pub mod limiter;
@@ -33,6 +34,7 @@ pub mod retry;
 pub mod sanitize;
 pub mod scheduler;
 pub mod slow;
+pub mod slowparts;
 pub mod space;
 pub mod timetable;
 #[allow(unused_imports)]
@@ -242,6 +244,10 @@ struct PartSpec {
     range: Option<(u64, u64)>,
     /// Size of the whole file, if known; a mirror reporting another size is rejected.
     expected_total: Option<u64>,
+    /// Pause and cancel of the job this part belongs to.
+    control: Arc<control::JobControl>,
+    /// Counts every byte this part delivers (read by the slow-part monitor).
+    live: Arc<AtomicU64>,
 }
 
 /// Downloads a part (byte range) through `transport` and writes it to `dest`.
@@ -259,6 +265,8 @@ async fn download_part(
         dest,
         range,
         expected_total,
+        control,
+        live,
     } = spec;
     // Check whether data for this part already exists on disk (resume)
     let existing_len = if dest.exists() {
@@ -338,11 +346,12 @@ async fn download_part(
             )
         })?;
 
-    // Subtract the previous bytes of this attempt from `bytes_done` (in case of a retry after a partial download)
-    if *part_bytes_done > 0 {
+    // Starting over (no resume): the bytes of the previous attempt are gone. When the
+    // part resumes from its file they are still there and stay counted.
+    if !append_mode && *part_bytes_done > 0 {
         bytes_done.fetch_sub(*part_bytes_done, Ordering::Relaxed);
-        *part_bytes_done = 0;
     }
+    *part_bytes_done = 0;
 
     let cfg = crate::config::config();
     let read_timeout = std::time::Duration::from_secs(cfg.read_timeout_secs.max(1));
@@ -350,6 +359,13 @@ async fn download_part(
     let mut received = 0u64;
     let mut body = response.body;
     loop {
+        // Paused: stop reading (the connection stays open, nothing is lost).
+        control.wait_unpaused().await;
+        if control.is_cancelled() {
+            // Not an error: an error would be retried. The retry loop is woken by the
+            // cancel signal and drops this future (and with it the connection).
+            std::future::pending::<()>().await;
+        }
         // A connection that delivers nothing for `read_timeout` is dead.
         let waiting_since = std::time::Instant::now();
         let next = tokio::time::timeout(read_timeout, body.next())
@@ -375,6 +391,7 @@ async fn download_part(
         let len = chunk.len() as u64;
         limiter::global().acquire(len).await;
         bytes_done.fetch_add(len, Ordering::Relaxed);
+        live.fetch_add(len, Ordering::Relaxed);
         *part_bytes_done += len;
         received += len;
     }
@@ -594,6 +611,7 @@ async fn download_unknown_size(
     invalidate: Arc<dyn Fn(u64) + Send + Sync>,
 ) -> Result<()> {
     info!("Server reports no size: single-connection download without percentage");
+    let control = control::get_or_create(job.id);
     let temp_dir = crate::config::config()
         .temp_dir()
         .join(format!("job-{}", job.id));
@@ -639,6 +657,7 @@ async fn download_unknown_size(
                 let (transport, selector, invalidate) =
                     (transport.clone(), selector.clone(), invalidate.clone());
                 let (dest, bytes_done) = (dest.clone(), bytes_done.clone());
+                let control = control.clone();
                 let (part_bytes, last_mirror) = (part_bytes.clone(), last_mirror.clone());
                 async move {
                     let avoid = match last_mirror.load(Ordering::Relaxed) {
@@ -652,6 +671,8 @@ async fn download_unknown_size(
                         dest,
                         range: None,
                         expected_total: None,
+                        control: control.clone(),
+                        live: Arc::new(AtomicU64::new(0)),
                     };
                     let mut pb = part_bytes.load(Ordering::Relaxed);
                     let started = std::time::Instant::now();
@@ -876,6 +897,13 @@ pub async fn run_job_with(
 
     let retry_policy = RetryPolicy::default();
     let job_id = job.id;
+    let control = control::get_or_create(job_id);
+    let live_counters: Vec<Arc<AtomicU64>> =
+        plan.iter().map(|_| Arc::new(AtomicU64::new(0))).collect();
+    let restart_signals: Vec<Arc<tokio::sync::Notify>> = plan
+        .iter()
+        .map(|_| Arc::new(tokio::sync::Notify::new()))
+        .collect();
 
     for part in &plan {
         let (i, start, end) = (part.index, part.start, part.end);
@@ -889,6 +917,9 @@ pub async fn run_job_with(
         let bd = bytes_done.clone();
         let cancel_c = cancel.clone();
         let progress_c = progress.clone();
+        let control_c = control.clone();
+        let live_c = live_counters[i].clone();
+        let restart_c = restart_signals[i].clone();
         let handle = tokio::spawn(async move {
             let part_bytes = Arc::new(AtomicU64::new(0));
             let last_mirror = Arc::new(std::sync::atomic::AtomicUsize::new(usize::MAX));
@@ -904,6 +935,8 @@ pub async fn run_job_with(
                         let dest = dest.clone();
                         let bd = bd.clone();
                         let pb_arc = part_bytes.clone();
+                        let (control_c, live_c, restart_c) =
+                            (control_c.clone(), live_c.clone(), restart_c.clone());
                         async move {
                             let avoid = match last_mirror.load(Ordering::Relaxed) {
                                 usize::MAX => None,
@@ -913,14 +946,23 @@ pub async fn run_job_with(
                             let url = selector_c.url(mirror_idx).clone();
                             let mut pb = pb_arc.load(Ordering::Relaxed);
                             let (before, started) = (pb, std::time::Instant::now());
-                            let spec = PartSpec {
-                                isolation,
-                                url,
-                                dest,
-                                range,
-                                expected_total: Some(total),
+                            let res = loop {
+                                let spec = PartSpec {
+                                    isolation,
+                                    url: url.clone(),
+                                    dest: dest.clone(),
+                                    range,
+                                    expected_total: Some(total),
+                                    control: control_c.clone(),
+                                    live: live_c.clone(),
+                                };
+                                tokio::select! {
+                                    r = download_part(transport_c.clone(), spec, bd.clone(), &mut pb) => break r,
+                                    // The monitor found this connection far slower than its siblings:
+                                    // continue on a new circuit from the saved offset. Not a failure.
+                                    _ = restart_c.notified() => invalidate_c(isolation),
+                                }
                             };
-                            let res = download_part(transport_c.clone(), spec, bd, &mut pb).await;
                             match &res {
                                 Ok(()) => selector_c.record_success(
                                     mirror_idx,
@@ -983,6 +1025,27 @@ pub async fn run_job_with(
             .collect();
     }
 
+    // Restart single slow connections (rationed, see `slowparts`).
+    let slow_monitor =
+        (parts_count >= 3 && info.accepts_ranges && crate::config::config().restart_slow_parts)
+            .then(|| {
+                let probes = plan
+                    .iter()
+                    .enumerate()
+                    .map(|(i, part)| slowparts::PartProbe {
+                        live: live_counters[i].clone(),
+                        initial: initial_parts_done.get(i).copied().unwrap_or(0),
+                        total: part.len(),
+                        restart: restart_signals[i].clone(),
+                    })
+                    .collect();
+                tokio::spawn(slowparts::monitor(
+                    probes,
+                    control.clone(),
+                    slowparts::current_limits(),
+                ))
+            });
+
     // Progress reporter
     let reporter = {
         let progress = progress.clone();
@@ -1025,6 +1088,9 @@ pub async fn run_job_with(
     }
 
     reporter.abort();
+    if let Some(monitor) = slow_monitor {
+        monitor.abort();
+    }
 
     // Persist progress in the resume state before merging
     let mut updated_parts = Vec::new();
@@ -1621,5 +1687,260 @@ mod tests {
         r.unwrap();
         assert!(got.is_empty());
         assert_eq!(p.status, JobStatus::Done);
+    }
+
+    // ── pause, cancel and slow-part restarts against a throttled transport ──
+
+    use std::sync::atomic::AtomicUsize;
+
+    /// Serves `data` in chunks with a delay per chunk. `delay_for(request_no, range_start)`
+    /// decides how slow each request is, so a test can make one connection crawl.
+    struct ThrottledTransport {
+        data: Vec<u8>,
+        chunk: usize,
+        delay_for: Box<dyn Fn(usize, u64) -> Duration + Send + Sync>,
+        chunks_served: Arc<AtomicUsize>,
+        requests: Arc<std::sync::Mutex<Vec<(u64, u64)>>>, // (range start, isolation)
+    }
+
+    use std::time::Duration;
+
+    #[async_trait::async_trait]
+    impl Transport for ThrottledTransport {
+        async fn head(&self, url: &url::Url, _: u64) -> Result<crate::contract::ResponseHead> {
+            Ok(crate::contract::ResponseHead {
+                status: 200,
+                final_url: url.clone(),
+                content_length: Some(self.data.len() as u64),
+                total_size: Some(self.data.len() as u64),
+                accepts_ranges: true,
+                filename: None,
+                etag: None,
+                last_modified: None,
+            })
+        }
+
+        async fn get(
+            &self,
+            url: &url::Url,
+            range: Option<ByteRange>,
+            isolation: u64,
+        ) -> Result<crate::contract::Response> {
+            let (start, end) = match range {
+                Some(r) => (
+                    r.start as usize,
+                    r.end.map_or(self.data.len(), |e| e as usize + 1),
+                ),
+                None => (0, self.data.len()),
+            };
+            let request_no = {
+                let mut r = self.requests.lock().unwrap();
+                r.push((start as u64, isolation));
+                r.len()
+            };
+            let delay = (self.delay_for)(request_no, start as u64);
+            let slice = bytes::Bytes::copy_from_slice(&self.data[start..end]);
+            let (chunk, served) = (self.chunk, self.chunks_served.clone());
+            let head = crate::contract::ResponseHead {
+                status: if range.is_some() { 206 } else { 200 },
+                final_url: url.clone(),
+                content_length: Some(slice.len() as u64),
+                total_size: Some(self.data.len() as u64),
+                accepts_ranges: true,
+                filename: None,
+                etag: None,
+                last_modified: None,
+            };
+            let body = futures::stream::unfold(0usize, move |pos| {
+                let (slice, served) = (slice.clone(), served.clone());
+                async move {
+                    if pos >= slice.len() {
+                        return None;
+                    }
+                    tokio::time::sleep(delay).await;
+                    let n = chunk.min(slice.len() - pos);
+                    served.fetch_add(1, Ordering::SeqCst);
+                    Some((Ok(slice.slice(pos..pos + n)), pos + n))
+                }
+            });
+            Ok(crate::contract::Response {
+                head,
+                body: Box::pin(body),
+            })
+        }
+    }
+
+    fn new_progress(id: Uuid) -> Arc<Mutex<JobProgress>> {
+        Arc::new(Mutex::new(JobProgress {
+            id,
+            url: String::new(),
+            filename: String::new(),
+            total_bytes: 0,
+            bytes_done: 0,
+            parts: vec![],
+            status: JobStatus::Queued,
+        }))
+    }
+
+    fn temp_output() -> (PathBuf, PathBuf) {
+        let dir = std::env::temp_dir().join(format!("rdl-ctl-{}", Uuid::new_v4()));
+        std::fs::create_dir_all(&dir).unwrap();
+        (dir.clone(), dir.join("o.bin"))
+    }
+
+    #[tokio::test]
+    async fn a_paused_download_stops_and_resumes_with_the_right_content() {
+        let data = payload(60_000);
+        let served = Arc::new(AtomicUsize::new(0));
+        let transport = Arc::new(ThrottledTransport {
+            data: data.clone(),
+            chunk: 1_000,
+            delay_for: Box::new(|_, _| Duration::from_millis(15)),
+            chunks_served: served.clone(),
+            requests: Default::default(),
+        });
+        let (dir, output) = temp_output();
+        let job = DownloadJob::new(
+            url::Url::parse("http://x.test/f").unwrap(),
+            output.clone(),
+            1,
+        );
+        let control = control::get_or_create(job.id);
+        let progress = new_progress(job.id);
+        let task = {
+            let (progress, t) = (progress.clone(), transport.clone());
+            let job_id = job.id;
+            let out = output.clone();
+            tokio::spawn(async move {
+                let job = DownloadJob {
+                    id: job_id,
+                    ..DownloadJob::new(url::Url::parse("http://x.test/f").unwrap(), out, 1)
+                };
+                run_job_with(
+                    &job,
+                    t,
+                    Arc::new(|_| {}),
+                    progress,
+                    Arc::new(tokio::sync::Notify::new()),
+                )
+                .await
+            })
+        };
+        tokio::time::sleep(Duration::from_millis(150)).await;
+        control.pause();
+        // Chunks already in flight may still arrive; after that nothing moves any more.
+        tokio::time::sleep(Duration::from_millis(100)).await;
+        let frozen = served.load(Ordering::SeqCst);
+        assert!(
+            frozen > 0 && frozen < 60,
+            "paused mid-way (served {frozen})"
+        );
+        tokio::time::sleep(Duration::from_millis(1_200)).await;
+        assert_eq!(
+            served.load(Ordering::SeqCst),
+            frozen,
+            "no data may flow while paused"
+        );
+        assert!(!task.is_finished());
+
+        control.resume();
+        task.await.unwrap().unwrap();
+        assert_eq!(std::fs::read(&output).unwrap(), data);
+        control::remove(job.id);
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[tokio::test]
+    async fn a_cancelled_download_stops_the_transfer() {
+        let served = Arc::new(AtomicUsize::new(0));
+        let transport = Arc::new(ThrottledTransport {
+            data: payload(200_000),
+            chunk: 1_000,
+            delay_for: Box::new(|_, _| Duration::from_millis(15)),
+            chunks_served: served.clone(),
+            requests: Default::default(),
+        });
+        let (dir, output) = temp_output();
+        let job = DownloadJob::new(url::Url::parse("http://x.test/f").unwrap(), output, 2);
+        let control = control::get_or_create(job.id);
+        let cancel = control.cancel.clone();
+        let progress = new_progress(job.id);
+        let task = tokio::spawn({
+            let t = transport.clone();
+            async move { run_job_with(&job, t, Arc::new(|_| {}), progress, cancel).await }
+        });
+        tokio::time::sleep(Duration::from_millis(200)).await;
+        control.cancel();
+        let result = tokio::time::timeout(Duration::from_secs(3), task)
+            .await
+            .expect("stops promptly")
+            .unwrap();
+        assert!(result.is_err(), "a cancelled job is not a success");
+        let after = served.load(Ordering::SeqCst);
+        tokio::time::sleep(Duration::from_millis(300)).await;
+        assert_eq!(served.load(Ordering::SeqCst), after, "no data after cancel");
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[tokio::test]
+    async fn one_crawling_connection_is_restarted_on_a_new_circuit() {
+        let part = 240_000usize;
+        let data = payload(4 * part);
+        let requests = Arc::new(std::sync::Mutex::new(Vec::new()));
+        let transport = Arc::new(ThrottledTransport {
+            data: data.clone(),
+            chunk: 2_000,
+            // The first connection of part 0 crawls; everything else is fast.
+            delay_for: Box::new(move |no, start| {
+                if start < part as u64 && no <= 4 {
+                    Duration::from_millis(400) // 5 KB/s
+                } else {
+                    Duration::from_millis(10) // 200 KB/s
+                }
+            }),
+            chunks_served: Default::default(),
+            requests: requests.clone(),
+        });
+        let (dir, output) = temp_output();
+        let mut job = DownloadJob::new(
+            url::Url::parse("http://x.test/f").unwrap(),
+            output.clone(),
+            4,
+        );
+        job.part_size = Some(part as u64);
+        let progress = new_progress(job.id);
+        let result = tokio::time::timeout(
+            Duration::from_secs(20),
+            run_job_with(
+                &job,
+                transport,
+                Arc::new(|_| {}),
+                progress,
+                Arc::new(tokio::sync::Notify::new()),
+            ),
+        )
+        .await
+        .expect("finishes");
+        result.unwrap();
+        assert_eq!(std::fs::read(&output).unwrap(), data);
+
+        let reqs = requests.lock().unwrap().clone();
+        let first_part: Vec<_> = reqs
+            .iter()
+            .filter(|(start, _)| *start < part as u64)
+            .collect();
+        assert!(
+            first_part.len() >= 2,
+            "part 0 must have been restarted: {reqs:?}"
+        );
+        assert_ne!(first_part[0].1, 0);
+        assert!(first_part.len() <= 3, "restarts must be rationed: {reqs:?}");
+        let others = reqs
+            .iter()
+            .filter(|(start, _)| *start >= part as u64)
+            .count();
+        assert_eq!(others, 3, "the fast parts are never restarted: {reqs:?}");
+        control::remove(job.id);
+        let _ = std::fs::remove_dir_all(dir);
     }
 }

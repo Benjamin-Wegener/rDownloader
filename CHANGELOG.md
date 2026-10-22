@@ -34,5 +34,9 @@ First public version. A clean-room download manager in Rust: everything goes thr
 ### Security and privacy
 - No telemetry (guarded by a test), no local DNS resolution outside Tor (guarded by a test), secrets redacted in logs, threat model in `docs/threat-model.md`
 
+### Fixed after the alpha tag
+- Pause really stops the transfer and stays paused (it used to resume a second later); cancel and remove stop the connections instead of only hiding the download
+- Single connections that stay far below their siblings are restarted on a new circuit, rationed so the network is not flooded
+
 ### Known limitations
 See "Known limitations" in the README and in `docs/release-v0.1.0.md`.
