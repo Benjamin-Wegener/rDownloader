@@ -38,6 +38,16 @@ no code was taken from it. JDownloader's Java plugins cannot be loaded.
 Download the archive for your system from the releases page and check it against `SHA256SUMS.txt`
 (`shasum -a 256 -c SHA256SUMS.txt`). Packaging recipes for Homebrew, AUR and Scoop are in `packaging/`.
 
+### First start: the downloads are not signed
+
+The 0.1.0 files are not code-signed or notarized (that needs paid developer accounts). Your system will warn you, which is expected:
+
+- **macOS:** unzip `rDownloader.app`, move it to Applications, then right-click it, choose **Open** and confirm once. If it still says the app is damaged, run `xattr -dr com.apple.quarantine /Applications/rDownloader.app` in the Terminal.
+- **Windows:** SmartScreen shows "Windows protected your PC": click **More info**, then **Run anyway**.
+- **Linux:** make the file executable (`chmod +x rdownloader`). The window needs an X11 or Wayland session; without one the terminal interface starts.
+
+Check the download against `SHA256SUMS.txt` before you run it. The Windows, Linux and Intel-Mac builds were built automatically but have not been started by hand yet.
+
 ## Quick start
 
 1. Start `rdownloader`. The window opens; the Tor state is shown at the bottom right, downloads begin as soon as it reads "connected".

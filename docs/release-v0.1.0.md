@@ -30,6 +30,8 @@ byte-identical to a direct download.
 
 ## Installing
 
+The files are **not code-signed**: macOS asks you to confirm via right-click, Open, and Windows shows a SmartScreen warning ("More info", "Run anyway"). Details are in the README. The Windows, Linux and Intel-Mac builds are built by CI but were not started by hand.
+
 Download the file for your system from the releases page and verify it with `SHA256SUMS.txt`. Or build from source:
 `cargo build --release` (see the README for the macOS toolchain note).
 
