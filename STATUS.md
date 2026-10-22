@@ -1,9 +1,9 @@
 # rdownloader status
 
-Generated 2026-10-22 at commit 849590d - regenerate with `scripts/status-md.sh`
+Generated 2026-10-22 at commit d6ab0f1 - regenerate with `scripts/status-md.sh`
 
-`[##################--]` **48/52** steps done (92%), 0 in progress, 4 open
-Roadmap items: 58 checked, 21 open
+`[##################--]` **49/52** steps done (94%), 0 in progress, 3 open
+Roadmap items: 59 checked, 20 open
 
 ## core (14/14)
 
@@ -27,7 +27,7 @@ Roadmap items: 58 checked, 21 open
 - [x] `i18n-1` src/i18n.rs: String-Katalog (en), Schlüssel + benannte Platzhalter, Tests; Clap-Help darüber
 - [x] `i18n-2` Bestehende deutsche Strings/Kommentare/Docs im Code auf Englisch, UI-Texte in den Katalog
 
-## net (10/12)
+## net (11/12)
 
 - [x] `net-1` TLS über Arti-Stream (https-Connector, vertragsfrei)
 - [x] `net-2` TorTransport implementiert Vertrag A
@@ -39,7 +39,7 @@ Roadmap items: 58 checked, 21 open
 - [x] `net-8` Onion-Dienste: .onion-URLs (Arti-Feature onion-service-client) + Vanguards
 - [x] `net-9` FTP/SFTP ueber Tor
 - [x] `net-10` HLS/DASH: Segment-Downloads (parallele Fragmente, Zusammenfuegen)
-- [ ] `net-12` Daemon-API absichern gegen fremde Webseiten (CSRF/DNS-Rebinding): Host-/Origin-/Content-Type-Pruefung ohne Token, Sicherheits-Header, Tests
+- [x] `net-12` Daemon-API absichern gegen fremde Webseiten (CSRF/DNS-Rebinding): Host-/Origin-/Content-Type-Pruefung ohne Token, Sicherheits-Header, Tests
 - [ ] `net-11` SFTP (SSH-Client mit Host-Key-Pruefung) und FTPS ueber Tor
 
 ## plugins (8/8)
