@@ -30,6 +30,11 @@ allow = [
     "CC0-1.0",
     "Zlib",
     "BSL-1.0",
+    "Unlicense",
+    "MPL-2.0",        # option-ext (unmodified, linked as a library)
+    "OFL-1.1",        # fonts embedded by egui
+    "Ubuntu-font-1.0",# fonts embedded by egui
+    "CDLA-Permissive-2.0", # Mozilla root certificates (webpki-roots)
 ]
 
 [licenses.private]
